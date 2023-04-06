@@ -225,7 +225,6 @@ paths:
           description: No Content
         default:
           description: Unexpected error
-
   /logs/files:
     get:
       summary: Get log files
@@ -415,12 +414,22 @@ components:
     APIKey:
       type: object
       properties:
+        name:
+          type: string
         key:
           type: string
-        description:
+        scopes:
+          type: array
+          items:
+            type: string
+        created_at:
           type: string
+          format: date-time
       required:
+        - name
         - key
+        - scopes
+        - created_at
     User:
       type: object
       properties:
