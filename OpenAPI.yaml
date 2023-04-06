@@ -1,0 +1,500 @@
+openapi: 3.0.0
+info:
+  title: Tachiyomi Sync Server API
+  description: Tachiyomi Sync Server API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8282/api
+paths:
+  /keys:
+    get:
+      summary: List all API keys
+      operationId: listAPIKeys
+      responses:
+        '200':
+          description: An array of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIKey'
+        '500':
+          description: Internal server error
+    post:
+      summary: Store a new API key
+      operationId: storeAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKey'
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKey'
+        '500':
+          description: Internal server error
+  /keys/{apikey}:
+    delete:
+      summary: Delete an API key
+      operationId: deleteAPIKey
+      parameters:
+        - name: apikey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key deleted successfully
+        '500':
+          description: Internal server error
+  /api/auth/login:
+    post:
+      summary: User login
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '204':
+          description: Login successful
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+  /api/auth/logout:
+    post:
+      summary: User logout
+      operationId: logoutUser
+      responses:
+        '204':
+          description: Logout successful
+        '500':
+          description: Internal server error
+  /api/auth/onboard:
+    get:
+      summary: Check if onboarding is possible
+      operationId: canOnboard
+      responses:
+        '204':
+          description: Onboarding is possible
+        '403':
+          description: Onboarding is unavailable
+        '500':
+          description: Internal server error
+    post:
+      summary: User onboarding
+      operationId: onboardUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '204':
+          description: Onboarding successful
+        '400':
+          description: Bad request
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal server error
+  /api/auth/validate:
+    get:
+      summary: Validate if a user is authenticated
+      operationId: validateUser
+      responses:
+        '204':
+          description: User is authenticated
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+  /api/healthz/liveness:
+    get:
+      summary: Get server liveness status
+      operationId: getLiveness
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        default:
+          description: Unexpected error
+  /api/healthz/readiness:
+    get:
+      summary: Get server readiness status
+      operationId: getReadiness
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '500':
+          description: Unhealthy. Database unreachable
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Unhealthy. Database unreachable
+        default:
+          description: Unexpected error
+  /api/config:
+    get:
+      summary: Get server configuration
+      operationId: getConfig
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigJson'
+        default:
+          description: Unexpected error
+    patch:
+      summary: Update server configuration
+      operationId: updateConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigUpdate'
+      responses:
+        '204':
+          description: No Content
+        default:
+          description: Unexpected error
+  /api/logs/files:
+    get:
+      summary: Get log files
+      operationId: getLogFiles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogfilesResponse'
+        default:
+          description: Unexpected error
+  /api/logs/files/{logFile}:
+    get:
+      summary: Download log file
+      operationId: downloadLogFile
+      parameters:
+        - name: logFile
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          description: Unexpected error
+  /api/notification:
+      get:
+        summary: List notifications
+        operationId: listNotifications
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Notification'
+          default:
+            description: Unexpected error
+      post:
+        summary: Store notification
+        operationId: storeNotification
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        responses:
+          '201':
+            description: Created
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Notification'
+          default:
+            description: Unexpected error
+  /api/notification/test:
+    post:
+      summary: Test notification
+      operationId: testNotification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notification'
+      responses:
+        '204':
+          description: No Content
+        default:
+          description: Unexpected error
+  /api/notification/{notificationID}:
+      put:
+        summary: Update notification
+        operationId: updateNotification
+        parameters:
+          - name: notificationID
+            in: path
+            required: true
+            schema:
+              type: integer
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Notification'
+          default:
+            description: Unexpected error
+      delete:
+        summary: Delete notification
+        operationId: deleteNotification
+        parameters:
+          - name: notificationID
+            in: path
+            required: true
+            schema:
+              type: integer
+        responses:
+          '204':
+            description: No Content
+          default:
+            description: Unexpected error
+  /api/updates/latest:
+    get:
+      summary: Get the latest release information
+      operationId: getLatestRelease
+      responses:
+        '200':
+          description: Latest release information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Release'
+        '204':
+          description: No latest release information available
+  /api/updates/check:
+    get:
+      summary: Check for updates
+      operationId: checkUpdates
+      responses:
+        '204':
+          description: Check for updates request was successful
+
+
+components:
+  schemas:
+    APIKey:
+      type: object
+      properties:
+        key:
+          type: string
+        description:
+          type: string
+      required:
+        - key
+    User:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+    ConfigJson:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        log_level:
+          type: string
+        log_path:
+          type: string
+        log_max_size:
+          type: integer
+        log_max_backups:
+          type: integer
+        base_url:
+          type: string
+        check_for_updates:
+          type: boolean
+        version:
+          type: string
+        commit:
+          type: string
+        date:
+          type: string
+    ConfigUpdate:
+      type: object
+      properties:
+        check_for_updates:
+          type: boolean
+        log_level:
+          type: string
+        log_path:
+          type: string
+    LogfilesResponse:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogFile'
+        count:
+          type: integer
+    LogFile:
+      type: object
+      properties:
+        filename:
+          type: string
+        size_bytes:
+          type: integer
+        size:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - DISCORD
+            - NOTIFIARR
+            - IFTTT
+            - JOIN
+            - MATTERMOST
+            - MATRIX
+            - PUSH_BULLET
+            - PUSHOVER
+            - ROCKETCHAT
+            - SLACK
+            - TELEGRAM
+        enabled:
+          type: boolean
+        events:
+          type: array
+          items:
+            type: string
+            enum:
+              - SERVER_UPDATE_AVAILABLE
+              - SYNC_STARTED
+              - SYNC_SUCCESS
+              - SYNC_FAILED
+              - SYNC_ERROR
+              - TEST
+        token:
+          type: string
+        apiKey:
+          type: string
+        webhook:
+          type: string
+        title:
+          type: string
+        icon:
+          type: string
+        username:
+          type: string
+        host:
+          type: string
+        password:
+          type: string
+        channel:
+          type: string
+        rooms:
+          type: string
+        targets:
+          type: string
+        devices:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Release:
+      type: object
+      properties:
+        tag_name:
+          type: string
+          description: The tag name of the release
+        name:
+          type: string
+          description: The name of the release
+        body:
+          type: string
+          description: The description of the release
+        published_at:
+          type: string
+          format: date-time
+          description: The publication date and time of the release
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asset'
+    Asset:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of the asset
+        size:
+          type: integer
+          format: int64
+          description: The size of the asset in bytes
+        browser_download_url:
+          type: string
+          description: The download URL for the asset
