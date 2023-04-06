@@ -67,7 +67,7 @@ paths:
           description: API key deleted successfully
         '500':
           description: Internal server error
-  /api/auth/login:
+  /auth/login:
     post:
       tags:
         - Authentication
@@ -89,7 +89,7 @@ paths:
           description: Unauthorized
         '500':
           description: Internal server error
-  /api/auth/logout:
+  /auth/logout:
     post:
       tags:
         - Authentication
@@ -101,7 +101,7 @@ paths:
           description: Logout successful
         '500':
           description: Internal server error
-  /api/auth/onboard:
+  /auth/onboard:
     get:
       tags:
         - Authentication
@@ -136,7 +136,7 @@ paths:
           description: Forbidden
         '500':
           description: Internal server error
-  /api/auth/validate:
+  /auth/validate:
     get:
       tags:
         - Authentication
@@ -150,7 +150,7 @@ paths:
           description: Unauthorized
         '500':
           description: Internal server error
-  /api/healthz/liveness:
+  /healthz/liveness:
     get:
       summary: Get server liveness status
       description: Get server liveness status
@@ -168,7 +168,7 @@ paths:
         default:
           description: Unexpected error
 
-  /api/healthz/readiness:
+  /healthz/readiness:
     get:
       summary: Get server readiness status
       description: Get server readiness status
@@ -192,8 +192,7 @@ paths:
                 example: Unhealthy. Database unreachable
         default:
           description: Unexpected error
-
-  /api/config:
+  /config:
     get:
       summary: Get server configuration
       description: Get server configuration
@@ -227,7 +226,7 @@ paths:
         default:
           description: Unexpected error
 
-  /api/logs/files:
+  /logs/files:
     get:
       summary: Get log files
       description: Get log files
@@ -244,7 +243,7 @@ paths:
         default:
           description: Unexpected error
 
-  /api/logs/files/{logFile}:
+  /logs/files/{logFile}:
     get:
       summary: Download log file
       description: Download log file
@@ -267,7 +266,7 @@ paths:
                 format: binary
         default:
           description: Unexpected error
-  /api/notification:
+  /notification:
     get:
       summary: List notifications
       description: List notifications
@@ -306,7 +305,7 @@ paths:
                 $ref: '#/components/schemas/Notification'
         default:
           description: Unexpected error
-  /api/notification/test:
+  /notification/test:
     post:
       summary: Test notification
       description: Test notification
@@ -324,7 +323,7 @@ paths:
           description: No Content
         default:
           description: Unexpected error
-  /api/notification/{notificationID}:
+  /notification/{notificationID}:
     put:
       summary: Update notification
       description: Update notification
@@ -369,7 +368,7 @@ paths:
           description: No Content
         default:
           description: Unexpected error
-  /api/updates/latest:
+  /updates/latest:
     get:
       summary: Get the latest release information
       description: Get the latest release information
@@ -385,7 +384,7 @@ paths:
                 $ref: '#/components/schemas/Release'
         '204':
           description: No latest release information available
-  /api/updates/check:
+  /updates/check:
     get:
       summary: Check for updates
       description: Check for updates
