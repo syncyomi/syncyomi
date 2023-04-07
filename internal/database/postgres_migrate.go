@@ -3,7 +3,7 @@ package database
 const postgresSchema = `
 CREATE TABLE users
 (
-    id         INTEGER PRIMARY KEY,
+    id         SERIAL PRIMARY KEY,
     username   TEXT NOT NULL,
     password   TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -45,12 +45,6 @@ CREATE TABLE notification
 
 var postgresMigrations = []string{
 	"",
-	`
-	CREATE TABLE "test"
-	(
-		id		INTEGER PRIMARY KEY,
-	);
-	`,
 	`
 	CREATE TABLE notification
 	(

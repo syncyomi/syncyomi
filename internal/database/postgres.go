@@ -35,12 +35,7 @@ func (db *DB) migratePostgres() error {
 	if err != nil {
 		return errors.Wrap(err, "error starting transaction")
 	}
-	defer func(tx *sql.Tx) {
-		err := tx.Rollback()
-		if err != nil {
-			db.log.Error().Err(err).Msgf("error rolling back transaction: %v", err)
-		}
-	}(tx)
+	defer tx.Rollback()
 
 	initialSchema := `CREATE TABLE IF NOT EXISTS schema_migrations (
 	id INTEGER PRIMARY KEY,
