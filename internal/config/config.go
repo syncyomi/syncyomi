@@ -32,6 +32,48 @@ host = "{{ .host }}"
 #
 port = 8282
 
+# Database Type
+# Set database type to use. Supported: sqlite, postgres
+# If not defined, sqlite will be used by default.
+# Make sure postgres is installed and running before using it.
+#
+# Optional
+#
+#DatabaseType = "sqlite"
+
+# Postgres Host
+# Set postgres host to use.
+#
+# Optional
+#
+#PostgresHost = "localhost"
+
+# Postgres Port
+# Set postgres port to use.
+#
+# Optional
+#
+#PostgresPort = "5434"
+
+# Postgres Database
+# Set postgres database to use.
+# If not defined, It will use the default database. (postgres)
+#
+# Optional
+#
+#PostgresDatabase = "postgres"
+
+# Postgres User
+# Set postgres user to use.
+#
+#PostgresUser = "tachisync"
+
+# Postgres Pass
+# Set postgres password to use.
+#
+#
+#PostgresPass = "tachisync"
+
 # Base url
 # Set custom baseUrl eg /tachiyomi/ to serve in subdirectory.
 # Not needed for subdomain, or by accessing with the :port directly.
@@ -197,11 +239,11 @@ func (c *AppConfig) defaults() {
 		SessionSecret:    "secret-session-key",
 		CheckForUpdates:  true,
 		DatabaseType:     "sqlite",
-		PostgresHost:     "",
-		PostgresPort:     0,
-		PostgresDatabase: "",
-		PostgresUser:     "",
-		PostgresPass:     "",
+		PostgresHost:     "localhost",
+		PostgresPort:     5434,
+		PostgresDatabase: "postgres",
+		PostgresUser:     "tachisync",
+		PostgresPass:     "tachisync",
 	}
 }
 
