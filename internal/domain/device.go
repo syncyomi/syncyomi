@@ -8,7 +8,7 @@ import (
 type DeviceRepo interface {
 	Store(ctx context.Context, device *Device) error
 	Delete(ctx context.Context, id int) error
-	ListDevices(ctx context.Context) ([]Device, error)
+	ListDevices(ctx context.Context, apikey string) ([]Device, error)
 }
 
 type Device struct {

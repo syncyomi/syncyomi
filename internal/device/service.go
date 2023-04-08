@@ -10,7 +10,7 @@ import (
 type Service interface {
 	Store(ctx context.Context, device *domain.Device) error
 	Delete(ctx context.Context, id int) error
-	ListDevices(ctx context.Context) ([]domain.Device, error)
+	ListDevices(ctx context.Context, apikey string) ([]domain.Device, error)
 }
 
 func NewService(log logger.Logger, repo domain.DeviceRepo) Service {
@@ -26,16 +26,31 @@ type service struct {
 }
 
 func (s service) Store(ctx context.Context, device *domain.Device) error {
-	//TODO implement me
-	panic("implement me")
+	err := s.repo.Store(ctx, device)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not store device: %+v", device)
+		return err
+	}
+
+	return nil
 }
 
 func (s service) Delete(ctx context.Context, id int) error {
-	//TODO implement me
-	panic("implement me")
+	err := s.repo.Delete(ctx, id)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not delete device with id: %v", id)
+		return err
+	}
+
+	return nil
 }
 
-func (s service) ListDevices(ctx context.Context) ([]domain.Device, error) {
-	//TODO implement me
-	panic("implement me")
+func (s service) ListDevices(ctx context.Context, apikey string) ([]domain.Device, error) {
+	devices, err := s.repo.ListDevices(ctx, apikey)
+	if err != nil {
+		s.log.Error().Err(err).Msg("could not list devices")
+		return nil, err
+	}
+
+	return devices, nil
 }
