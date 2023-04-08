@@ -13,6 +13,7 @@ import (
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/notification"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/scheduler"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/server"
+	"github.com/kaiserbh/tachiyomi-sync-server/internal/sync"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/update"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/user"
 	"github.com/r3labs/sse/v2"
@@ -72,6 +73,7 @@ func main() {
 		notificationRepo = database.NewNotificationRepo(log, db)
 		userRepo         = database.NewUserRepo(log, db)
 		deviceRepo       = database.NewDeviceRepo(log, db)
+		syncRepo         = database.NewSyncRepo(log, db)
 	)
 
 	// setup services
@@ -83,6 +85,7 @@ func main() {
 		userService         = user.NewService(userRepo)
 		authService         = auth.NewService(log, userService)
 		deviceService       = device.NewService(log, deviceRepo)
+		syncService         = sync.NewService(log, syncRepo)
 	)
 
 	// register event subscribers
@@ -104,6 +107,7 @@ func main() {
 			notificationService,
 			updateService,
 			deviceService,
+			syncService,
 		)
 		errorChannel <- httpServer.Open()
 	}()
