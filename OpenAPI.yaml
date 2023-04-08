@@ -10,63 +10,6 @@ info:
 servers:
   - url: http://localhost:8282/api
 paths:
-  /keys:
-    get:
-      tags:
-        - API Keys
-      summary: List all API keys
-      description: List all API keys
-      operationId: listAPIKeys
-      responses:
-        '200':
-          description: An array of API keys
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/APIKey'
-        '500':
-          description: Internal server error
-    post:
-      tags:
-        - API Keys
-      summary: Store a new API key
-      description: Store a new API key
-      operationId: storeAPIKey
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/APIKey'
-      responses:
-        '201':
-          description: API key created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIKey'
-        '500':
-          description: Internal server error
-  /keys/{apikey}:
-    delete:
-      tags:
-        - API Keys
-      summary: Delete an API key
-      description: Delete an API key
-      operationId: deleteAPIKey
-      parameters:
-        - name: apikey
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: API key deleted successfully
-        '500':
-          description: Internal server error
   /auth/login:
     post:
       tags:
@@ -150,48 +93,6 @@ paths:
           description: Unauthorized
         '500':
           description: Internal server error
-  /healthz/liveness:
-    get:
-      summary: Get server liveness status
-      description: Get server liveness status
-      operationId: getLiveness
-      tags:
-        - Health Check
-      responses:
-        '200':
-          description: OK
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: OK
-        default:
-          description: Unexpected error
-
-  /healthz/readiness:
-    get:
-      summary: Get server readiness status
-      description: Get server readiness status
-      operationId: getReadiness
-      tags:
-        - Health Check
-      responses:
-        '200':
-          description: OK
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: OK
-        '500':
-          description: Unhealthy. Database unreachable
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: Unhealthy. Database unreachable
-        default:
-          description: Unexpected error
   /config:
     get:
       summary: Get server configuration
@@ -225,6 +126,159 @@ paths:
           description: No Content
         default:
           description: Unexpected error
+  /device:
+    get:
+      summary: Get all devices
+      description: Gets all devices
+      operationId: listDevices
+      tags:
+      - Devices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        default:
+          description: Unexpected error
+    post:
+      tags:
+        - Devices
+      summary: Store a new device
+      description: Store a new device
+      operationId: storeDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Device'
+      responses:
+        '201':
+          description: Device created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '500':
+          description: Internal server error
+  /device/{id}:
+    delete:
+      summary: Delete an Device
+      description: Delete an Device
+      operationId: deleteDevice
+      tags:
+        - Devices
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Device deleted successfully
+        '500':
+          description: Internal server error
+  /healthz/liveness:
+    get:
+      summary: Get server liveness status
+      description: Get server liveness status
+      operationId: getLiveness
+      tags:
+        - Health Check
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        default:
+          description: Unexpected error
+  /healthz/readiness:
+    get:
+      summary: Get server readiness status
+      description: Get server readiness status
+      operationId: getReadiness
+      tags:
+        - Health Check
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '500':
+          description: Unhealthy. Database unreachable
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Unhealthy. Database unreachable
+        default:
+          description: Unexpected error
+  /keys:
+    get:
+      tags:
+        - API Keys
+      summary: List all API keys
+      description: List all API keys
+      operationId: listAPIKeys
+      responses:
+        '200':
+          description: An array of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIKey'
+        '500':
+          description: Internal server error
+    post:
+      tags:
+        - API Keys
+      summary: Store a new API key
+      description: Store a new API key
+      operationId: storeAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKey'
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKey'
+        '500':
+          description: Internal server error
+  /keys/{apikey}:
+    delete:
+      tags:
+        - API Keys
+      summary: Delete an API key
+      description: Delete an API key
+      operationId: deleteAPIKey
+      parameters:
+        - name: apikey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key deleted successfully
+        '500':
+          description: Internal server error
   /logs/files:
     get:
       summary: Get log files
@@ -408,6 +462,8 @@ tags:
     description: Notification endpoints
   - name: Updates
     description: Update endpoints
+  - name: Devices
+    description: Device endpoints
 
 components:
   schemas:
@@ -430,6 +486,19 @@ components:
         - key
         - scopes
         - created_at
+    Device:
+      type: object
+      properties:
+        name:
+          type: string
+        user_api_key:
+          $ref: '#/components/schemas/APIKey'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     User:
       type: object
       properties:
