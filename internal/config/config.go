@@ -80,7 +80,7 @@ port = 8282
 #
 # Optional
 #
-#baseUrl = "/tachiyomi/"
+#baseUrl = "/tachisync/"
 
 # tachiyomi-sync-server logs file
 # If not defined, logs to stdout make sure it's forward slash otherwise it won't work
