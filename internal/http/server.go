@@ -34,10 +34,24 @@ type Server struct {
 	updateService       updateService
 
 	deviceService deviceService
+	syncService   syncService
 }
 
-func NewServer(log logger.Logger, config *config.AppConfig, sse *sse.Server, db *database.DB, version string, commit string, date string,
-	apiService apikeyService, authService authService, notificationSvc notificationService, updateSvc updateService, deviceService deviceService) Server {
+func NewServer(
+	log logger.Logger,
+	config *config.AppConfig,
+	sse *sse.Server,
+	db *database.DB,
+	version string,
+	commit string,
+	date string,
+	apiService apikeyService,
+	authService authService,
+	notificationSvc notificationService,
+	updateSvc updateService,
+	deviceService deviceService,
+	syncService syncService,
+) Server {
 	return Server{
 		log:     log.With().Str("module", "http").Logger(),
 		config:  config,
@@ -54,6 +68,7 @@ func NewServer(log logger.Logger, config *config.AppConfig, sse *sse.Server, db 
 		notificationService: notificationSvc,
 		updateService:       updateSvc,
 		deviceService:       deviceService,
+		syncService:         syncService,
 	}
 }
 
@@ -109,6 +124,7 @@ func (s Server) Handler() http.Handler {
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
 			r.Route("/device", newDeviceHandler(encoder, s.deviceService).Routes)
+			r.Route("/sync", newSyncHandler(encoder, s.syncService).Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 
