@@ -14,7 +14,7 @@ type DeviceRepo interface {
 type Device struct {
 	ID         int       `json:"id"`
 	Name       string    `json:"name"`
-	UserApiKey *APIKey   `json:"user_api_key"`
+	UserApiKey *APIKey   `json:"user_api_key,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
