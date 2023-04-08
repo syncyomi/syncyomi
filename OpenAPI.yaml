@@ -109,7 +109,6 @@ paths:
                 $ref: '#/components/schemas/ConfigJson'
         default:
           description: Unexpected error
-
     patch:
       summary: Update server configuration
       description: Update server configuration
@@ -421,6 +420,128 @@ paths:
           description: No Content
         default:
           description: Unexpected error
+  /sync:
+    post:
+      tags:
+        - Sync
+      summary: Store sync data
+      description: Store sync data
+      operationId: storeSync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Sync'
+      responses:
+        '201':
+          description: Sync data stored successfully
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error
+    get:
+      tags:
+        - Sync
+      summary: List syncs
+      description: List syncs
+      operationId: listSyncs
+      parameters:
+        - in: query
+          name: apiKey
+          schema:
+            type: string
+          required: true
+          description: User's API key
+      responses:
+        '200':
+          description: A list of syncs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sync'
+        '400':
+          description: Bad request
+        '500':
+          description: Internal server error
+  /sync/{apiKey}:
+    get:
+      tags:
+        - Sync
+      summary: Get sync by API key
+      description: Get sync by API key
+      operationId: getSyncByApiKey
+      parameters:
+        - in: path
+          name: apiKey
+          schema:
+            type: string
+          required: true
+          description: User's API key
+      responses:
+        '200':
+          description: Sync data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sync'
+        '400':
+          description: Bad request
+        '404':
+          description: Sync not found
+        '500':
+          description: Internal server error
+    delete:
+      tags:
+        - Sync
+      summary: Delete sync data
+      description: Delete sync data
+      operationId: deleteSync
+      parameters:
+        - in: path
+          name: apiKey
+          schema:
+            type: integer
+          required: true
+          description: Sync ID
+      responses:
+        '204':
+          description: Sync data deleted successfully
+        '400':
+          description: Bad request
+        '404':
+          description: Sync not found
+        '500':
+          description: Internal server error
+  /sync/device/{id}:
+    get:
+      tags:
+        - Sync
+      summary: Get sync by device ID
+      description: Get sync by device ID
+      operationId: getSyncByDeviceID
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: Device ID
+      responses:
+        '200':
+          description: Sync data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sync'
+        '400':
+          description: Bad request
+        '404':
+          description: Sync not found
+        '500':
+          description: Internal server error
   /updates/latest:
     get:
       summary: Get the latest release information
@@ -464,6 +585,8 @@ tags:
     description: Update endpoints
   - name: Devices
     description: Device endpoints
+  - name: Sync
+    description: Sync endpoints
 
 components:
   schemas:
@@ -489,6 +612,8 @@ components:
     Device:
       type: object
       properties:
+        id:
+          type: integer
         name:
           type: string
         user_api_key:
@@ -661,3 +786,24 @@ components:
         browser_download_url:
           type: string
           description: The download URL for the asset
+    Sync:
+      type: object
+      properties:
+        id:
+          type: integer
+        last_synced:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ pending, syncing, success, error ]
+        device:
+          $ref: '#/components/schemas/Device'
+        user_api_key:
+          $ref: '#/components/schemas/APIKey'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
