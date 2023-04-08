@@ -8,6 +8,7 @@ import (
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/config"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/database"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
+	"github.com/kaiserbh/tachiyomi-sync-server/web"
 	"github.com/r3labs/sse/v2"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog"
@@ -31,10 +32,12 @@ type Server struct {
 	authService         authService
 	notificationService notificationService
 	updateService       updateService
+
+	deviceService deviceService
 }
 
 func NewServer(log logger.Logger, config *config.AppConfig, sse *sse.Server, db *database.DB, version string, commit string, date string,
-	apiService apikeyService, authService authService, notificationSvc notificationService, updateSvc updateService) Server {
+	apiService apikeyService, authService authService, notificationSvc notificationService, updateSvc updateService, deviceService deviceService) Server {
 	return Server{
 		log:     log.With().Str("module", "http").Logger(),
 		config:  config,
@@ -50,6 +53,7 @@ func NewServer(log logger.Logger, config *config.AppConfig, sse *sse.Server, db 
 		authService:         authService,
 		notificationService: notificationSvc,
 		updateService:       updateSvc,
+		deviceService:       deviceService,
 	}
 }
 
@@ -90,6 +94,8 @@ func (s Server) Handler() http.Handler {
 
 	encoder := encoder{}
 
+	web.RegisterHandler(r)
+
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", newAuthHandler(encoder, s.log, s.config.Config, s.cookieStore, s.authService).Routes)
 		r.Route("/healthz", newHealthHandler(encoder, s.db).Routes)
@@ -102,6 +108,7 @@ func (s Server) Handler() http.Handler {
 			r.Route("/logs", newLogsHandler(s.config).Routes)
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
+			r.Route("/device", newDeviceHandler(encoder, s.deviceService).Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 
@@ -116,16 +123,20 @@ func (s Server) Handler() http.Handler {
 				s.sse.ServeHTTP(w, r)
 			})
 		})
+
+		// serve the parsed index.html
+		r.Get("/", s.index)
+		r.Get("/*", s.index)
 	})
 
 	return r
 }
 
-//func (s Server) index(w http.ResponseWriter, r *http.Request) {
-//	p := web.IndexParams{
-//		Title:   "Dashboard",
-//		Version: s.version,
-//		BaseUrl: s.config.Config.BaseURL,
-//	}
-//	web.Index(w, p)
-//}
+func (s Server) index(w http.ResponseWriter, r *http.Request) {
+	p := web.IndexParams{
+		Title:   "Dashboard",
+		Version: s.version,
+		BaseUrl: s.config.Config.BaseURL,
+	}
+	web.Index(w, p)
+}
