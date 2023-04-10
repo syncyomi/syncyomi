@@ -8,9 +8,11 @@ import (
 )
 
 type Service interface {
-	Store(ctx context.Context, device *domain.Device) error
+	Store(ctx context.Context, device *domain.Device) (*domain.Device, error)
 	Delete(ctx context.Context, id int) error
 	ListDevices(ctx context.Context, apikey string) ([]domain.Device, error)
+	GetDeviceByDeviceId(ctx context.Context, device *domain.Device) (*domain.Device, error)
+	GetDeviceByApiKey(ctx context.Context, device *domain.Device) (*domain.Device, error)
 }
 
 func NewService(log logger.Logger, repo domain.DeviceRepo) Service {
@@ -25,14 +27,14 @@ type service struct {
 	repo domain.DeviceRepo
 }
 
-func (s service) Store(ctx context.Context, device *domain.Device) error {
-	err := s.repo.Store(ctx, device)
+func (s service) Store(ctx context.Context, device *domain.Device) (*domain.Device, error) {
+	d, err := s.repo.Store(ctx, device)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not store device: %+v", device)
-		return err
+		return nil, err
 	}
 
-	return nil
+	return d, nil
 }
 
 func (s service) Delete(ctx context.Context, id int) error {
@@ -53,4 +55,24 @@ func (s service) ListDevices(ctx context.Context, apikey string) ([]domain.Devic
 	}
 
 	return devices, nil
+}
+
+func (s service) GetDeviceByDeviceId(ctx context.Context, device *domain.Device) (*domain.Device, error) {
+	d, err := s.repo.GetDeviceByDeviceId(ctx, device)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not get device with id: %v", device.ID)
+		return nil, err
+	}
+
+	return d, nil
+}
+
+func (s service) GetDeviceByApiKey(ctx context.Context, device *domain.Device) (*domain.Device, error) {
+	d, err := s.repo.GetDeviceByApiKey(ctx, device)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not get device with apikey: %v", device.UserApiKey.Key)
+		return nil, err
+	}
+
+	return d, nil
 }
