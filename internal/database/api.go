@@ -46,7 +46,7 @@ func (r *APIRepo) Store(ctx context.Context, key *domain.APIKey) error {
 		return errors.Wrap(err, "error executing query")
 	}
 
-	key.CreatedAt = createdAt
+	key.CreatedAt = &createdAt
 
 	return nil
 }
