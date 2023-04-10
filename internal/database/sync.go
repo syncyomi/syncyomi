@@ -78,9 +78,10 @@ func (r SyncRepo) Delete(ctx context.Context, id int) error {
 func (r SyncRepo) Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error) {
 	queryBuilder := r.db.squirrel.
 		Update("manga_sync").
+		Set("device_id", sync.Device.ID).
 		Set("last_sync", sync.LastSynced).
 		Set("status", sync.Status).
-		Where(sq.Eq{"user_api_key": sync.UserApiKey}).
+		Where(sq.Eq{"user_api_key": sync.UserApiKey.Key}).
 		Suffix("RETURNING updated_at").RunWith(r.db.handler)
 
 	var updatedAt time.Time
@@ -219,7 +220,7 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 		&mangaSync.UserApiKey.CreatedAt,
 	); err != nil {
 		if err == sql.ErrNoRows {
-			return &domain.Sync{}, nil
+			return &domain.Sync{}, errors.Wrap(err, "error executing query")
 		}
 		return nil, errors.Wrap(err, "error executing query")
 	}
@@ -283,4 +284,10 @@ func (r SyncRepo) GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.
 	}
 
 	return &mangaSync, nil
+}
+
+func (r SyncRepo) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error) {
+
+	//TODO implement me
+	panic("implement me")
 }
