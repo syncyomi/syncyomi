@@ -12,16 +12,18 @@ type SyncRepo interface {
 	ListSyncs(ctx context.Context, apiKey string) ([]Sync, error)
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*Sync, error)
 	GetSyncByDeviceID(ctx context.Context, deviceID int) (*Sync, error)
+	SyncData(ctx context.Context, sync *SyncData) (*SyncData, error)
 }
 
 type Sync struct {
-	ID         int        `json:"id,omitempty"`
-	LastSynced *time.Time `json:"last_synced,omitempty"`
-	Status     SyncStatus `json:"status,omitempty"`
-	Device     *Device    `json:"device,omitempty"`
-	UserApiKey *APIKey    `json:"user_api_key,omitempty"`
-	CreatedAt  *time.Time `json:"created_at,omitempty"`
-	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+	ID              int        `json:"id,omitempty"`
+	LastSynced      *time.Time `json:"last_synced,omitempty"`
+	Status          SyncStatus `json:"status,omitempty"`
+	Device          *Device    `json:"device,omitempty"`
+	UserApiKey      *APIKey    `json:"user_api_key,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
+	LastSyncedEpoch int64      `json:"last_synced_epoch,omitempty"`
 }
 
 type SyncStatus string
@@ -32,3 +34,10 @@ const (
 	SyncStatusSuccess SyncStatus = "success"
 	SyncStatusError   SyncStatus = "error"
 )
+
+type SyncData struct {
+	Sync           *Sync      `json:"sync,omitempty"`
+	Data           *MangaData `json:"data,omitempty"`
+	Device         *Device    `json:"device,omitempty"`
+	UpdateRequired bool       `json:"update_required"`
+}
