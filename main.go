@@ -10,6 +10,7 @@ import (
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/events"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/http"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
+	"github.com/kaiserbh/tachiyomi-sync-server/internal/mdata"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/notification"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/scheduler"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/server"
@@ -74,6 +75,7 @@ func main() {
 		userRepo         = database.NewUserRepo(log, db)
 		deviceRepo       = database.NewDeviceRepo(log, db)
 		syncRepo         = database.NewSyncRepo(log, db)
+		mangaDataRepo    = database.NewMangaDataRepo(log, db)
 	)
 
 	// setup services
@@ -85,7 +87,8 @@ func main() {
 		userService         = user.NewService(userRepo)
 		authService         = auth.NewService(log, userService)
 		deviceService       = device.NewService(log, deviceRepo)
-		syncService         = sync.NewService(log, syncRepo)
+		mangaDataService    = mdata.NewService(log, mangaDataRepo)
+		syncService         = sync.NewService(log, syncRepo, mangaDataService, deviceService)
 	)
 
 	// register event subscribers
@@ -108,6 +111,7 @@ func main() {
 			updateService,
 			deviceService,
 			syncService,
+			mangaDataService,
 		)
 		errorChannel <- httpServer.Open()
 	}()
