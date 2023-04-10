@@ -24,7 +24,7 @@ type DeviceRepo struct {
 	db  *DB
 }
 
-func (r DeviceRepo) Store(ctx context.Context, device *domain.Device) error {
+func (r DeviceRepo) Store(ctx context.Context, device *domain.Device) (*domain.Device, error) {
 	queryBuilder := r.db.squirrel.
 		Insert("devices").
 		Columns(
@@ -35,17 +35,19 @@ func (r DeviceRepo) Store(ctx context.Context, device *domain.Device) error {
 			device.UserApiKey.Key,
 			device.Name,
 		).
-		Suffix("RETURNING created_at").RunWith(r.db.handler)
+		Suffix("RETURNING id, created_at").RunWith(r.db.handler)
 
+	var id int
 	var createdAt time.Time
 
-	if err := queryBuilder.QueryRowContext(ctx).Scan(&createdAt); err != nil {
-		return errors.Wrap(err, "error executing query")
+	if err := queryBuilder.QueryRowContext(ctx).Scan(&id, &createdAt); err != nil {
+		return nil, errors.Wrap(err, "error executing query")
 	}
 
-	device.CreatedAt = createdAt
+	device.ID = id
+	device.CreatedAt = &createdAt
 
-	return nil
+	return device, nil
 }
 
 func (r DeviceRepo) Delete(ctx context.Context, id int) error {
@@ -131,4 +133,72 @@ func (r DeviceRepo) ListDevices(ctx context.Context, apikey string) ([]domain.De
 	}
 
 	return devices, nil
+}
+
+func (r DeviceRepo) GetDeviceByDeviceId(ctx context.Context, device *domain.Device) (*domain.Device, error) {
+	queryBuilder := r.db.squirrel.
+		Select(
+			"devices.id",
+			"devices.user_api_key",
+			"devices.name",
+			"devices.created_at",
+			"devices.updated_at",
+		).
+		From("devices").
+		Where(sq.Eq{"devices.id": device.ID})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return nil, errors.Wrap(err, "error building query")
+	}
+
+	var name sql.NullString
+
+	if err := r.db.handler.QueryRowContext(ctx, query, args...).Scan(
+		&device.ID,
+		&device.UserApiKey.Key,
+		&name,
+		&device.CreatedAt,
+		&device.UpdatedAt,
+	); err != nil {
+		return nil, errors.Wrap(err, "error executing query")
+	}
+
+	device.Name = name.String
+
+	return device, nil
+}
+
+func (r DeviceRepo) GetDeviceByApiKey(ctx context.Context, device *domain.Device) (*domain.Device, error) {
+	queryBuilder := r.db.squirrel.
+		Select(
+			"devices.id",
+			"devices.user_api_key",
+			"devices.name",
+			"devices.created_at",
+			"devices.updated_at",
+		).
+		From("devices").
+		Where(sq.Eq{"devices.user_api_key": device.UserApiKey.Key})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return nil, errors.Wrap(err, "error building query")
+	}
+
+	var name sql.NullString
+
+	if err := r.db.handler.QueryRowContext(ctx, query, args...).Scan(
+		&device.ID,
+		&device.UserApiKey.Key,
+		&name,
+		&device.CreatedAt,
+		&device.UpdatedAt,
+	); err != nil {
+		return nil, errors.Wrap(err, "error executing query")
+	}
+
+	device.Name = name.String
+
+	return device, nil
 }
