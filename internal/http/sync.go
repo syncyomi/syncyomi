@@ -16,6 +16,7 @@ type syncService interface {
 	ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, error)
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
 	GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.Sync, error)
+	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
 }
 
 type syncHandler struct {
@@ -36,6 +37,7 @@ func (h syncHandler) Routes(r chi.Router) {
 	r.Get("/", h.listSyncs)
 	r.Get("/device/{id}", h.getSyncByDeviceID)
 	r.Get("/{apiKey}", h.getSyncByApiKey)
+	r.Post("/data", h.sync)
 }
 
 func (h syncHandler) store(w http.ResponseWriter, r *http.Request) {
@@ -127,4 +129,44 @@ func (h syncHandler) getSyncByApiKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.encoder.StatusResponse(ctx, w, sync, http.StatusOK)
+}
+
+func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx    = r.Context()
+		sync   = domain.SyncData{}
+		apiKey = r.Header.Get("X-API-Token")
+	)
+
+	// check if api key is set
+	if apiKey == "" {
+		h.encoder.StatusResponse(ctx, w, "No API key set", http.StatusBadRequest)
+		return
+	}
+
+	sync.Sync = &domain.Sync{
+		UserApiKey: &domain.APIKey{Key: apiKey},
+		Device:     &domain.Device{UserApiKey: &domain.APIKey{Key: apiKey}},
+	}
+	sync.Data = &domain.MangaData{UserApiKey: &domain.APIKey{Key: apiKey}}
+	sync.Device = &domain.Device{UserApiKey: &domain.APIKey{Key: apiKey}}
+
+	if err := json.NewDecoder(r.Body).Decode(&sync); err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// store, check and try to sync data
+	syncResult, err := h.syncService.SyncData(ctx, &sync)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !syncResult.UpdateRequired {
+		h.encoder.StatusResponse(ctx, w, syncResult, http.StatusOK)
+		return
+	}
+
+	h.encoder.StatusResponse(ctx, w, syncResult, http.StatusOK)
 }
