@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
 	"net/http"
@@ -11,9 +10,11 @@ import (
 )
 
 type deviceService interface {
-	Store(ctx context.Context, device *domain.Device) error
+	Store(ctx context.Context, device *domain.Device) (*domain.Device, error)
 	Delete(ctx context.Context, id int) error
 	ListDevices(ctx context.Context, apikey string) ([]domain.Device, error)
+	GetDeviceByDeviceId(ctx context.Context, device *domain.Device) (*domain.Device, error)
+	GetDeviceByApiKey(ctx context.Context, device *domain.Device) (*domain.Device, error)
 }
 
 type deviceHandler struct {
@@ -53,13 +54,13 @@ func (h deviceHandler) store(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check/try to store device in database
-	err := h.service.Store(ctx, &data)
+	d, err := h.service.Store(ctx, &data)
 	if err != nil {
 		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	h.encoder.StatusResponse(ctx, w, fmt.Sprintf("Device %v, registered at: %v "), http.StatusCreated)
+	h.encoder.StatusResponse(ctx, w, d, http.StatusCreated)
 }
 
 func (h deviceHandler) delete(w http.ResponseWriter, r *http.Request) {
