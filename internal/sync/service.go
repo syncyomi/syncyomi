@@ -7,7 +7,6 @@ import (
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
 	"github.com/kaiserbh/tachiyomi-sync-server/internal/mdata"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"time"
 )
 
@@ -161,8 +160,6 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	epochTime := time.Unix(0, sync.Sync.LastSyncedEpoch*int64(time.Millisecond)).UTC()
 	utcLastSynced := sData.LastSynced.UTC()
 	utcEpochTime := epochTime.UTC()
-	log.Info().Msgf("last synced: %v", utcLastSynced)
-	log.Info().Msgf("epoch time: %v", utcEpochTime)
 	if utcEpochTime.After(utcLastSynced) {
 		// If the user's last sync is newer than the current sync data, update the server's data
 		s.log.Info().Msgf("user's last local changes is newer: %v than ours: %v, therefore our data is old and should be updated for next time", utcEpochTime, utcLastSynced)
