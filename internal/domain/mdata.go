@@ -14,57 +14,64 @@ type MangaDataRepo interface {
 }
 
 type MangaData struct {
-	ID         int         `json:"id,omitempty"`
-	Manga      []Manga     `json:"manga,omitempty"`
-	Extensions []Extension `json:"extensions,omitempty"`
-	Categories []Category  `json:"categories,omitempty"`
+	ID         int         `json:"id"`
+	Manga      []Manga     `json:"manga"`
+	Extensions []Extension `json:"extensions"`
+	Categories []Category  `json:"categories"`
 	UserApiKey *APIKey     `json:"user_api_key,omitempty"`
 	CreatedAt  time.Time   `json:"created_at"`
 	UpdatedAt  time.Time   `json:"updated_at"`
 }
 
 type Manga struct {
-	Source       int64     `json:"source,omitempty"`
-	URL          string    `json:"url,omitempty"`
-	Title        string    `json:"title,omitempty"`
-	Artist       string    `json:"artist,omitempty"`
-	Author       string    `json:"author,omitempty"`
-	Description  string    `json:"description,omitempty"`
-	Genre        []string  `json:"genre,omitempty"`
-	Status       int       `json:"status,omitempty"`
-	ThumbnailURL string    `json:"thumbnailUrl,omitempty"`
-	DateAdded    int64     `json:"dateAdded,omitempty"`
-	Viewer       int       `json:"viewer,omitempty"`
-	Chapters     []Chapter `json:"chapters,omitempty"`
-	Categories   []int     `json:"categories,omitempty"`
-	ViewerFlags  int       `json:"viewer_flags,omitempty"`
-	History      []History `json:"history,omitempty"`
+	Source       int64     `json:"source"`
+	URL          string    `json:"url"`
+	Favourite    bool      `json:"favourite"`
+	Title        string    `json:"title"`
+	Artist       string    `json:"artist"`
+	Author       string    `json:"author"`
+	Description  string    `json:"description"`
+	Genre        []string  `json:"genre"`
+	Status       int       `json:"status"`
+	ThumbnailURL string    `json:"thumbnailUrl"`
+	DateAdded    int64     `json:"dateAdded"`
+	Viewer       int       `json:"viewer"`
+	Chapters     []Chapter `json:"chapters"`
+	Categories   []int     `json:"categories"`
+	ViewerFlags  int       `json:"viewer_flags"`
+	History      []History `json:"history"`
 }
 
 type Chapter struct {
-	URL           string `json:"url,omitempty"`
-	Name          string `json:"name,omitempty"`
-	Scanlator     string `json:"scanlator,omitempty"`
-	Read          bool   `json:"read,omitempty"`
-	DateFetch     int64  `json:"dateFetch,omitempty"`
-	DateUpload    int64  `json:"dateUpload,omitempty"`
-	ChapterNumber int    `json:"chapterNumber,omitempty"`
-	SourceOrder   int    `json:"sourceOrder,omitempty"`
+	Id            int64  `json:"id"`
+	MangaId       int64  `json:"mangaId"`
+	URL           string `json:"url"`
+	Name          string `json:"name"`
+	Scanlator     string `json:"scanlator"`
+	Read          bool   `json:"read"`
+	Bookmark      bool   `json:"bookmark"`
+	LastPageRead  int64  `json:"lastPageRead"`
+	DateFetch     int64  `json:"dateFetch"`
+	DateUpload    int64  `json:"dateUpload"`
+	ChapterNumber int    `json:"chapterNumber"`
+	SourceOrder   int    `json:"sourceOrder"`
+	MangaUrl      string `json:"mangaUrl"`
+	MangaSource   int64  `json:"mangaSource"`
 }
 
 type History struct {
-	URL          string `json:"url,omitempty"`
-	LastRead     int64  `json:"lastRead,omitempty"`
-	ReadDuration int    `json:"readDuration,omitempty"`
+	URL          string `json:"url"`
+	LastRead     int64  `json:"lastRead"`
+	ReadDuration int    `json:"readDuration"`
 }
 
 type Extension struct {
-	Name     string `json:"name,omitempty"`
-	SourceID int64  `json:"sourceId,omitempty"`
+	Name     string `json:"name"`
+	SourceID int64  `json:"sourceId"`
 }
 
 type Category struct {
-	Name  string `json:"name,omitempty"`
-	Flags int    `json:"flags,omitempty"`
-	Order int    `json:"order,omitempty"`
+	Name  string `json:"name"`
+	Flags int    `json:"flags"`
+	Order int    `json:"order"`
 }
