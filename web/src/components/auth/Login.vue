@@ -77,6 +77,7 @@ import { useRouter } from "vue-router";
 import { ref } from "vue";
 import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
+import { useAuthStore } from "@/store/auth/authStore";
 
 interface LoginFormFields {
   username: string;
@@ -91,6 +92,7 @@ const snackbar = ref<boolean>(false);
 const message = ref<string>(
   "Login failed. Please check your username and password."
 );
+const store = useAuthStore();
 
 const rules = {
   required: (value: string) => !!value || "Required.",
@@ -100,10 +102,11 @@ const mutation = useMutation({
   mutationFn: async (values: LoginFormFields) => {
     await APIClient.auth.login(values.username, values.password);
   },
-  onSuccess: () => {
+  onSuccess: (_, variables: LoginFormFields) => {
+    store.login(variables.username);
     router.push("/");
   },
-  onError: (error: any) => {
+  onError: () => {
     snackbar.value = true;
   },
 });
