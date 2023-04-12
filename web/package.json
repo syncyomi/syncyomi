@@ -12,6 +12,7 @@
     "@tanstack/vue-query": "^4.27.0",
     "date-fns": "^2.29.3",
     "pinia": "^2.0.33",
+    "portal-vue": "3.0.0-beta.0",
     "roboto-fontface": "^0.10.0",
     "vue": "^3.2.47",
     "vue-router": "^4.1.6",
