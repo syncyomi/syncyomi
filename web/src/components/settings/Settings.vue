@@ -31,31 +31,41 @@
           </v-tab>
         </v-tabs>
 
-        <v-window v-model="tab">
-          <v-window-item value="option-1">
-            <v-container fluid>
-              <h1>Application</h1>
-            </v-container>
-          </v-window-item>
+        <v-container>
+          <v-window v-model="tab">
+            <v-window-item value="option-1">
+              <v-row>
+                <v-col>
+                  <v-text-field label="test"></v-text-field>
+                </v-col>
+              </v-row>
+            </v-window-item>
 
-          <v-window-item value="option-2">
-            <v-container>
-              <h1>Logs</h1>
-            </v-container>
-          </v-window-item>
+            <v-window-item value="option-2">
+              <v-container>
+                <v-row>
+                  <v-text-field label="test"></v-text-field>
+                </v-row>
+              </v-container>
+            </v-window-item>
 
-          <v-window-item value="option-3">
-            <v-container>
-              <h1>Notifications</h1>
-            </v-container>
-          </v-window-item>
+            <v-window-item value="option-3">
+              <v-container>
+                <v-row>
+                  <v-text-field label="test"></v-text-field>
+                </v-row>
+              </v-container>
+            </v-window-item>
 
-          <v-window-item value="option-4">
-            <v-container>
-              <h1>Api Keys</h1>
-            </v-container>
-          </v-window-item>
-        </v-window>
+            <v-window-item value="option-4">
+              <v-container>
+                <v-row>
+                  <v-text-field label="test"></v-text-field>
+                </v-row>
+              </v-container>
+            </v-window-item>
+          </v-window>
+        </v-container>
       </div>
     </v-card>
   </v-container>
