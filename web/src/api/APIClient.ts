@@ -1,5 +1,7 @@
-import { baseUrl, sseBaseUrl } from "@/utils";
-import { GithubRelease } from "@/types/Update";
+import {baseUrl, sseBaseUrl} from "@/utils";
+import {GithubRelease} from "@/types/Update";
+import {useAuthStore} from "@/store/auth/authStore";
+import router from "@/router";
 
 interface ConfigType {
   body?: BodyInit | Record<string, unknown> | unknown;
@@ -29,8 +31,13 @@ export async function HttpClient<T>(
       if (!response.ok) {
         // if 401 consider the session expired and force logout
         if (response.status === 401) {
-          // Remove auth info from localStorage
-          //TODO: Implement logout remove state from pinia store
+          // Remove auth info from state
+          const authStore = useAuthStore();
+          authStore.logout();
+          // push to log in only if not already there
+          if (router.currentRoute.value.path !== "/login") {
+            await router.push({ name: "Login" });
+          }
 
           // Show an error toast to notify the user what occurred
           return Promise.reject(new Error("Unauthorized"));
