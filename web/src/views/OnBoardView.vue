@@ -1,9 +1,7 @@
 <template>
-  <v-main>
-    <OnBoard />
-  </v-main>
+  <OnBoard />
 </template>
 
 <script lang="ts" setup>
-import OnBoard from "@/components/OnBoard.vue";
+import OnBoard from "@/components/auth/OnBoard.vue";
 </script>

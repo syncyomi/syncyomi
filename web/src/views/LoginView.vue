@@ -1,11 +1,7 @@
 <template>
-  <v-main>
-    <v-container>
-      <Login />
-    </v-container>
-  </v-main>
+  <Login />
 </template>
 
 <script lang="ts" setup>
-import Login from "@/components/Login.vue";
+import Login from "@/components/auth/Login.vue";
 </script>
