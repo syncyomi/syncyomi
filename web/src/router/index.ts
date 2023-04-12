@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { baseUrl } from "@/utils";
 import { useAuthStore } from "@/store/auth/authStore";
+import { APIClient } from "@/api/APIClient";
 
 const routes = [
   {
     path: "/",
+    name: "Dashboard",
     components: {
       default: () => import("@/views/DashboardView.vue"),
       navbar: () => import("@/layouts/default/Navbar.vue"),
@@ -42,6 +44,11 @@ const routes = [
     },
     meta: { requiresAuth: true },
   },
+
+  {
+    path: "/:catchAll(.*)",
+    redirect: "/",
+  },
 ];
 
 const router = createRouter({
@@ -54,6 +61,13 @@ router.beforeEach((to, from, next) => {
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
 
   if (requiresAuth && !authStore.isAuthenticated) {
+    // If the route requires authentication and the user is not logged in, check if the user can onboard and redirect to the onboard page if they can.
+    APIClient.auth.canOnboard().then((canOnboard) => {
+      if (canOnboard) {
+        next({ name: "Onboard" });
+      }
+    });
+
     // If the route requires authentication and the user is not logged in, redirect to the login page
     next({ name: "Login" });
   } else if (to.name === "Login" && authStore.isAuthenticated) {

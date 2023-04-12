@@ -70,6 +70,7 @@
         <v-snackbar
           v-model="snackbar"
           color="red"
+          multi-line
           timeout="5000"
           variant="outlined"
         >
@@ -90,6 +91,7 @@ import { ref } from "vue";
 import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useRouter } from "vue-router";
+import { useAuthStore } from "@/store/auth/authStore";
 
 interface InputValues {
   username: string;
@@ -104,8 +106,9 @@ const password = ref<string>("");
 const passwordConfirm = ref<string>("");
 const snackbar = ref<boolean>(false);
 const message = ref<string>(
-  "Failed to create account! currently only one account is allowed."
+  "Failed to create account! currently only one account is allowed, make sure browser cookies are cleared."
 );
+const authStore = useAuthStore();
 
 const rules = {
   required: (value: string) => !!value || "Required.",
@@ -117,10 +120,11 @@ const mutation = useMutation({
   mutationFn: async (values: InputValues) => {
     await APIClient.auth.onboard(values.username, values.password1);
   },
-  onSuccess: () => {
+  onSuccess: (_, variables: InputValues) => {
+    authStore.login(variables.username);
     router.push("/");
   },
-  onError: (error: any) => {
+  onError: () => {
     snackbar.value = true;
   },
 });
