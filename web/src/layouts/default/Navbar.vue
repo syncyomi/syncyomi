@@ -48,6 +48,10 @@
     </template>
 
     <v-spacer></v-spacer>
+
+    <template v-if="showToolbarItems" v-slot:append>
+      <v-btn icon="mdi-power" @click="mutation.mutate()"></v-btn>
+    </template>
   </v-app-bar>
 
   <template v-if="!showToolbarItems">
@@ -66,17 +70,60 @@
         <v-icon>mdi-cog-outline</v-icon>
         Settings
       </v-btn>
+
+      <v-btn value="logout" @click="mutation.mutate()">
+        <v-icon>mdi-logout-variant</v-icon>
+        Logout
+      </v-btn>
     </v-bottom-navigation>
   </template>
+
+  <v-snackbar
+    v-model="snackbar"
+    :color="snackbarColor"
+    timeout="10000"
+    variant="tonal"
+  >
+    {{ snackbarMessage }}
+    <template v-slot:actions>
+      <v-btn color="orange" variant="text" @click="snackbar = false">
+        Close
+      </v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <script lang="ts" setup>
 import { useDisplay } from "vuetify";
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useMutation } from "@tanstack/vue-query";
+import { APIClient } from "@/api/APIClient";
+import { useAuthStore } from "@/store/auth/authStore";
 
 const { width } = useDisplay();
+const router = useRouter();
+const authStore = useAuthStore();
+const snackbar = ref<boolean>(false);
+const snackbarMessage = ref<string>("Logout successful!.");
+const snackbarColor = ref<string>("green");
 
 const showToolbarItems = computed(() => {
   return width.value > 700;
+});
+
+const mutation = useMutation({
+  mutationFn: async () => {
+    await APIClient.auth.logout();
+  },
+  onSuccess: () => {
+    authStore.logout();
+    router.push({ name: "Login" });
+  },
+  onError: () => {
+    snackbarColor.value = "red";
+    snackbarMessage.value = "Logout failed. Please try again.";
+    snackbar.value = true;
+  },
 });
 </script>
