@@ -1,6 +1,6 @@
-// Composables
 import { createRouter, createWebHistory } from "vue-router";
 import { baseUrl } from "@/utils";
+import { useAuthStore } from "@/store/auth/authStore";
 
 const routes = [
   {
@@ -9,6 +9,7 @@ const routes = [
       default: () => import("@/views/DashboardView.vue"),
       navbar: () => import("@/layouts/default/Navbar.vue"),
     },
+    meta: { requiresAuth: true },
   },
 
   {
@@ -30,6 +31,7 @@ const routes = [
       default: () => import("@/views/LogsView.vue"),
       navbar: () => import("@/layouts/default/Navbar.vue"),
     },
+    meta: { requiresAuth: true },
   },
   {
     path: "/settings",
@@ -38,6 +40,7 @@ const routes = [
       default: () => import("@/views/SettingsView.vue"),
       navbar: () => import("@/layouts/default/Navbar.vue"),
     },
+    meta: { requiresAuth: true },
   },
 ];
 
@@ -46,16 +49,20 @@ const router = createRouter({
   routes,
 });
 
-// router.beforeEach((to, from, next) => {
-//   if (
-//     to.name !== "Login" &&
-//     to.name !== "Onboard" &&
-//     !localStorage.getItem("token")
-//   ) {
-//     next({ name: "Login" });
-//   } else {
-//     next();
-//   }
-// });
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore();
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+
+  if (requiresAuth && !authStore.isAuthenticated) {
+    // If the route requires authentication and the user is not logged in, redirect to the login page
+    next({ name: "Login" });
+  } else if (to.name === "Login" && authStore.isAuthenticated) {
+    // If the user is already logged in and tries to access the login page, redirect to the dashboard
+    next({ path: "/" });
+  } else {
+    // If none of the above conditions apply, proceed to the requested route
+    next();
+  }
+});
 
 export default router;
