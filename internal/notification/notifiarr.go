@@ -57,7 +57,7 @@ func (s *notifiarrSender) Send(event domain.NotificationEvent, payload domain.No
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "tachisyncserver")
+	req.Header.Set("User-Agent", "SyncYomi")
 	req.Header.Set("X-API-Key", s.Settings.APIKey)
 
 	t := &http.Transport{

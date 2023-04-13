@@ -162,7 +162,7 @@ func (c *Checker) checkNewVersion(version string, release *Release) (bool, strin
 }
 
 func (c *Checker) buildUserAgent() string {
-	return fmt.Sprintf("tachisyncserver/%s (%s %s)", c.CurrentVersion, runtime.GOOS, runtime.GOARCH)
+	return fmt.Sprintf("SyncYomi/%s (%s %s)", c.CurrentVersion, runtime.GOOS, runtime.GOARCH)
 }
 
 func isDevelop(version string) bool {

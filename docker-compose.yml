@@ -1,12 +1,12 @@
 version: '3.9'
 services:
   postgres:
-    container_name: tachisync-postgres
+    container_name: SyncYomi-postgres
     image: postgres:15.1-alpine
     restart: always
     environment:
-      - POSTGRES_USER=tachisync
-      - POSTGRES_PASSWORD=tachisync
+      - POSTGRES_USER=SyncYomi
+      - POSTGRES_PASSWORD=SyncYomi
     ports:
       - '5434:5432'
     volumes:
