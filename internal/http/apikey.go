@@ -3,9 +3,9 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
 	"net/http"
 )
 

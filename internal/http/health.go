@@ -1,8 +1,8 @@
 package http
 
 import (
+	"github.com/SyncYomi/SyncYomi/internal/database"
 	"github.com/go-chi/chi/v5"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/database"
 	"net/http"
 )
 

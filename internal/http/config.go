@@ -2,11 +2,12 @@ package http
 
 import (
 	"encoding/json"
+	"github.com/SyncYomi/SyncYomi/internal/config"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/config"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
 	"net/http"
+	"time"
 )
 
 type configJson struct {
@@ -44,6 +45,7 @@ func (h configHandler) Routes(r chi.Router) {
 }
 
 func (h configHandler) getConfig(w http.ResponseWriter, r *http.Request) {
+	time.Sleep(10 * time.Second)
 	conf := configJson{
 		Host:            h.cfg.Config.Host,
 		Port:            h.cfg.Config.Port,

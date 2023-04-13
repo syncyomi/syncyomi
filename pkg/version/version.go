@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/errors"
+	"github.com/SyncYomi/SyncYomi/pkg/errors"
 	"io"
 	"net/http"
 	"runtime"

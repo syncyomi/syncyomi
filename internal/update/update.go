@@ -2,9 +2,9 @@ package update
 
 import (
 	"context"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/version"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/pkg/version"
 	"github.com/rs/zerolog"
 	"sync"
 )

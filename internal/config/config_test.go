@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"sync"
 	"testing"
 

@@ -3,7 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/errors"
+	"github.com/SyncYomi/SyncYomi/pkg/errors"
 	_ "modernc.org/sqlite"
 )
 

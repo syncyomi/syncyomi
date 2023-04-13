@@ -2,10 +2,10 @@ package auth
 
 import (
 	"context"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/user"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/argon2id"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/user"
+	"github.com/SyncYomi/SyncYomi/pkg/argon2id"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )

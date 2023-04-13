@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
 
 	"github.com/r3labs/sse/v2"
 	"github.com/rs/zerolog"

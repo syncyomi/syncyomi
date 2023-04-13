@@ -2,8 +2,8 @@ package user
 
 import (
 	"context"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/errors"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/pkg/errors"
 )
 
 type Service interface {

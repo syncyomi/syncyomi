@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/rs/zerolog"
 )
 

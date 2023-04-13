@@ -2,9 +2,9 @@ package scheduler
 
 import (
 	"context"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/notification"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/update"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/notification"
+	"github.com/SyncYomi/SyncYomi/internal/update"
 	"github.com/rs/zerolog"
 	"time"
 )

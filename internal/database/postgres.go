@@ -2,7 +2,7 @@ package database
 
 import (
 	"database/sql"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/errors"
+	"github.com/SyncYomi/SyncYomi/pkg/errors"
 	_ "github.com/lib/pq"
 )
 

@@ -2,13 +2,13 @@ package http
 
 import (
 	"fmt"
+	"github.com/SyncYomi/SyncYomi/internal/config"
+	"github.com/SyncYomi/SyncYomi/internal/database"
+	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/web"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/sessions"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/config"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/database"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
-	"github.com/kaiserbh/tachiyomi-sync-server/web"
 	"github.com/r3labs/sse/v2"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog"

@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/scheduler"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/update"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/scheduler"
+	"github.com/SyncYomi/SyncYomi/internal/update"
 	"github.com/rs/zerolog"
 	"sync"
 	"time"

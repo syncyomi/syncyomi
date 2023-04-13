@@ -2,9 +2,9 @@ package http
 
 import (
 	"context"
+	"github.com/SyncYomi/SyncYomi/pkg/version"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
-	"github.com/kaiserbh/tachiyomi-sync-server/pkg/version"
 	"net/http"
 )
 

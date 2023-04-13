@@ -1,10 +1,10 @@
 package events
 
 import (
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/notification"
 	"github.com/asaskevich/EventBus"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/domain"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/logger"
-	"github.com/kaiserbh/tachiyomi-sync-server/internal/notification"
 	"github.com/rs/zerolog"
 )
 
