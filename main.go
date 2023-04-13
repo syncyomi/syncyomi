@@ -61,7 +61,7 @@ func main() {
 		log.Fatal().Err(err).Msg("could not open db connection")
 	}
 
-	log.Info().Msgf("Starting Tachiyomi Sync Server")
+	log.Info().Msgf("Starting SyncYomi")
 	log.Info().Msgf("Version: %s", version)
 	log.Info().Msgf("Commit: %s", commit)
 	log.Info().Msgf("Build date: %s", date)
