@@ -66,13 +66,13 @@ port = 8282
 # Postgres User
 # Set postgres user to use.
 #
-#PostgresUser = "tachisync"
+#PostgresUser = "SyncYomi"
 
 # Postgres Pass
 # Set postgres password to use.
 #
 #
-#PostgresPass = "tachisync"
+#PostgresPass = "SyncYomi"
 
 # Base url
 # Set custom baseUrl eg /tachiyomi/ to serve in subdirectory.
@@ -80,14 +80,14 @@ port = 8282
 #
 # Optional
 #
-#baseUrl = "/tachisync/"
+#baseUrl = "/SyncYomi/"
 
 # tachiyomi-sync-server logs file
 # If not defined, logs to stdout make sure it's forward slash otherwise it won't work
 #
 # Optional
 #
-#logPath = "log/tachiyomi-sync-server.log"
+#logPath = "log/SyncYomi.log"
 
 # Log level
 #
@@ -242,8 +242,8 @@ func (c *AppConfig) defaults() {
 		PostgresHost:     "localhost",
 		PostgresPort:     5434,
 		PostgresDatabase: "postgres",
-		PostgresUser:     "tachisync",
-		PostgresPass:     "tachisync",
+		PostgresUser:     "SyncYomi",
+		PostgresPass:     "SyncYomi",
 	}
 }
 
