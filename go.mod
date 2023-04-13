@@ -1,4 +1,4 @@
-module github.com/kaiserbh/tachiyomi-sync-server
+module github.com/SyncYomi/SyncYomi
 
 go 1.20
 
