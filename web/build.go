@@ -27,11 +27,8 @@ type IndexParams struct {
 var (
 	//go:embed all:dist
 	Dist embed.FS
-	//go:embed dist/index.html
-	IndexHTML embed.FS
 
-	DistDirFS     = MustSubFS(Dist, "dist")
-	DistIndexHtml = MustSubFS(IndexHTML, "dist")
+	DistDirFS = MustSubFS(Dist, "dist")
 )
 
 func (fs defaultFS) Open(name string) (fs.File, error) {
@@ -122,7 +119,7 @@ func RegisterHandler(c *chi.Mux) {
 
 	c.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		// Serve index.html for unmatched routes
-		fsFile(w, r, "index.html", DistIndexHtml)
+		fsFile(w, r, "dist/index.html", Dist)
 	})
 }
 
