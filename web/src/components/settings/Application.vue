@@ -6,9 +6,9 @@
       effect.
     </v-card-subtitle>
 
-    <template v-slot:loader="{ isActive }">
+    <template v-slot:loader>
       <v-progress-linear
-        :active="isActive"
+        :active="isLoading"
         color="primary"
         height="4"
         indeterminate
@@ -194,10 +194,10 @@
 </template>
 
 <script lang="ts" setup>
-import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
-import { APIClient } from "@/api/APIClient";
-import { computed, Ref, ref, watch } from "vue";
-import { useTheme } from "vuetify";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/vue-query";
+import {APIClient} from "@/api/APIClient";
+import {computed, Ref, ref, watch} from "vue";
+import {useTheme} from "vuetify";
 
 const toggleTheme: Ref<boolean> = ref(true);
 const snackbarVisible: Ref<boolean> = ref(false);
