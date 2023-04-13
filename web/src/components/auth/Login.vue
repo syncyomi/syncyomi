@@ -76,7 +76,7 @@
 
 <script lang="ts" setup>
 import { useRouter } from "vue-router";
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useAuthStore } from "@/store/auth/authStore";
@@ -120,6 +120,17 @@ const submit = () => {
     password: password.value,
   });
 };
+
+onMounted(async () => {
+  try {
+    const canOnboard = await APIClient.auth.canOnboard();
+    if (canOnboard) {
+      await router.push({ name: "Onboard" });
+    }
+  } catch (error) {
+    console.error("Error checking onboarding availability:", error);
+  }
+});
 </script>
 
 <style scoped></style>
