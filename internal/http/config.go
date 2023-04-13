@@ -7,7 +7,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 	"net/http"
-	"time"
 )
 
 type configJson struct {
@@ -45,7 +44,6 @@ func (h configHandler) Routes(r chi.Router) {
 }
 
 func (h configHandler) getConfig(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(10 * time.Second)
 	conf := configJson{
 		Host:            h.cfg.Config.Host,
 		Port:            h.cfg.Config.Port,
