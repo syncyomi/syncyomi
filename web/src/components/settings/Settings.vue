@@ -4,41 +4,38 @@
       <v-toolbar color="primary">
         <v-toolbar-title>{{ toolbarTitle }}</v-toolbar-title>
       </v-toolbar>
-      <div :class="horizontalTabs ? 'd-flex flex-row' : ''">
+      <div :class="isDesktop ? 'd-flex flex-row' : ''">
         <v-tabs
           v-model="tab"
-          :direction="horizontalTabs ? 'vertical' : 'horizontal'"
+          :direction="isDesktop ? 'vertical' : 'horizontal'"
+          :grow="!isDesktop"
           color="primary"
         >
           <v-tab value="option-1">
             <v-icon start> mdi-application</v-icon>
-            Application
+            <span v-if="isDesktop"> Application </span>
           </v-tab>
 
           <v-tab value="option-2">
             <v-icon start> mdi-file-document-outline</v-icon>
-            Logs
+            <span v-if="isDesktop"> Logs </span>
           </v-tab>
 
           <v-tab value="option-3">
             <v-icon start> mdi-bell-outline</v-icon>
-            Notifications
+            <span v-if="isDesktop"> Notifications </span>
           </v-tab>
 
           <v-tab value="option-4">
             <v-icon start> mdi-key</v-icon>
-            Api Keys
+            <span v-if="isDesktop">Api Keys </span>
           </v-tab>
         </v-tabs>
 
         <v-container>
           <v-window v-model="tab">
             <v-window-item value="option-1">
-              <v-row>
-                <v-col>
-                  <v-text-field label="test"></v-text-field>
-                </v-col>
-              </v-row>
+              <Application />
             </v-window-item>
 
             <v-window-item value="option-2">
@@ -72,6 +69,7 @@
 </template>
 
 <script lang="ts" setup>
+import Application from "@/components/settings/Application.vue";
 import { computed, ref, watchEffect } from "vue";
 import { useDisplay } from "vuetify";
 
@@ -79,7 +77,7 @@ const tab = ref("option-1");
 const toolbarTitle = ref("User Profile");
 const { width } = useDisplay();
 
-const horizontalTabs = computed(() => {
+const isDesktop = computed(() => {
   return width.value > 700;
 });
 
