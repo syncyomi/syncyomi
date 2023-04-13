@@ -22,7 +22,7 @@ func NewUpdate(log logger.Logger, config *domain.Config) *Service {
 	return &Service{
 		log:            log.With().Str("module", "update").Logger(),
 		config:         config,
-		releaseChecker: version.NewChecker("tachisyncserver", "tachisyncserver", config.Version),
+		releaseChecker: version.NewChecker("SyncYomi", "SyncYomi", config.Version),
 	}
 }
 
@@ -51,7 +51,7 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 	}
 
 	if newAvailable {
-		s.log.Info().Msgf("tachisyncserver outdated, found newer release: %s", newVersion.TagName)
+		s.log.Info().Msgf("SyncYomi outdated, found newer release: %s", newVersion.TagName)
 
 		s.m.Lock()
 		defer s.m.Unlock()

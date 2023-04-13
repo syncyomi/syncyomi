@@ -1,7 +1,7 @@
 <template>
   <v-app-bar app fixed>
     <v-toolbar-title class="text-capitalize" @click="$router.push('/')">
-      TachiyomiSync
+      SyncYomi
     </v-toolbar-title>
 
     <template v-if="showToolbarItems">
@@ -94,12 +94,12 @@
 </template>
 
 <script lang="ts" setup>
-import { useDisplay } from "vuetify";
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
-import { useMutation } from "@tanstack/vue-query";
-import { APIClient } from "@/api/APIClient";
-import { useAuthStore } from "@/store/auth/authStore";
+import {useDisplay} from "vuetify";
+import {computed, ref} from "vue";
+import {useRouter} from "vue-router";
+import {useMutation} from "@tanstack/vue-query";
+import {APIClient} from "@/api/APIClient";
+import {useAuthStore} from "@/store/auth/authStore";
 
 const { width } = useDisplay();
 const router = useRouter();

@@ -2,7 +2,7 @@
   <v-container class="d-flex fill-height">
     <v-row class="align-center justify-center">
       <v-col md="8" sm="12">
-        <h1 class="text-center text-uppercase">TachiSync</h1>
+        <h1 class="text-center text-uppercase">SyncYomi</h1>
         <v-sheet
           class="pa-4 mx-auto mt-5"
           elevation="10"
@@ -89,11 +89,11 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from "vue";
-import { useMutation } from "@tanstack/vue-query";
-import { APIClient } from "@/api/APIClient";
-import { useRouter } from "vue-router";
-import { useAuthStore } from "@/store/auth/authStore";
+import {ref} from "vue";
+import {useMutation} from "@tanstack/vue-query";
+import {APIClient} from "@/api/APIClient";
+import {useRouter} from "vue-router";
+import {useAuthStore} from "@/store/auth/authStore";
 
 interface InputValues {
   username: string;

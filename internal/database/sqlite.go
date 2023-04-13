@@ -69,7 +69,7 @@ func (db *DB) migrateSQLite() error {
 	if version == len(sqliteMigrations) {
 		return nil
 	} else if version > len(sqliteMigrations) {
-		return errors.New("tachisyncserver (version %d) older than schema (version: %d)", len(sqliteMigrations), version)
+		return errors.New("SyncYomi (version %d) older than schema (version: %d)", len(sqliteMigrations), version)
 	}
 
 	db.log.Info().Msgf("Beginning database schema upgrade from version %v to version: %v", version, len(sqliteMigrations))

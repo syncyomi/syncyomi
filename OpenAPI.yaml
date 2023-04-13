@@ -1,11 +1,11 @@
 openapi: 3.0.0
 info:
-  title: Tachiyomi Sync Server API
-  description: Tachiyomi Sync Server API
+  title: SyncYomi Server API
+  description: SyncYomi Server API
   contact:
-    name: Tachiyomi Sync Server
+    name: Kaiser
     email: kaiserbh@proton.me
-    url: https://github.com/KaiserBh/tachiyomi-sync-server
+    url: https://github.com/SyncYomi/SyncYomi
   version: 1.0.0
 servers:
   - url: http://localhost:8282/api

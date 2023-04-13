@@ -75,7 +75,7 @@ port = 8282
 #PostgresPass = "SyncYomi"
 
 # Base url
-# Set custom baseUrl eg /tachiyomi/ to serve in subdirectory.
+# Set custom baseUrl eg /SyncYomi/ to serve in subdirectory.
 # Not needed for subdomain, or by accessing with the :port directly.
 #
 # Optional
