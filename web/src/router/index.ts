@@ -60,21 +60,25 @@ router.beforeEach((to, from, next) => {
   const authStore = useAuthStore();
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
 
-  if (requiresAuth && !authStore.isAuthenticated) {
-    // If the route requires authentication and the user is not logged in, check if the user can onboard and redirect to the onboard page if they can.
+  if (!authStore.isAuthenticated) {
+    // If the user is not authenticated, check if the user can onboard.
     APIClient.auth.canOnboard().then((canOnboard) => {
-      if (canOnboard) {
+      if (canOnboard && to.name !== "Onboard") {
+        // If the user can onboard and is not on the onboard page, redirect to the onboard page.
         next({ name: "Onboard" });
+      } else if (requiresAuth) {
+        // If the route requires authentication, redirect to the login page.
+        next({ name: "Login" });
+      } else {
+        // If none of the above conditions apply, proceed to the requested route.
+        next();
       }
     });
-
-    // If the route requires authentication and the user is not logged in, redirect to the login page
-    next({ name: "Login" });
-  } else if (to.name === "Login" && authStore.isAuthenticated) {
-    // If the user is already logged in and tries to access the login page, redirect to the dashboard
+  } else if (to.name === "Login" || to.name === "Onboard") {
+    // If the user is already authenticated and tries to access the login or onboard page, redirect to the dashboard.
     next({ path: "/" });
   } else {
-    // If none of the above conditions apply, proceed to the requested route
+    // If none of the above conditions apply, proceed to the requested route.
     next();
   }
 });
