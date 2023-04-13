@@ -19,6 +19,7 @@
                     :rules="[rules.required]"
                     dense
                     label="Username"
+                    prepend-inner-icon="mdi-account-outline"
                     rounded
                     variant="outlined"
                   ></v-text-field>
@@ -29,6 +30,7 @@
                     :rules="[rules.required, rules.min]"
                     dense
                     label="Password"
+                    prepend-inner-icon="mdi-lock-outline"
                     rounded
                     type="password"
                     variant="outlined"
@@ -41,7 +43,7 @@
                     :rules="[rules.required, rules.min, rules.match]"
                     dense
                     label="Confirm Password"
-                    outlined
+                    prepend-inner-icon="mdi-lock-outline"
                     rounded
                     type="password"
                     variant="outlined"

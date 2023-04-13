@@ -19,6 +19,7 @@
                     :rules="[rules.required]"
                     dense
                     label="Username"
+                    prepend-inner-icon="mdi-account"
                     rounded
                     variant="outlined"
                   ></v-text-field>
@@ -29,6 +30,7 @@
                     :rules="[rules.required]"
                     dense
                     label="Password"
+                    prepend-inner-icon="mdi-lock"
                     rounded
                     type="password"
                     variant="outlined"
