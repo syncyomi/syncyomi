@@ -16,9 +16,6 @@ RUN go mod download
 
 COPY . ./
 
-COPY --from=web-builder /web/dist ./web/dist
-COPY --from=web-builder /web/build.go ./web
-
 RUN go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${REVISION} -X main.date=${BUILDTIME}" -o bin/syncyomi main.go
 
 # build final image
