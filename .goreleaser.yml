@@ -1,0 +1,87 @@
+before:
+  hooks:
+    - go mod tidy
+
+build:
+  id: syncyomi
+  env:
+    - CGO_ENABLED=0
+  goos:
+    - linux
+    - windows
+    - darwin
+    - freebsd
+  goarch:
+    - amd64
+    - arm64
+    - arm
+  goarm:
+    - 6
+  ignore:
+    - goos: windows
+      goarch: arm
+    - goos: windows
+      goarch: arm64
+    - goos: darwin
+      goarch: arm
+    - goos: freebsd
+      goarch: arm
+    - goos: freebsd
+      goarch: arm64
+  main: main.go
+  binary: syncyomi
+
+archives:
+  - id: syncyomi
+    #    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - none*
+    replacements:
+      amd64: x86_64
+
+release:
+  prerelease: auto
+  footer: |
+    **Full Changelog**: https://github.com/SyncYomi/SyncYomi/compare/v{{ .PreviousTag }}...v{{ .Tag }}
+    
+    ## Docker images
+    - `ghcr.io/syncyomi/syncyomi:{{ .Tag }}`
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: 'Other Changes'
+      regexp: "^.*chore[(\\w)]*:+.*$"
+      order: 2
+    - title: 'Breaking Changes'
+      regexp: "^.*BREAKING CHANGE[(\\w)]*:+.*$"
+      order: 3
+    - title: 'Documentation'
+      regexp: "^.*docs[(\\w)]*:+.*$"
+      order: 4
+    - title: 'Tests'
+      regexp: "^.*test[(\\w)]*:+.*$"
+      order: 5
+    - title: 'Dependencies'
+      regexp: "^.*deps[(\\w)]*:+.*$"
+      order: 6
+    - title: 'Other work'
+      order: 999
