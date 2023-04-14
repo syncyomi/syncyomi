@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   web:
-    name: Build web
+    name: Builds web
     runs-on: ubuntu-latest
     strategy:
       matrix:
