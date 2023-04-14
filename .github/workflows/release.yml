@@ -196,5 +196,3 @@ on:
               REVISION=${{ github.event.pull_request.head.sha }}
         - name: Image digest
           run: echo ${{ steps.docker_build.outputs.digest }}
-
-
