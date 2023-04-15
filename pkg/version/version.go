@@ -79,8 +79,7 @@ func NewChecker(owner, repo, currentVersion string) *Checker {
 }
 
 func (c *Checker) get(ctx context.Context) (*Release, error) {
-	//TODO: add support for checking version:
-	url := fmt.Sprintf("https://api.tachisync.com/repos/%s/%s/releases/latest", c.Owner, c.Repo)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", c.Owner, c.Repo)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
