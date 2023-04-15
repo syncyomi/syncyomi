@@ -2,34 +2,35 @@ before:
   hooks:
     - go mod tidy
 
-build:
-  id: syncyomi
-  env:
-    - CGO_ENABLED=0
-  goos:
-    - linux
-    - windows
-    - darwin
-    - freebsd
-  goarch:
-    - amd64
-    - arm64
-    - arm
-  goarm:
-    - 6
-  ignore:
-    - goos: windows
-      goarch: arm
-    - goos: windows
-      goarch: arm64
-    - goos: darwin
-      goarch: arm
-    - goos: freebsd
-      goarch: arm
-    - goos: freebsd
-      goarch: arm64
-  main: main.go
-  binary: syncyomi
+builds:
+  -
+    id: syncyomi
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 6
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+      - goos: darwin
+        goarch: arm
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+    main: main.go
+    binary: syncyomi
 
 archives:
   - id: syncyomi
