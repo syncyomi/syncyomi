@@ -301,7 +301,7 @@ const testNotificationMutation = useMutation({
 
 // Disable test button if required fields are not filled
 const isTestButtonDisabled = computed(() => {
-  if (initialValuesRef.value.type === "") {
+  if (initialValuesRef.value.type === ("" as NotificationType)) {
     return true;
   }
   if (

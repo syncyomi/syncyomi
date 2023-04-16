@@ -118,7 +118,7 @@ const deleteNotification = useMutation({
   },
 });
 
-const showDeleteConfirmation = (id) => {
+const showDeleteConfirmation = (id: number) => {
   selectedNotificationId.value = id;
   deleteConfirmationModal.value.showModal();
 };

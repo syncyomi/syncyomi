@@ -85,12 +85,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
 import AddApiKey from "@/components/modals/AddApiKey.vue";
 
+interface ShowPassword {
+  [index: number]: boolean;
+}
+
 const snackbarVisible: Ref<boolean> = ref(false);
 const snackbarMessage: Ref<string> = ref("Config updated successfully!");
 const snackbarColor: Ref<string> = ref("success");
 const deleteConfirmationModal: Ref<any> = ref(null);
 const selectedApiKey: Ref<string> = ref("");
-const showPassword = reactive({});
+const showPassword: ShowPassword = reactive({});
 
 // Get QueryClient from context
 const queryClient = useQueryClient();
