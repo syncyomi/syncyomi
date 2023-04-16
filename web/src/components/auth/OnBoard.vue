@@ -89,11 +89,11 @@
 </template>
 
 <script lang="ts" setup>
-import {ref} from "vue";
-import {useMutation} from "@tanstack/vue-query";
-import {APIClient} from "@/api/APIClient";
-import {useRouter} from "vue-router";
-import {useAuthStore} from "@/store/auth/authStore";
+import { ref } from "vue";
+import { useMutation } from "@tanstack/vue-query";
+import { APIClient } from "@/api/APIClient";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "@/store/auth/authStore";
 
 interface InputValues {
   username: string;
@@ -124,6 +124,8 @@ const mutation = useMutation({
   },
   onSuccess: (_, variables: InputValues) => {
     authStore.login(variables.username);
+    // Login to get session token
+    APIClient.auth.login(variables.username, variables.password1);
     router.push("/");
   },
   onError: () => {
