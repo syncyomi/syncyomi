@@ -115,7 +115,7 @@
                   variant="tonal"
                 >
                   <span class="text-uppercase"
-                    >{{ simplifyDate(data?.date) || "dev" }}
+                    >{{ simplifyDate(data?.date || "") || "dev" }}
                   </span>
                 </v-chip>
               </v-col>
