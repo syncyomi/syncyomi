@@ -1,7 +1,8 @@
-import {baseUrl, sseBaseUrl} from "@/utils";
-import {GithubRelease} from "@/types/Update";
-import {useAuthStore} from "@/store/auth/authStore";
+import { baseUrl, sseBaseUrl } from "@/utils";
+import { GithubRelease } from "@/types/Update";
+import { useAuthStore } from "@/store/auth/authStore";
 import router from "@/router";
+import { Notification } from "@/types/Notification";
 
 interface ConfigType {
   body?: BodyInit | Record<string, unknown> | unknown;

@@ -43,19 +43,11 @@
             </v-window-item>
 
             <v-window-item value="option-3">
-              <v-container>
-                <v-row>
-                  <v-text-field label="test"></v-text-field>
-                </v-row>
-              </v-container>
+              <NotificationSettings />
             </v-window-item>
 
             <v-window-item value="option-4">
-              <v-container>
-                <v-row>
-                  <v-text-field label="test"></v-text-field>
-                </v-row>
-              </v-container>
+              <ApiKeySettings />
             </v-window-item>
           </v-window>
         </v-container>
@@ -70,6 +62,8 @@ import Logs from "@/components/settings/LogsSettings.vue";
 
 import { computed, ref, watchEffect } from "vue";
 import { useDisplay } from "vuetify";
+import NotificationSettings from "@/components/settings/NotificationSettings.vue";
+import ApiKeySettings from "@/components/settings/ApiKeySettings.vue";
 
 const tab = ref("option-1");
 const toolbarTitle = ref("User Profile");

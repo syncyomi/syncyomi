@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 	"time"
@@ -190,6 +191,9 @@ func (s *service) Test(ctx context.Context, notification domain.Notification) er
 		agent = NewNotifiarrSender(s.log, notification)
 	case domain.NotificationTypeTelegram:
 		agent = NewTelegramSender(s.log, notification)
+	default:
+		s.log.Error().Msgf("unsupported notification type: %v", notification.Type)
+		return errors.New("unsupported notification type")
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
