@@ -1,5 +1,10 @@
-type NotificationType = "DISCORD" | "NOTIFIARR" | "TELEGRAM";
-type NotificationEvent = "SYNC_STARTED" | "SYNC_SUCCESS" | "SYNC_FAILED" | "SYNC_ERROR" | "SERVER_UPDATE_AVAILABLE";
+export type NotificationType = "DISCORD" | "NOTIFIARR" | "TELEGRAM";
+export type NotificationEvent =
+  | "SYNC_STARTED"
+  | "SYNC_SUCCESS"
+  | "SYNC_FAILED"
+  | "SYNC_ERROR"
+  | "SERVER_UPDATE_AVAILABLE";
 
 interface Notification {
   id: number;
