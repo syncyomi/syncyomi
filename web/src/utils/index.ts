@@ -31,9 +31,12 @@ export function classNames(...classes: string[]) {
 
 // simplify date
 export function simplifyDate(date: string) {
-  if (date !== "0001-01-01T00:00:00Z") {
+  if (date === "") {
+    return "n/a";
+  } else if (date !== "0001-01-01T00:00:00Z") {
     return formatISO9075(new Date(date));
   }
+
   return "n/a";
 }
 

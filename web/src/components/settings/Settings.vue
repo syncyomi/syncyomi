@@ -39,11 +39,7 @@
             </v-window-item>
 
             <v-window-item value="option-2">
-              <v-container>
-                <v-row>
-                  <v-text-field label="test"></v-text-field>
-                </v-row>
-              </v-container>
+              <Logs />
             </v-window-item>
 
             <v-window-item value="option-3">
@@ -69,7 +65,9 @@
 </template>
 
 <script lang="ts" setup>
-import Application from "@/components/settings/Application.vue";
+import Application from "@/components/settings/ApplicationSettings.vue";
+import Logs from "@/components/settings/LogsSettings.vue";
+
 import { computed, ref, watchEffect } from "vue";
 import { useDisplay } from "vuetify";
 

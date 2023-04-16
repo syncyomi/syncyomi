@@ -114,7 +114,9 @@
                   :color="data?.version == 'dev' ? 'warning' : 'primary'"
                   variant="tonal"
                 >
-                  <span class="text-uppercase">{{ data?.date || "dev" }} </span>
+                  <span class="text-uppercase"
+                    >{{ simplifyDate(data?.date || "") || "dev" }}
+                  </span>
                 </v-chip>
               </v-col>
             </v-row>
@@ -194,10 +196,11 @@
 </template>
 
 <script lang="ts" setup>
-import {useMutation, useQuery, useQueryClient} from "@tanstack/vue-query";
-import {APIClient} from "@/api/APIClient";
-import {computed, Ref, ref, watch} from "vue";
-import {useTheme} from "vuetify";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { APIClient } from "@/api/APIClient";
+import { computed, Ref, ref, watch } from "vue";
+import { useTheme } from "vuetify";
+import { simplifyDate } from "@/utils";
 
 const toggleTheme: Ref<boolean> = ref(true);
 const snackbarVisible: Ref<boolean> = ref(false);
