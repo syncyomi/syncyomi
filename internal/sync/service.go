@@ -163,6 +163,9 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	if utcEpochTime.After(utcLastSynced) {
 		// If the user's last sync is newer than the current sync data, update the server's data
 		s.log.Info().Msgf("user's last local changes is newer: %v than ours: %v, therefore our data is old and should be updated for next time", utcEpochTime, utcLastSynced)
+		// set the last synced time immediately
+		newSyncTime := time.Now().UTC()
+		sData.LastSynced = &newSyncTime
 		// update the last device id it was synced with
 		sync.Sync.Device.ID = d.ID
 		mData, err = s.mdataSvc.Update(ctx, sync.Data)
@@ -171,8 +174,17 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 			return nil, err
 		}
 
+		// update the last device id it tried to sync with and the last synced time
+		sync.Sync.Device.ID = d.ID
+		_, err = s.repo.Update(ctx, sync.Sync)
+		if err != nil {
+			s.log.Error().Err(err).Msgf("could not update sync: %+v", sync.Sync)
+			return nil, err
+		}
+
 		return &domain.SyncData{
 			UpdateRequired: false,
+			Device:         d,
 		}, nil
 	} else {
 		// if user's last local changes is older than current sync data, update sync data (send back to client)
