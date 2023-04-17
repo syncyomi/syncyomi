@@ -26,7 +26,7 @@ type MangaData struct {
 type Manga struct {
 	Source       int64     `json:"source"`
 	URL          string    `json:"url"`
-	Favourite    bool      `json:"favourite"`
+	Favorite     bool      `json:"favorite"`
 	Title        string    `json:"title"`
 	Artist       string    `json:"artist"`
 	Author       string    `json:"author"`
