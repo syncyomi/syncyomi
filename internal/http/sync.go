@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/go-chi/chi/v5"
+	"io"
 	"net/http"
 	"strconv"
 )
@@ -151,7 +152,25 @@ func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
 	sync.Data = &domain.MangaData{UserApiKey: &domain.APIKey{Key: apiKey}}
 	sync.Device = &domain.Device{UserApiKey: &domain.APIKey{Key: apiKey}}
 
-	if err := json.NewDecoder(r.Body).Decode(&sync); err != nil {
+	// Read data from request body
+	requestData, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Check if the Content-Encoding header is set to "gzip" and uncompress the data if necessary
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		uncompressedData, err := uncompress(requestData)
+		if err != nil {
+			h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		requestData = uncompressedData
+	}
+
+	// Decode JSON from uncompressed data
+	if err := json.Unmarshal(requestData, &sync); err != nil {
 		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
 		return
 	}
