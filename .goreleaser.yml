@@ -46,7 +46,7 @@ archives:
 release:
   prerelease: auto
   footer: |
-    **Full Changelog**: https://github.com/SyncYomi/SyncYomi/compare/v{{ .PreviousTag }}...v{{ .Tag }}
+    **Full Changelog**: https://github.com/SyncYomi/SyncYomi/compare/{{ .PreviousTag }}...{{ .Tag }}
     
     ## Docker images
     - `ghcr.io/syncyomi/syncyomi:{{ .Tag }}`
