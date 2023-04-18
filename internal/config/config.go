@@ -274,8 +274,8 @@ func (c *AppConfig) load(configPath string) {
 
 		// Search config in directories
 		viper.AddConfigPath(".")
-		viper.AddConfigPath("$HOME/.config/tachi-sync-server")
-		viper.AddConfigPath("$HOME/.tachi-sync-server")
+		viper.AddConfigPath("$HOME/.config/syncyomi")
+		viper.AddConfigPath("$HOME/.syncyomi")
 	}
 
 	// read config

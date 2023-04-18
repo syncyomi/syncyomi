@@ -39,7 +39,7 @@ func NewDB(cfg *domain.Config, log logger.Logger) (*DB, error) {
 	case "sqlite":
 		databaseDriver = "sqlite"
 		db.Driver = "sqlite"
-		db.DSN = dataSourceName(cfg.ConfigPath, "tachi-sync-server.db")
+		db.DSN = dataSourceName(cfg.ConfigPath, "syncyomi.db")
 	case "postgres":
 		if cfg.PostgresHost == "" || cfg.PostgresPort == 0 || cfg.PostgresDatabase == "" {
 			return nil, errors.New("postgres: bad variables")
