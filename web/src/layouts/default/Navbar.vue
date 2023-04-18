@@ -1,7 +1,13 @@
 <template>
   <v-app-bar app fixed>
     <v-toolbar-title class="text-capitalize" @click="$router.push('/')">
-      SyncYomi
+      <v-img
+        class="d-none d-sm-block mx-1"
+        height="40"
+        max-height="40"
+        max-width="50"
+        src="@/assets/logo.png"
+      ></v-img>
     </v-toolbar-title>
 
     <template v-if="showToolbarItems">
@@ -94,12 +100,12 @@
 </template>
 
 <script lang="ts" setup>
-import {useDisplay} from "vuetify";
-import {computed, ref} from "vue";
-import {useRouter} from "vue-router";
-import {useMutation} from "@tanstack/vue-query";
-import {APIClient} from "@/api/APIClient";
-import {useAuthStore} from "@/store/auth/authStore";
+import { useDisplay } from "vuetify";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useMutation } from "@tanstack/vue-query";
+import { APIClient } from "@/api/APIClient";
+import { useAuthStore } from "@/store/auth/authStore";
 
 const { width } = useDisplay();
 const router = useRouter();
