@@ -27,7 +27,7 @@
                 <v-col cols="12">
                   <v-text-field
                     v-model="password"
-                    :rules="[rules.required, rules.min]"
+                    :rules="[rules.required]"
                     dense
                     label="Password"
                     prepend-inner-icon="mdi-lock-outline"
@@ -40,7 +40,7 @@
                 <v-col>
                   <v-text-field
                     v-model="passwordConfirm"
-                    :rules="[rules.required, rules.min, rules.match]"
+                    :rules="[rules.required, rules.match]"
                     dense
                     label="Confirm Password"
                     prepend-inner-icon="mdi-lock-outline"
