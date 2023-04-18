@@ -59,7 +59,7 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 	h.cookieStore.Options.SameSite = http.SameSiteLaxMode
 	h.cookieStore.Options.Path = h.config.BaseURL
 
-	// tachi-sync-server does not support serving on TLS / https, so this is only available behind reverse proxy
+	// syncyomi does not support serving on TLS / https, so this is only available behind reverse proxy
 	// if forwarded protocol is https then set cookie secure
 	// SameSite Strict can only be set with a secure cookie. So we overwrite it here if possible.
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite

@@ -20,33 +20,33 @@ func TestDataSourceName(t *testing.T) {
 			name: "default",
 			args: args{
 				configPath: "",
-				name:       "tachi-sync-server.db",
+				name:       "syncyomi.db",
 			},
-			want: "tachi-sync-server.db",
+			want: "syncyomi.db",
 		},
 		{
 			name: "path_1",
 			args: args{
 				configPath: "/config",
-				name:       "tachi-sync-server.db",
+				name:       "syncyomi.db",
 			},
-			want: "/config/tachi-sync-server.db",
+			want: "/config/syncyomi.db",
 		},
 		{
 			name: "path_2",
 			args: args{
 				configPath: "/config/",
-				name:       "tachi-sync-server.db",
+				name:       "syncyomi.db",
 			},
-			want: "/config/tachi-sync-server.db",
+			want: "/config/syncyomi.db",
 		},
 		{
 			name: "path_3",
 			args: args{
 				configPath: "/config//",
-				name:       "tachi-sync-server.db",
+				name:       "syncyomi.db",
 			},
-			want: "/config/tachi-sync-server.db",
+			want: "/config/syncyomi.db",
 		},
 	}
 	for _, tt := range tests {

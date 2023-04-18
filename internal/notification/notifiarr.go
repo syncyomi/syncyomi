@@ -34,7 +34,7 @@ func NewNotifiarrSender(log zerolog.Logger, settings domain.Notification) domain
 	return &notifiarrSender{
 		log:      log.With().Str("sender", "notifiarr").Logger(),
 		Settings: settings,
-		baseUrl:  "https://notifiarr.com/api/v1/notification/tachi-sync-server",
+		baseUrl:  "https://notifiarr.com/api/v1/notification/syncyomi",
 	}
 }
 
