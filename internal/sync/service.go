@@ -97,11 +97,45 @@ func (s service) GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.S
 }
 
 func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error) {
-	// Check if the device exists in the database
+	// Ensure device exists
+	d, err := s.ensureDeviceExists(ctx, sync)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure sync record exists
+	sData, err := s.ensureSyncRecordExists(ctx, sync)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure manga data exists
+	mData, err := s.ensureMangaDataExists(ctx, sync)
+	if err != nil {
+		return nil, err
+	}
+
+	// Granular sync
+
+	// Sync Categories
+	s.syncCategories(sync.Data.Categories, mData.Categories)
+
+	// Sync Manga and Chapters
+	s.syncMangaAndChapters(sync.Data.Manga, mData.Manga)
+
+	// Compare sync times and update data accordingly
+	result, err := s.compareSyncTimesAndUpdate(ctx, sync, d, sData, mData)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (s service) ensureDeviceExists(ctx context.Context, sync *domain.SyncData) (*domain.Device, error) {
 	d, err := s.deviceService.GetDeviceByDeviceId(ctx, sync.Device)
 	if err != nil {
 		if err.Error() == "error executing query: sql: no rows in result set" {
-			// If the device does not exist, it might be the first time syncing, so create the device
 			s.log.Info().Msgf("device does not exist maybe it's first time, creating it")
 			d, err = s.deviceService.Store(ctx, sync.Device)
 			if err != nil {
@@ -114,11 +148,13 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		}
 	}
 
-	// Check if a sync record exists for the user
+	return d, nil
+}
+
+func (s service) ensureSyncRecordExists(ctx context.Context, sync *domain.SyncData) (*domain.Sync, error) {
 	sData, err := s.repo.GetSyncByApiKey(ctx, sync.Sync.UserApiKey.Key)
 	if err != nil {
 		if err.Error() == "error executing query: sql: no rows in result set" {
-			// If a sync record does not exist, it might be the first time syncing, so create the sync record
 			s.log.Info().Msgf("sync does not exist maybe it's first time, creating it")
 			now := time.Now().UTC()
 			if sync.Sync.LastSynced == nil {
@@ -138,11 +174,13 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		}
 	}
 
-	// Check if manga data exists for the user
+	return sData, nil
+}
+
+func (s service) ensureMangaDataExists(ctx context.Context, sync *domain.SyncData) (*domain.MangaData, error) {
 	mData, err := s.mdataSvc.GetMangaDataByApiKey(ctx, sync.Sync.UserApiKey.Key)
 	if err != nil {
 		if err.Error() == "error executing query: sql: no rows in result set" {
-			// If manga data does not exist, it might be the first time syncing, so create the manga data
 			s.log.Info().Msgf("manga data does not exist maybe it's first time, creating it")
 			mData, err = s.mdataSvc.Store(ctx, sync.Data)
 			if err != nil {
@@ -155,26 +193,68 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		}
 	}
 
-	// Compare the user's last sync time with the current sync data
-	// Convert time to UTC for comparison
+	return mData, nil
+}
+
+func (s service) syncCategories(clientCategories, serverCategories []domain.Category) {
+	for _, clientCategory := range clientCategories {
+		serverCategory := findCategoryByName(clientCategory.Name, serverCategories)
+		if serverCategory == nil {
+			// If the category does not exist on the server, add it
+			serverCategories = append(serverCategories, clientCategory)
+		} else {
+			// Directly update the server category with the client category data
+			*serverCategory = clientCategory
+		}
+	}
+}
+
+func (s service) syncMangaAndChapters(clientManga []domain.Manga, serverManga []domain.Manga) {
+	for _, cm := range clientManga {
+		sm := findMangaByURL(cm.URL, serverManga)
+		if sm == nil {
+			// If the Manga does not exist on the server, add it
+			serverManga = append(serverManga, cm)
+			continue
+		}
+
+		// Compare Manga's lastModifiedAt timestamps and update if needed
+		if cm.LastModifiedAt > sm.LastModifiedAt {
+			*sm = cm
+		}
+
+		// Sync chapters
+		for _, clientChapter := range cm.Chapters {
+			serverChapter := findChapterByID(clientChapter.Id, sm.Chapters)
+			if serverChapter == nil {
+				// If the Chapter does not exist on the server, add it
+				sm.Chapters = append(sm.Chapters, clientChapter)
+				continue
+			}
+
+			// Compare Chapter's lastModifiedAt timestamps and update if needed
+			if clientChapter.LastModifiedAt > serverChapter.LastModifiedAt {
+				*serverChapter = clientChapter
+			}
+		}
+	}
+}
+
+func (s service) compareSyncTimesAndUpdate(ctx context.Context, sync *domain.SyncData, d *domain.Device, sData *domain.Sync, mData *domain.MangaData) (*domain.SyncData, error) {
 	epochTime := time.Unix(0, sync.Sync.LastSyncedEpoch*int64(time.Millisecond)).UTC()
 	utcLastSynced := sData.LastSynced.UTC()
 	utcEpochTime := epochTime.UTC()
 	if utcEpochTime.After(utcLastSynced) {
-		// If the user's last sync is newer than the current sync data, update the server's data
 		s.log.Info().Msgf("user's last local changes is newer: %v than ours: %v, therefore our data is old and should be updated for next time", utcEpochTime, utcLastSynced)
-		// set the last synced time immediately
 		newSyncTime := time.Now().UTC()
 		sData.LastSynced = &newSyncTime
-		// update the last device id it was synced with
 		sync.Sync.Device.ID = d.ID
-		mData, err = s.mdataSvc.Update(ctx, sync.Data)
+		_, err := s.mdataSvc.Update(ctx, sync.Data)
 		if err != nil {
 			s.log.Error().Err(err).Msgf("could not update manga data: %+v", sync.Data)
 			return nil, err
 		}
 
-		// update the last device id it tried to sync with and the last synced time
 		sync.Sync.Device.ID = d.ID
 		_, err = s.repo.Update(ctx, sync.Sync)
 		if err != nil {
@@ -187,14 +267,11 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 			Device:         d,
 		}, nil
 	} else {
-		// if user's last local changes is older than current sync data, update sync data (send back to client)
 		s.log.Info().Msgf("user's last local changes is old: %v than our last sync at: %v, therefore their data is outdated updating sync!", utcEpochTime, utcLastSynced)
-		// set the last synced time immediately
 		newSyncTime := time.Now().UTC()
 		sData.LastSynced = &newSyncTime
-		// update the last device id it was synced with
 		sync.Sync.Device.ID = d.ID
-		sData, err = s.repo.Update(ctx, sync.Sync)
+		sData, err := s.repo.Update(ctx, sync.Sync)
 		if err != nil {
 			s.log.Error().Err(err).Msgf("could not update sync: %+v", sync.Sync)
 			return nil, err
@@ -207,4 +284,31 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 			Device:         d,
 		}, nil
 	}
+}
+
+func findCategoryByName(name string, categories []domain.Category) *domain.Category {
+	for i := range categories {
+		if categories[i].Name == name {
+			return &categories[i]
+		}
+	}
+	return nil
+}
+
+func findMangaByURL(url string, mangas []domain.Manga) *domain.Manga {
+	for i := range mangas {
+		if mangas[i].URL == url {
+			return &mangas[i]
+		}
+	}
+	return nil
+}
+
+func findChapterByID(id int64, chapters []domain.Chapter) *domain.Chapter {
+	for i := range chapters {
+		if chapters[i].Id == id {
+			return &chapters[i]
+		}
+	}
+	return nil
 }
