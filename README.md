@@ -5,7 +5,7 @@
 
 <p align="center">SyncYomi is an open-source project designed to offer a seamless synchronization experience for your Tachiyomi manga reading progress and library across multiple devices. This server can be self-hosted, allowing you to sync your Tachiyomi library effortlessly.</p>
 
-<p align="center"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/SyncYomi/SyncYomi?style=for-the-badge">&nbsp;<img alt="GitHub all releases" src="https://img.shields.io/github/downloads/SyncYomi/SyncYomi/total?style=for-the-badge">&nbsp;<img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/SyncYomi/SyncYomi/release.yml?style=for-the-badge"></p>
+<p align="center"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/SyncYomi/SyncYomi?style=for-the-badge">&nbsp;<img alt="GitHub all releases" src="https://img.shields.io/github/downloads/SyncYomi/SyncYomi/total?style=for-the-badge">&nbsp;<img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/SyncYomi/SyncYomi/release.yml?style=for-the-badge"><img alt="Discord" src="https://img.shields.io/discord/1099009852791083058?label=Discord&logo=discord&logoColor=blue&style=for-the-badge"></p>
 
 <!-- <img alt="syncyomi ui" src=".github/images/syncyomi-front.png"/><br/> -->
 
@@ -112,6 +112,6 @@ By default, the configuration is set to listen on `127.0.0.1`. It is highly reco
 
 If you are not running a reverse proxy change `host` in the `config.toml` to `0.0.0.0`.
 
-<!-- ## Community
+## Community
 
-Come join us on [Discord](https://discord.gg/)! -->
+Come join us on [Discord](https://discord.gg/aydqBWAZs8)!

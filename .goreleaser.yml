@@ -51,6 +51,9 @@ release:
     ## Docker images
     - `ghcr.io/syncyomi/syncyomi:{{ .Tag }}`
 
+    ## What to do next?
+    - Join our [Discord server](https://discord.gg/aydqBWAZs8)
+
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
   algorithm: sha256
