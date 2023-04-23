@@ -36,8 +36,7 @@ const (
 )
 
 type SyncData struct {
-	Sync           *Sync      `json:"sync,omitempty"`
-	Data           *MangaData `json:"data,omitempty"`
-	Device         *Device    `json:"device,omitempty"`
-	UpdateRequired bool       `json:"update_required"`
+	Sync   *Sync      `json:"sync,omitempty"`
+	Data   *MangaData `json:"data,omitempty"`
+	Device *Device    `json:"device,omitempty"`
 }

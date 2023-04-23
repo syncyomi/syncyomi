@@ -2,12 +2,13 @@ package sync
 
 import (
 	"context"
+	"time"
+
 	"github.com/SyncYomi/SyncYomi/internal/device"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/SyncYomi/SyncYomi/internal/mdata"
 	"github.com/rs/zerolog"
-	"time"
 )
 
 type Service interface {
@@ -118,18 +119,33 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	// Granular sync
 
 	// Sync Categories
-	s.syncCategories(sync.Data.Categories, mData.Categories)
+	mData.Categories = s.syncCategories(sync.Data.Categories, mData.Categories)
 
 	// Sync Manga and Chapters
-	s.syncMangaAndChapters(sync.Data.Manga, mData.Manga)
+	mData.Manga = s.syncMangaAndChapters(sync.Data.Manga, mData.Manga)
 
-	// Compare sync times and update data accordingly
-	result, err := s.compareSyncTimesAndUpdate(ctx, sync, d, sData, mData)
+	// Update the LastSynced field for the Sync record
+	newSyncTime := time.Now().UTC()
+	sData.LastSynced = &newSyncTime
+	sync.Sync.Device.ID = d.ID
+	_, err = s.repo.Update(ctx, sData)
 	if err != nil {
+		s.log.Error().Err(err).Msgf("could not update sync: %+v", sData)
 		return nil, err
 	}
 
-	return result, nil
+	// Update the MangaData record
+	_, err = s.mdataSvc.Update(ctx, mData)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not update manga data: %+v", mData)
+		return nil, err
+	}
+
+	return &domain.SyncData{
+		Device: d,
+		Sync:   sData,
+		Data:   mData,
+	}, nil
 }
 
 func (s service) ensureDeviceExists(ctx context.Context, sync *domain.SyncData) (*domain.Device, error) {
@@ -196,7 +212,7 @@ func (s service) ensureMangaDataExists(ctx context.Context, sync *domain.SyncDat
 	return mData, nil
 }
 
-func (s service) syncCategories(clientCategories, serverCategories []domain.Category) {
+func (s service) syncCategories(clientCategories, serverCategories []domain.Category) []domain.Category {
 	for _, clientCategory := range clientCategories {
 		serverCategory := findCategoryByName(clientCategory.Name, serverCategories)
 		if serverCategory == nil {
@@ -207,83 +223,75 @@ func (s service) syncCategories(clientCategories, serverCategories []domain.Cate
 			*serverCategory = clientCategory
 		}
 	}
+	return serverCategories
 }
 
-func (s service) syncMangaAndChapters(clientManga []domain.Manga, serverManga []domain.Manga) {
+func (s service) syncMangaAndChapters(clientManga []domain.Manga, serverManga []domain.Manga) []domain.Manga {
+	clientMangaMap := make(map[string]domain.Manga)
 	for _, cm := range clientManga {
+		clientMangaMap[cm.URL] = cm
+	}
+
+	for i := range serverManga {
+		sm := &serverManga[i]
+		cm, found := clientMangaMap[sm.URL]
+		if found {
+			// If the Manga exists on both server and client, sync data
+			clientUnixTimestampSeconds := cm.LastModifiedAt
+			clientLastModifiedAt := time.Unix(clientUnixTimestampSeconds, 0)
+			serverUnixTimestampSeconds := sm.LastModifiedAt
+			serverLastModifiedAt := time.Unix(serverUnixTimestampSeconds, 0)
+
+			if clientLastModifiedAt.After(serverLastModifiedAt) {
+				*sm = cm
+			} else {
+				clientMangaMap[sm.URL] = *sm
+			}
+
+			// Sync chapters
+			for _, clientChapter := range cm.Chapters {
+				serverChapter := findChapter(clientChapter.URL, clientChapter.ChapterNumber, sm.Chapters)
+				if serverChapter == nil {
+					// If the Chapter does not exist on the server, add it
+					sm.Chapters = append(sm.Chapters, clientChapter)
+				} else {
+					// Compare Chapter's lastModifiedAt timestamps and update if needed
+					clientUnixTimestampSeconds := clientChapter.LastModifiedAt
+					clientChapterLastModifiedAt := time.Unix(clientUnixTimestampSeconds, 0)
+					serverUnixTimestampSeconds := serverChapter.LastModifiedAt
+					serverChapterLastModifiedAt := time.Unix(serverUnixTimestampSeconds, 0)
+
+					if clientChapterLastModifiedAt.After(serverChapterLastModifiedAt) {
+						*serverChapter = clientChapter
+					}
+				}
+			}
+		} else {
+			// If the Manga exists on the server but not on the client, add it to the client
+			clientMangaMap[sm.URL] = *sm
+		}
+	}
+
+	// Sync manga that only exists on the client
+	for _, cm := range clientMangaMap {
 		sm := findMangaByURL(cm.URL, serverManga)
 		if sm == nil {
-			// If the Manga does not exist on the server, add it
 			serverManga = append(serverManga, cm)
-			continue
-		}
-
-		// Compare Manga's lastModifiedAt timestamps and update if needed
-		if cm.LastModifiedAt > sm.LastModifiedAt {
-			*sm = cm
-		}
-
-		// Sync chapters
-		for _, clientChapter := range cm.Chapters {
-			serverChapter := findChapterByID(clientChapter.Id, sm.Chapters)
-			if serverChapter == nil {
-				// If the Chapter does not exist on the server, add it
-				sm.Chapters = append(sm.Chapters, clientChapter)
-				continue
-			}
-
-			// Compare Chapter's lastModifiedAt timestamps and update if needed
-			if clientChapter.LastModifiedAt > serverChapter.LastModifiedAt {
-				*serverChapter = clientChapter
-			}
 		}
 	}
-}
 
-func (s service) compareSyncTimesAndUpdate(ctx context.Context, sync *domain.SyncData, d *domain.Device, sData *domain.Sync, mData *domain.MangaData) (*domain.SyncData, error) {
-	epochTime := time.Unix(0, sync.Sync.LastSyncedEpoch*int64(time.Millisecond)).UTC()
-	utcLastSynced := sData.LastSynced.UTC()
-	utcEpochTime := epochTime.UTC()
-	if utcEpochTime.After(utcLastSynced) {
-		s.log.Info().Msgf("user's last local changes is newer: %v than ours: %v, therefore our data is old and should be updated for next time", utcEpochTime, utcLastSynced)
-		newSyncTime := time.Now().UTC()
-		sData.LastSynced = &newSyncTime
-		sync.Sync.Device.ID = d.ID
-		_, err := s.mdataSvc.Update(ctx, sync.Data)
-		if err != nil {
-			s.log.Error().Err(err).Msgf("could not update manga data: %+v", sync.Data)
-			return nil, err
-		}
-
-		sync.Sync.Device.ID = d.ID
-		_, err = s.repo.Update(ctx, sync.Sync)
-		if err != nil {
-			s.log.Error().Err(err).Msgf("could not update sync: %+v", sync.Sync)
-			return nil, err
-		}
-
-		return &domain.SyncData{
-			UpdateRequired: false,
-			Device:         d,
-		}, nil
-	} else {
-		s.log.Info().Msgf("user's last local changes is old: %v than our last sync at: %v, therefore their data is outdated updating sync!", utcEpochTime, utcLastSynced)
-		newSyncTime := time.Now().UTC()
-		sData.LastSynced = &newSyncTime
-		sync.Sync.Device.ID = d.ID
-		sData, err := s.repo.Update(ctx, sync.Sync)
-		if err != nil {
-			s.log.Error().Err(err).Msgf("could not update sync: %+v", sync.Sync)
-			return nil, err
-		}
-
-		return &domain.SyncData{
-			UpdateRequired: true,
-			Sync:           sData,
-			Data:           mData,
-			Device:         d,
-		}, nil
+	// Ensure the clientMangaMap is identical to serverManga
+	clientMangaMap = make(map[string]domain.Manga)
+	for _, sm := range serverManga {
+		clientMangaMap[sm.URL] = sm
 	}
+	// Convert the clientMangaMap back to a slice
+	syncedManga := make([]domain.Manga, 0, len(clientMangaMap))
+	for _, cm := range clientMangaMap {
+		syncedManga = append(syncedManga, cm)
+	}
+
+	return syncedManga
 }
 
 func findCategoryByName(name string, categories []domain.Category) *domain.Category {
@@ -304,9 +312,9 @@ func findMangaByURL(url string, mangas []domain.Manga) *domain.Manga {
 	return nil
 }
 
-func findChapterByID(id int64, chapters []domain.Chapter) *domain.Chapter {
+func findChapter(url string, chapterNumber int, chapters []domain.Chapter) *domain.Chapter {
 	for i := range chapters {
-		if chapters[i].Id == id {
+		if chapters[i].URL == url && chapters[i].ChapterNumber == chapterNumber {
 			return &chapters[i]
 		}
 	}

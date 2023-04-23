@@ -3,11 +3,12 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"github.com/SyncYomi/SyncYomi/internal/domain"
-	"github.com/go-chi/chi/v5"
 	"io"
 	"net/http"
 	"strconv"
+
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/go-chi/chi/v5"
 )
 
 type syncService interface {
@@ -175,15 +176,10 @@ func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// store, check and try to sync data
+	// Store, check, and try to sync data
 	syncResult, err := h.syncService.SyncData(ctx, &sync)
 	if err != nil {
 		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if !syncResult.UpdateRequired {
-		h.encoder.StatusResponse(ctx, w, syncResult, http.StatusOK)
 		return
 	}
 
