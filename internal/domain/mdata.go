@@ -24,23 +24,24 @@ type MangaData struct {
 }
 
 type Manga struct {
-	Source         int64     `json:"source"`
-	URL            string    `json:"url"`
-	Favorite       bool      `json:"favorite"`
-	Title          string    `json:"title"`
-	Artist         string    `json:"artist"`
-	Author         string    `json:"author"`
-	Description    string    `json:"description"`
-	Genre          []string  `json:"genre"`
-	Status         int       `json:"status"`
-	ThumbnailURL   string    `json:"thumbnailUrl"`
-	DateAdded      int64     `json:"dateAdded"`
-	Viewer         int       `json:"viewer"`
-	Chapters       []Chapter `json:"chapters"`
-	Categories     []int     `json:"categories"`
-	ViewerFlags    int       `json:"viewer_flags"`
-	History        []History `json:"history"`
-	LastModifiedAt int64     `json:"lastModifiedAt"`
+	Source         int64      `json:"source"`
+	URL            string     `json:"url"`
+	Favorite       bool       `json:"favorite"`
+	Title          string     `json:"title"`
+	Artist         string     `json:"artist"`
+	Author         string     `json:"author"`
+	Description    string     `json:"description"`
+	Genre          []string   `json:"genre"`
+	Status         int        `json:"status"`
+	ThumbnailURL   string     `json:"thumbnailUrl"`
+	DateAdded      int64      `json:"dateAdded"`
+	Viewer         int        `json:"viewer"`
+	Chapters       []Chapter  `json:"chapters"`
+	Tracking       []Tracking `json:"tracking"`
+	Categories     []int      `json:"categories"`
+	ViewerFlags    int        `json:"viewer_flags"`
+	History        []History  `json:"history"`
+	LastModifiedAt int64      `json:"lastModifiedAt"`
 }
 
 type Chapter struct {
@@ -59,6 +60,21 @@ type Chapter struct {
 	MangaUrl       string `json:"mangaUrl"`
 	MangaSource    int64  `json:"mangaSource"`
 	LastModifiedAt int64  `json:"lastModifiedAt"`
+}
+
+type Tracking struct {
+	SyncId              *int     `json:"syncId,omitempty"`
+	LibraryId           *int64   `json:"libraryId,omitempty"`
+	MediaIdInt          *int     `json:"mediaIdInt,omitempty"`
+	TrackingUrl         *string  `json:"trackingUrl,omitempty"`
+	Title               *string  `json:"title,omitempty"`
+	LastChapterRead     *float64 `json:"lastChapterRead,omitempty"`
+	TotalChapters       *int     `json:"totalChapters,omitempty"`
+	Score               *float64 `json:"score,omitempty"`
+	Status              *int     `json:"status,omitempty"`
+	StartedReadingDate  *int64   `json:"startedReadingDate,omitempty"`
+	FinishedReadingDate *int64   `json:"finishedReadingDate,omitempty"`
+	MediaId             *int64   `json:"mediaId,omitempty"`
 }
 
 type History struct {
