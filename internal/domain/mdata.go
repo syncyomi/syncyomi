@@ -24,24 +24,24 @@ type MangaData struct {
 }
 
 type Manga struct {
-	Source         int64      `json:"source"`
-	URL            string     `json:"url"`
-	Favorite       bool       `json:"favorite"`
-	Title          string     `json:"title"`
-	Artist         string     `json:"artist"`
-	Author         string     `json:"author"`
-	Description    string     `json:"description"`
-	Genre          []string   `json:"genre"`
-	Status         int        `json:"status"`
-	ThumbnailURL   string     `json:"thumbnailUrl"`
-	DateAdded      int64      `json:"dateAdded"`
-	Viewer         int        `json:"viewer"`
-	Chapters       []Chapter  `json:"chapters"`
-	Tracking       []Tracking `json:"tracking"`
-	Categories     []int      `json:"categories"`
-	ViewerFlags    int        `json:"viewer_flags"`
-	History        []History  `json:"history"`
-	LastModifiedAt int64      `json:"lastModifiedAt"`
+	Source         int64             `json:"source"`
+	URL            string            `json:"url"`
+	Favorite       bool              `json:"favorite"`
+	Title          string            `json:"title"`
+	Artist         string            `json:"artist"`
+	Author         string            `json:"author"`
+	Description    string            `json:"description"`
+	Genre          []string          `json:"genre"`
+	Status         int               `json:"status"`
+	ThumbnailURL   string            `json:"thumbnailUrl"`
+	DateAdded      int64             `json:"dateAdded"`
+	Viewer         int               `json:"viewer"`
+	Chapters       []Chapter         `json:"chapters"`
+	Tracking       []MangaTrackExtra `json:"tracking"`
+	Categories     []int             `json:"categories"`
+	ViewerFlags    int               `json:"viewer_flags"`
+	History        []History         `json:"history"`
+	LastModifiedAt int64             `json:"lastModifiedAt"`
 }
 
 type Chapter struct {
@@ -75,6 +75,12 @@ type Tracking struct {
 	StartedReadingDate  *int64   `json:"startedReadingDate,omitempty"`
 	FinishedReadingDate *int64   `json:"finishedReadingDate,omitempty"`
 	MediaId             *int64   `json:"mediaId,omitempty"`
+}
+
+type MangaTrackExtra struct {
+	Tracking    Tracking `json:"tracking"`
+	MangaUrl    string   `json:"mangaUrl"`
+	MangaSource int64    `json:"mangaSource"`
 }
 
 type History struct {
