@@ -119,10 +119,10 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	// Granular sync
 
 	// Sync Categories
-	mData.Categories = s.syncCategories(sync.Data.Categories, mData.Categories)
+	mData.BackupCategories = s.syncCategories(sync.Data.BackupCategories, mData.BackupCategories)
 
 	// Sync Manga and Chapters
-	mData.Manga = s.syncMangaAndChapters(sync.Data.Manga, mData.Manga)
+	mData.BackupManga = s.syncMangaAndChapters(sync.Data.BackupManga, mData.BackupManga)
 
 	// Update the LastSynced field for the Sync record
 	newSyncTime := time.Now().UTC()
@@ -312,7 +312,7 @@ func findMangaByURL(url string, mangas []domain.Manga) *domain.Manga {
 	return nil
 }
 
-func findChapter(url string, chapterNumber int, chapters []domain.Chapter) *domain.Chapter {
+func findChapter(url string, chapterNumber float64, chapters []domain.Chapter) *domain.Chapter {
 	for i := range chapters {
 		if chapters[i].URL == url && chapters[i].ChapterNumber == chapterNumber {
 			return &chapters[i]
