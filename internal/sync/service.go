@@ -272,41 +272,13 @@ func (s service) syncMangaAndChapters(clientManga []domain.Manga, serverManga []
 		}
 	}
 
-	// Sync manga that only exists on the client
-	for _, cm := range clientMangaMap {
-		sm := findMangaByURL(cm.URL, serverManga)
-		if sm == nil {
-			serverManga = append(serverManga, cm)
-		}
-	}
-
-	// Ensure the clientMangaMap is identical to serverManga
-	clientMangaMap = make(map[string]domain.Manga)
-	for _, sm := range serverManga {
-		clientMangaMap[sm.URL] = sm
-	}
-	// Convert the clientMangaMap back to a slice
-	syncedManga := make([]domain.Manga, 0, len(clientMangaMap))
-	for _, cm := range clientMangaMap {
-		syncedManga = append(syncedManga, cm)
-	}
-
-	return syncedManga
+	return serverManga
 }
 
 func findCategoryByName(name string, categories []domain.Category) *domain.Category {
 	for i := range categories {
 		if categories[i].Name == name {
 			return &categories[i]
-		}
-	}
-	return nil
-}
-
-func findMangaByURL(url string, mangas []domain.Manga) *domain.Manga {
-	for i := range mangas {
-		if mangas[i].URL == url {
-			return &mangas[i]
 		}
 	}
 	return nil
