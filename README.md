@@ -55,7 +55,7 @@ services:
     volumes:
       - ${BASE_DOCKER_DATA_PATH}/syncyomi/config:/config
     ports:
-      - 7474:7474
+      - 8282:8282
 ```
 
 Then start with
