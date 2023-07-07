@@ -17,7 +17,7 @@ type syncService interface {
 	Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error)
 	ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, error)
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
-	GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.Sync, error)
+	GetSyncData(ctx context.Context, apiKey string, deviceID int) (*domain.SyncData, error)
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
 }
 
@@ -37,9 +37,9 @@ func (h syncHandler) Routes(r chi.Router) {
 	r.Post("/", h.store)
 	r.Delete("/{id}", h.delete)
 	r.Get("/", h.listSyncs)
-	r.Get("/device/{id}", h.getSyncByDeviceID)
 	r.Get("/{apiKey}", h.getSyncByApiKey)
-	r.Post("/data", h.sync)
+	r.Get("/download", h.getSyncData)
+	r.Post("/upload", h.sync)
 }
 
 func (h syncHandler) store(w http.ResponseWriter, r *http.Request) {
@@ -98,25 +98,6 @@ func (h syncHandler) listSyncs(w http.ResponseWriter, r *http.Request) {
 	h.encoder.StatusResponse(ctx, w, syncs, http.StatusOK)
 }
 
-func (h syncHandler) getSyncByDeviceID(w http.ResponseWriter, r *http.Request) {
-	var (
-		ctx      = r.Context()
-		deviceId = chi.URLParam(r, "id")
-	)
-
-	// check if id is an integer
-	id, _ := strconv.Atoi(deviceId)
-
-	// check/try to get sync from database
-	sync, err := h.syncService.GetSyncByDeviceID(ctx, id)
-	if err != nil {
-		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	h.encoder.StatusResponse(ctx, w, sync, http.StatusOK)
-}
-
 func (h syncHandler) getSyncByApiKey(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx    = r.Context()
@@ -148,10 +129,8 @@ func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
 
 	sync.Sync = &domain.Sync{
 		UserApiKey: &domain.APIKey{Key: apiKey},
-		Device:     &domain.Device{UserApiKey: &domain.APIKey{Key: apiKey}},
 	}
 	sync.Data = &domain.MangaData{UserApiKey: &domain.APIKey{Key: apiKey}}
-	sync.Device = &domain.Device{UserApiKey: &domain.APIKey{Key: apiKey}}
 
 	// Read data from request body
 	requestData, err := io.ReadAll(r.Body)
@@ -184,4 +163,32 @@ func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.encoder.StatusResponse(ctx, w, syncResult, http.StatusOK)
+}
+
+func (h syncHandler) getSyncData(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx    = r.Context()
+		apiKey = r.Header.Get("X-API-Token")
+	)
+
+	// check if api key is set
+	if apiKey == "" {
+		h.encoder.StatusResponse(ctx, w, "No API key set", http.StatusBadRequest)
+		return
+	}
+
+	deviceIdQuery := r.URL.Query().Get("deviceId")
+	deviceId, err := strconv.Atoi(deviceIdQuery)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	dataResult, err := h.syncService.GetSyncData(ctx, apiKey, deviceId)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.encoder.StatusResponse(ctx, w, dataResult, http.StatusOK)
 }

@@ -44,17 +44,6 @@ CREATE TABLE notification
 	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-/*Stores information about the devices associated with each API key.*/
-CREATE TABLE devices
-(
-id SERIAL UNIQUE ,
-user_api_key TEXT,
-name TEXT,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-CONSTRAINT devices_pkey PRIMARY KEY (id)
-);
-
 /*Holds the manga data for each user (API key) in JSON format.*/
 CREATE TABLE manga_data
 (
@@ -72,7 +61,6 @@ CREATE TABLE manga_sync
 (
 id SERIAL UNIQUE ,
 user_api_key TEXT UNIQUE,
-device_id INTEGER UNIQUE,
 last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 status TEXT NOT NULL DEFAULT 'unknown',
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -80,10 +68,8 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 CONSTRAINT manga_sync_pkey PRIMARY KEY (id)
 );
 
-ALTER TABLE devices ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
 ALTER TABLE manga_data ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
 ALTER TABLE manga_sync ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
-ALTER TABLE manga_sync ADD FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE  ON UPDATE CASCADE;
 `
 
 var postgresMigrations = []string{
