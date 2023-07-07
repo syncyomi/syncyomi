@@ -42,16 +42,6 @@ CREATE TABLE notification
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE devices
-(
-    id INTEGER PRIMARY KEY,
-    user_api_key TEXT,
-    name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
-);
-
 CREATE TABLE manga_data
 (
     id INTEGER PRIMARY KEY,
@@ -66,13 +56,11 @@ CREATE TABLE manga_sync
 (
     id INTEGER PRIMARY KEY,
     user_api_key TEXT UNIQUE,
-    device_id INTEGER UNIQUE,
     last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status TEXT NOT NULL DEFAULT 'unknown',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE,
-    FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
 );
 `
 
