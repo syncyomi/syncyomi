@@ -1,7 +1,6 @@
 before:
   hooks:
     - go mod tidy
-
 builds:
   -
     id: syncyomi
@@ -40,8 +39,6 @@ archives:
         format: zip
     files:
       - none*
-    replacements:
-      amd64: x86_64
 
 release:
   prerelease: auto
