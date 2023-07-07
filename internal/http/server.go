@@ -33,7 +33,6 @@ type Server struct {
 	notificationService notificationService
 	updateService       updateService
 
-	deviceService    deviceService
 	syncService      syncService
 	mangaDataService mangaDataService
 }
@@ -50,7 +49,6 @@ func NewServer(
 	authService authService,
 	notificationSvc notificationService,
 	updateSvc updateService,
-	deviceService deviceService,
 	syncService syncService,
 	mangaDataService mangaDataService,
 ) Server {
@@ -69,7 +67,6 @@ func NewServer(
 		authService:         authService,
 		notificationService: notificationSvc,
 		updateService:       updateSvc,
-		deviceService:       deviceService,
 		syncService:         syncService,
 		mangaDataService:    mangaDataService,
 	}
@@ -126,7 +123,6 @@ func (s Server) Handler() http.Handler {
 			r.Route("/logs", newLogsHandler(s.config).Routes)
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
-			r.Route("/device", newDeviceHandler(encoder, s.deviceService).Routes)
 			r.Route("/sync", newSyncHandler(encoder, s.syncService).Routes)
 			r.Route("/manga", newMangaDataHandler(encoder, s.mangaDataService).Routes)
 

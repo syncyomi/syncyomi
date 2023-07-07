@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/SyncYomi/SyncYomi/internal/device"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/SyncYomi/SyncYomi/internal/mdata"
@@ -17,24 +16,22 @@ type Service interface {
 	Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error)
 	ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, error)
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
-	GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.Sync, error)
+	GetSyncData(ctx context.Context, apiKey string, deviceID int) (*domain.SyncData, error)
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
 }
 
-func NewService(log logger.Logger, repo domain.SyncRepo, mdata mdata.Service, device device.Service) Service {
+func NewService(log logger.Logger, repo domain.SyncRepo, mdata mdata.Service) Service {
 	return &service{
-		log:           log.With().Str("module", "sync").Logger(),
-		repo:          repo,
-		mdataSvc:      mdata,
-		deviceService: device,
+		log:      log.With().Str("module", "sync").Logger(),
+		repo:     repo,
+		mdataSvc: mdata,
 	}
 }
 
 type service struct {
-	log           zerolog.Logger
-	repo          domain.SyncRepo
-	mdataSvc      mdata.Service
-	deviceService device.Service
+	log      zerolog.Logger
+	repo     domain.SyncRepo
+	mdataSvc mdata.Service
 }
 
 func (s service) Store(ctx context.Context, sync *domain.Sync) (*domain.Sync, error) {
@@ -87,23 +84,28 @@ func (s service) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sy
 	return msync, nil
 }
 
-func (s service) GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.Sync, error) {
-	msync, err := s.repo.GetSyncByDeviceID(ctx, deviceID)
+func (s service) GetSyncData(ctx context.Context, apiKey string, deviceID int) (*domain.SyncData, error) {
+	sData, err := s.repo.GetSyncByApiKey(ctx, apiKey)
 	if err != nil {
-		s.log.Error().Err(err).Msgf("could not get sync by device id: %v", deviceID)
-		return nil, err
+		if err.Error() == "error executing query: sql: no rows in result set" {
+			sData = nil
+		}
 	}
 
-	return msync, nil
+	mData, err := s.mdataSvc.GetMangaDataByApiKey(ctx, apiKey)
+	if err != nil {
+		if err.Error() == "error executing query: sql: no rows in result set" {
+			mData = nil
+		}
+	}
+
+	return &domain.SyncData{
+		Sync: sData,
+		Data: mData,
+	}, nil
 }
 
 func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error) {
-	// Ensure device exists
-	d, err := s.ensureDeviceExists(ctx, sync)
-	if err != nil {
-		return nil, err
-	}
-
 	// Ensure sync record exists
 	sData, err := s.ensureSyncRecordExists(ctx, sync)
 	if err != nil {
@@ -116,55 +118,26 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		return nil, err
 	}
 
-	// Granular sync
-
-	// Sync Categories
-	mData.BackupCategories = s.syncCategories(sync.Data.BackupCategories, mData.BackupCategories)
-
-	// Sync Manga and Chapters
-	mData.BackupManga = s.syncMangaAndChapters(sync.Data.BackupManga, mData.BackupManga)
-
 	// Update the LastSynced field for the Sync record
 	newSyncTime := time.Now().UTC()
 	sData.LastSynced = &newSyncTime
-	sync.Sync.Device.ID = d.ID
-	_, err = s.repo.Update(ctx, sData)
+	_, err = s.repo.Update(ctx, sync.Sync)
 	if err != nil {
-		s.log.Error().Err(err).Msgf("could not update sync: %+v", sData)
+		s.log.Error().Err(err).Msgf("could not update sync: %+v", sync.Sync)
 		return nil, err
 	}
 
 	// Update the MangaData record
-	_, err = s.mdataSvc.Update(ctx, mData)
+	_, err = s.mdataSvc.Update(ctx, sync.Data)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not update manga data: %+v", mData)
 		return nil, err
 	}
 
 	return &domain.SyncData{
-		Device: d,
-		Sync:   sData,
-		Data:   mData,
+		Sync: sData,
+		Data: mData,
 	}, nil
-}
-
-func (s service) ensureDeviceExists(ctx context.Context, sync *domain.SyncData) (*domain.Device, error) {
-	d, err := s.deviceService.GetDeviceByDeviceId(ctx, sync.Device)
-	if err != nil {
-		if err.Error() == "error executing query: sql: no rows in result set" {
-			s.log.Info().Msgf("device does not exist maybe it's first time, creating it")
-			d, err = s.deviceService.Store(ctx, sync.Device)
-			if err != nil {
-				s.log.Error().Err(err).Msgf("could not store device: %+v", sync.Device)
-				return nil, err
-			}
-		} else {
-			s.log.Error().Err(err).Msgf("could not get device: %+v", sync.Device)
-			return nil, err
-		}
-	}
-
-	return d, nil
 }
 
 func (s service) ensureSyncRecordExists(ctx context.Context, sync *domain.SyncData) (*domain.Sync, error) {
@@ -175,9 +148,6 @@ func (s service) ensureSyncRecordExists(ctx context.Context, sync *domain.SyncDa
 			now := time.Now().UTC()
 			if sync.Sync.LastSynced == nil {
 				sync.Sync.LastSynced = &now
-			}
-			if sync.Sync.Device.ID == 0 {
-				sync.Sync.Device.ID = sync.Device.ID
 			}
 			sData, err = s.repo.Store(ctx, sync.Sync)
 			if err != nil {
@@ -210,85 +180,4 @@ func (s service) ensureMangaDataExists(ctx context.Context, sync *domain.SyncDat
 	}
 
 	return mData, nil
-}
-
-func (s service) syncCategories(clientCategories, serverCategories []domain.Category) []domain.Category {
-	for _, clientCategory := range clientCategories {
-		serverCategory := findCategoryByName(clientCategory.Name, serverCategories)
-		if serverCategory == nil {
-			// If the category does not exist on the server, add it
-			serverCategories = append(serverCategories, clientCategory)
-		} else {
-			// Directly update the server category with the client category data
-			*serverCategory = clientCategory
-		}
-	}
-	return serverCategories
-}
-
-func (s service) syncMangaAndChapters(clientManga []domain.Manga, serverManga []domain.Manga) []domain.Manga {
-	clientMangaMap := make(map[string]domain.Manga)
-	for _, cm := range clientManga {
-		clientMangaMap[cm.URL] = cm
-	}
-
-	for i := range serverManga {
-		sm := &serverManga[i]
-		cm, found := clientMangaMap[sm.URL]
-		if found {
-			// If the Manga exists on both server and client, sync data
-			clientUnixTimestampSeconds := cm.LastModifiedAt
-			clientLastModifiedAt := time.Unix(clientUnixTimestampSeconds, 0)
-			serverUnixTimestampSeconds := sm.LastModifiedAt
-			serverLastModifiedAt := time.Unix(serverUnixTimestampSeconds, 0)
-
-			if clientLastModifiedAt.After(serverLastModifiedAt) {
-				*sm = cm
-			} else {
-				clientMangaMap[sm.URL] = *sm
-			}
-
-			// Sync chapters
-			for _, clientChapter := range cm.Chapters {
-				serverChapter := findChapter(clientChapter.URL, clientChapter.ChapterNumber, sm.Chapters)
-				if serverChapter == nil {
-					// If the Chapter does not exist on the server, add it
-					sm.Chapters = append(sm.Chapters, clientChapter)
-				} else {
-					// Compare Chapter's lastModifiedAt timestamps and update if needed
-					clientUnixTimestampSeconds := clientChapter.LastModifiedAt
-					clientChapterLastModifiedAt := time.Unix(clientUnixTimestampSeconds, 0)
-					serverUnixTimestampSeconds := serverChapter.LastModifiedAt
-					serverChapterLastModifiedAt := time.Unix(serverUnixTimestampSeconds, 0)
-
-					if clientChapterLastModifiedAt.After(serverChapterLastModifiedAt) {
-						*serverChapter = clientChapter
-					}
-				}
-			}
-		} else {
-			// If the Manga exists on the server but not on the client, add it to the client
-			clientMangaMap[sm.URL] = *sm
-		}
-	}
-
-	return serverManga
-}
-
-func findCategoryByName(name string, categories []domain.Category) *domain.Category {
-	for i := range categories {
-		if categories[i].Name == name {
-			return &categories[i]
-		}
-	}
-	return nil
-}
-
-func findChapter(url string, chapterNumber float64, chapters []domain.Chapter) *domain.Chapter {
-	for i := range chapters {
-		if chapters[i].URL == url && chapters[i].ChapterNumber == chapterNumber {
-			return &chapters[i]
-		}
-	}
-	return nil
 }

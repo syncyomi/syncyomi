@@ -29,13 +29,11 @@ func (r SyncRepo) Store(ctx context.Context, sync *domain.Sync) (*domain.Sync, e
 		Insert("manga_sync").
 		Columns(
 			"user_api_key",
-			"device_id",
 			"last_sync",
 			"status",
 		).
 		Values(
 			sync.UserApiKey.Key,
-			sync.Device.ID,
 			sync.LastSynced,
 			sync.Status,
 		).
@@ -78,7 +76,6 @@ func (r SyncRepo) Delete(ctx context.Context, id int) error {
 func (r SyncRepo) Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error) {
 	queryBuilder := r.db.squirrel.
 		Update("manga_sync").
-		Set("device_id", sync.Device.ID).
 		Set("last_sync", sync.LastSynced).
 		Set("status", sync.Status).
 		Where(sq.Eq{"user_api_key": sync.UserApiKey.Key}).
@@ -100,21 +97,15 @@ func (r SyncRepo) ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, 
 		Select(
 			"manga_sync.id",
 			"manga_sync.user_api_key",
-			"manga_sync.device_id",
 			"manga_sync.last_sync",
 			"manga_sync.status",
 			"manga_sync.created_at",
 			"manga_sync.updated_at",
-			"devices.id",
-			"devices.name",
-			"devices.created_at",
-			"devices.updated_at",
 			"api_key.name",
 			"api_key.scopes",
 			"api_key.created_at",
 		).
 		From("manga_sync").
-		InnerJoin("devices ON devices.user_api_key = manga_sync.user_api_key").
 		InnerJoin("api_key ON api_key.key = manga_sync.user_api_key")
 
 	if apiKey != "" {
@@ -141,22 +132,15 @@ func (r SyncRepo) ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, 
 	mangaSyncs := make([]domain.Sync, 0)
 	for rows.Next() {
 		var mangaSync domain.Sync
-		// initialize device and api key
-		mangaSync.Device = &domain.Device{}
 		mangaSync.UserApiKey = &domain.APIKey{}
 
 		if err := rows.Scan(
 			&mangaSync.ID,
 			&mangaSync.UserApiKey.Key,
-			&mangaSync.Device.ID,
 			&mangaSync.LastSynced,
 			&mangaSync.Status,
 			&mangaSync.CreatedAt,
 			&mangaSync.UpdatedAt,
-			&mangaSync.Device.ID,
-			&mangaSync.Device.Name,
-			&mangaSync.Device.CreatedAt,
-			&mangaSync.Device.UpdatedAt,
 			&mangaSync.UserApiKey.Name,
 			pq.Array(&mangaSync.UserApiKey.Scopes),
 			&mangaSync.UserApiKey.CreatedAt,
@@ -175,21 +159,15 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 		Select(
 			"manga_sync.id",
 			"manga_sync.user_api_key",
-			"manga_sync.device_id",
 			"manga_sync.last_sync",
 			"manga_sync.status",
 			"manga_sync.created_at",
 			"manga_sync.updated_at",
-			"devices.id",
-			"devices.name",
-			"devices.created_at",
-			"devices.updated_at",
 			"api_key.name",
 			"api_key.scopes",
 			"api_key.created_at",
 		).
 		From("manga_sync").
-		Join("devices ON devices.user_api_key = manga_sync.user_api_key").
 		Join("api_key ON api_key.key = manga_sync.user_api_key").
 		Where(sq.Eq{"api_key.key": apiKey})
 
@@ -200,21 +178,15 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 
 	var mangaSync domain.Sync
 	// initialize device and api key
-	mangaSync.Device = &domain.Device{}
 	mangaSync.UserApiKey = &domain.APIKey{}
 
 	if err := r.db.handler.QueryRowContext(ctx, query, args...).Scan(
 		&mangaSync.ID,
 		&mangaSync.UserApiKey.Key,
-		&mangaSync.Device.ID,
 		&mangaSync.LastSynced,
 		&mangaSync.Status,
 		&mangaSync.CreatedAt,
 		&mangaSync.UpdatedAt,
-		&mangaSync.Device.ID,
-		&mangaSync.Device.Name,
-		&mangaSync.Device.CreatedAt,
-		&mangaSync.Device.UpdatedAt,
 		&mangaSync.UserApiKey.Name,
 		pq.Array(&mangaSync.UserApiKey.Scopes),
 		&mangaSync.UserApiKey.CreatedAt,
@@ -226,68 +198,4 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 	}
 
 	return &mangaSync, nil
-}
-
-func (r SyncRepo) GetSyncByDeviceID(ctx context.Context, deviceID int) (*domain.Sync, error) {
-	queryBuilder := r.db.squirrel.
-		Select(
-			"manga_sync.id",
-			"manga_sync.user_api_key",
-			"manga_sync.device_id",
-			"manga_sync.last_sync",
-			"manga_sync.status",
-			"manga_sync.created_at",
-			"manga_sync.updated_at",
-			"devices.id",
-			"devices.name",
-			"devices.created_at",
-			"devices.updated_at",
-			"api_key.name",
-			"api_key.scopes",
-			"api_key.created_at",
-		).
-		From("manga_sync").
-		Join("devices ON devices.user_api_key = manga_sync.user_api_key").
-		Join("api_key ON api_key.key = manga_sync.user_api_key").
-		Where(sq.Eq{"manga_sync.device_id": deviceID})
-
-	query, args, err := queryBuilder.ToSql()
-	if err != nil {
-		return nil, errors.Wrap(err, "error building query")
-	}
-
-	var mangaSync domain.Sync
-	// initialize device and api key
-	mangaSync.Device = &domain.Device{}
-	mangaSync.UserApiKey = &domain.APIKey{}
-
-	if err := r.db.handler.QueryRowContext(ctx, query, args...).Scan(
-		&mangaSync.ID,
-		&mangaSync.UserApiKey.Key,
-		&mangaSync.Device.ID,
-		&mangaSync.LastSynced,
-		&mangaSync.Status,
-		&mangaSync.CreatedAt,
-		&mangaSync.UpdatedAt,
-		&mangaSync.Device.ID,
-		&mangaSync.Device.Name,
-		&mangaSync.Device.CreatedAt,
-		&mangaSync.Device.UpdatedAt,
-		&mangaSync.UserApiKey.Name,
-		pq.Array(&mangaSync.UserApiKey.Scopes),
-		&mangaSync.UserApiKey.CreatedAt,
-	); err != nil {
-		if err == sql.ErrNoRows {
-			return &domain.Sync{}, nil
-		}
-		return nil, errors.Wrap(err, "error executing query")
-	}
-
-	return &mangaSync, nil
-}
-
-func (r SyncRepo) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error) {
-
-	//TODO implement me
-	panic("implement me")
 }
