@@ -60,7 +60,7 @@ CREATE TABLE manga_sync
     status TEXT NOT NULL DEFAULT 'unknown',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE,
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
 `
 
