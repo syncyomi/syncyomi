@@ -16,7 +16,7 @@ type Service interface {
 	Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error)
 	ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, error)
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
-	GetSyncData(ctx context.Context, apiKey string, deviceID int) (*domain.SyncData, error)
+	GetSyncData(ctx context.Context, apiKey string) (*domain.SyncData, error)
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
 }
 
@@ -84,7 +84,7 @@ func (s service) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sy
 	return msync, nil
 }
 
-func (s service) GetSyncData(ctx context.Context, apiKey string, deviceID int) (*domain.SyncData, error) {
+func (s service) GetSyncData(ctx context.Context, apiKey string) (*domain.SyncData, error) {
 	sData, err := s.repo.GetSyncByApiKey(ctx, apiKey)
 	if err != nil {
 		if err.Error() == "error executing query: sql: no rows in result set" {

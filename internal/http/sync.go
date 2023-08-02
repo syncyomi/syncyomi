@@ -17,7 +17,7 @@ type syncService interface {
 	Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error)
 	ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, error)
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
-	GetSyncData(ctx context.Context, apiKey string, deviceID int) (*domain.SyncData, error)
+	GetSyncData(ctx context.Context, apiKey string) (*domain.SyncData, error)
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
 }
 
@@ -177,14 +177,7 @@ func (h syncHandler) getSyncData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deviceIdQuery := r.URL.Query().Get("deviceId")
-	deviceId, err := strconv.Atoi(deviceIdQuery)
-	if err != nil {
-		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	dataResult, err := h.syncService.GetSyncData(ctx, apiKey, deviceId)
+	dataResult, err := h.syncService.GetSyncData(ctx, apiKey)
 	if err != nil {
 		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
 		return
