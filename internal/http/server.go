@@ -109,8 +109,6 @@ func (s Server) Handler() http.Handler {
 
 	encoder := encoder{}
 
-	web.RegisterHandler(r)
-
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", newAuthHandler(encoder, s.log, s.config.Config, s.cookieStore, s.authService).Routes)
 		r.Route("/healthz", newHealthHandler(encoder, s.db).Routes)
@@ -139,20 +137,10 @@ func (s Server) Handler() http.Handler {
 				s.sse.ServeHTTP(w, r)
 			})
 		})
-
-		// serve the parsed index.html
-		r.Get("/", s.index)
-		r.Get("/*", s.index)
 	})
 
-	return r
-}
+	// serve the web
+	web.RegisterHandler(r, s.version, s.config.Config.BaseURL)
 
-func (s Server) index(w http.ResponseWriter, r *http.Request) {
-	p := web.IndexParams{
-		Title:   "Dashboard",
-		Version: s.version,
-		BaseUrl: s.config.Config.BaseURL,
-	}
-	web.Index(w, p)
+	return r
 }
