@@ -25,6 +25,7 @@ node_modules/
 web/build
 bin/
 log/
+dist/
 .run/
 package-lock.json
 pnpm-lock*
