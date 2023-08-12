@@ -153,19 +153,19 @@ const dataTableComputed = computed(() => {
   }
 });
 
-const copyToClipboard = (text: string) => {
-  navigator.clipboard.writeText(text).then(
-    () => {
-      snackbarVisible.value = true;
-      snackbarMessage.value = "Copied to clipboard!";
-    },
-    () => {
-      snackbarVisible.value = true;
-      snackbarMessage.value = "Error copying to clipboard!";
-      snackbarColor.value = "error";
-    }
-  );
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    snackbarVisible.value = true;
+    snackbarMessage.value = "Copied to clipboard!";
+  } catch (err) {
+    snackbarVisible.value = true;
+    snackbarMessage.value = "Error copying to clipboard!";
+    snackbarColor.value = "error";
+    console.error("Copy to clipboard failed:", err);
+  }
 };
+
 </script>
 
 <style scoped></style>
