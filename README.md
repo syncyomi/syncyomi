@@ -38,6 +38,7 @@ docker-compose for syncyomi. Modify accordingly if running with unRAID or settin
 * Host port mapping might need to be changed to not collide with other apps
 * Change `BASE_DOCKER_DATA_PATH` to match your setup. Can be simply `./data`
 * Set custom network if needed
+* You may need to update the host address to 0.0.0.0 if you are running with podman
 
 Create `docker-compose.yml` and add the following. If you have a existing setup change to fit that.
 
@@ -111,6 +112,35 @@ systemctl enable -q --now --user syncyomi@$USER
 By default, the configuration is set to listen on `127.0.0.1`. It is highly recommended to use a reverse proxy like caddy, nginx or traefik.
 
 If you are not running a reverse proxy change `host` in the `config.toml` to `0.0.0.0`.
+
+## Usage
+### Configure and Run the Service
+Once the service has run once you should have a handful of files in the specified running directory. 
+
+If you are running behind a reverse proxy with a sub-directory be sure to update the baseUrl value, and in your proxy rewrite omit that suffix. The following is an nginx example.
+
+```
+location /SyncYomi/ {
+    proxy_pass http://localhost:8282/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $http_connection;
+}
+```
+
+You may need to restart the service once the config file has been updated.
+
+With the service running and accessible navigate to `Settings > API Keys` and generate a new API key. This will be used for your Tachiyomi clients.
+
+### Install The App
+Find the latest release of the modified tachiyomi app on the Discord. Backup your existing Tachiyomi environment before installing the modified version of the app.
+
+Install the modified Tachiyomi client and navigate to `Settings > Backup and Sync` where you should find a `Sync` header.
+
+Enter both your Host (ie www.mydomain.tld/SyncYomi/ or sync.mydomain.tld) and an API Key.
+
+Syncronization presently only happens on a fixed interval, so if you are hotswapping devices be sure to manually initiate a sync in the backup and sync settings on the device you were reading on, then do the same once it has completed on the next device.
+
 
 ## Community
 
