@@ -14,14 +14,16 @@ type MangaDataRepo interface {
 }
 
 type MangaData struct {
-	ID                  int           `json:"id"`
-	BackupManga         []Manga       `json:"backupManga"`
-	BackupCategories    []Category    `json:"backupCategories"`
-	BackupBrokenSources []interface{} `json:"backupBrokenSources"`
-	BackupSources       []Sources     `json:"backupSources"`
-	UserApiKey          *APIKey       `json:"user_api_key,omitempty"`
-	CreatedAt           time.Time     `json:"created_at"`
-	UpdatedAt           time.Time     `json:"updated_at"`
+	ID                      int           `json:"id"`
+	BackupManga             []Manga       `json:"backupManga"`
+	BackupCategories        []Category    `json:"backupCategories"`
+	BackupBrokenSources     []interface{} `json:"backupBrokenSources"`
+	BackupSources           []Sources     `json:"backupSources"`
+	BackupPreferences       []interface{} `json:"backupPreferences"`
+	BackupSourcePreferences []interface{} `json:"backupSourcePreferences"`
+	UserApiKey              *APIKey       `json:"user_api_key,omitempty"`
+	CreatedAt               time.Time     `json:"created_at"`
+	UpdatedAt               time.Time     `json:"updated_at"`
 }
 
 type Manga struct {
