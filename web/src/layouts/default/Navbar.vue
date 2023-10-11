@@ -1,6 +1,6 @@
 <template>
   <v-app-bar app fixed>
-    <v-toolbar-title class="text-capitalize" @click="$router.push('/')">
+    <v-toolbar-title class="text-capitalize" @click="$router.push('/settings')">
       <v-img
         class="d-none d-sm-block mx-1"
         height="40"
@@ -12,31 +12,31 @@
 
     <template v-if="showToolbarItems">
       <v-toolbar-items>
-        <v-col>
-          <v-btn
-            height="100%"
-            rounded
-            size="large"
-            to="/"
-            variant="flat"
-            width="100%"
-          >
-            Dashboard
-          </v-btn>
-        </v-col>
+<!--        <v-col>-->
+<!--          <v-btn-->
+<!--            height="100%"-->
+<!--            rounded-->
+<!--            size="large"-->
+<!--            to="/"-->
+<!--            variant="flat"-->
+<!--            width="100%"-->
+<!--          >-->
+<!--            Dashboard-->
+<!--          </v-btn>-->
+<!--        </v-col>-->
 
-        <v-col>
-          <v-btn
-            height="100%"
-            rounded
-            size="large"
-            to="logs"
-            variant="flat"
-            width="100%"
-          >
-            Logs
-          </v-btn>
-        </v-col>
+<!--        <v-col>-->
+<!--          <v-btn-->
+<!--            height="100%"-->
+<!--            rounded-->
+<!--            size="large"-->
+<!--            to="logs"-->
+<!--            variant="flat"-->
+<!--            width="100%"-->
+<!--          >-->
+<!--            Logs-->
+<!--          </v-btn>-->
+<!--        </v-col>-->
 
         <v-col>
           <v-btn
@@ -62,15 +62,15 @@
 
   <template v-if="!showToolbarItems">
     <v-bottom-navigation grow>
-      <v-btn to="/" value="dashboard">
-        <v-icon>mdi-view-dashboard</v-icon>
-        Dashboard
-      </v-btn>
+<!--      <v-btn to="/" value="dashboard">-->
+<!--        <v-icon>mdi-view-dashboard</v-icon>-->
+<!--        Dashboard-->
+<!--      </v-btn>-->
 
-      <v-btn to="logs" value="logs">
-        <v-icon>mdi-text-box-multiple-outline</v-icon>
-        Logs
-      </v-btn>
+<!--      <v-btn to="logs" value="logs">-->
+<!--        <v-icon>mdi-text-box-multiple-outline</v-icon>-->
+<!--        Logs-->
+<!--      </v-btn>-->
 
       <v-btn to="settings" value="settings">
         <v-icon>mdi-cog-outline</v-icon>

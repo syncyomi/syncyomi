@@ -3,15 +3,15 @@ import { baseUrl } from "@/utils";
 import { useAuthStore } from "@/store/auth/authStore";
 
 const routes = [
-  {
-    path: "/",
-    name: "Dashboard",
-    components: {
-      default: () => import("@/views/DashboardView.vue"),
-      navbar: () => import("@/layouts/default/Navbar.vue"),
-    },
-    meta: { requiresAuth: true },
-  },
+  // {
+  //   path: "/",
+  //   name: "Dashboard",
+  //   components: {
+  //     default: () => import("@/views/DashboardView.vue"),
+  //     navbar: () => import("@/layouts/default/Navbar.vue"),
+  //   },
+  //   meta: { requiresAuth: true },
+  // },
 
   {
     path: "/login",
@@ -25,15 +25,16 @@ const routes = [
     component: () => import("@/views/OnBoardView.vue"),
   },
 
-  {
-    path: "/logs",
-    name: "Logs",
-    components: {
-      default: () => import("@/views/LogsView.vue"),
-      navbar: () => import("@/layouts/default/Navbar.vue"),
-    },
-    meta: { requiresAuth: true },
-  },
+  // {
+  //   path: "/logs",
+  //   name: "Logs",
+  //   components: {
+  //     default: () => import("@/views/LogsView.vue"),
+  //     navbar: () => import("@/layouts/default/Navbar.vue"),
+  //   },
+  //   meta: { requiresAuth: true },
+  // },
+
   {
     path: "/settings",
     name: "Settings",
@@ -46,7 +47,7 @@ const routes = [
 
   {
     path: "/:catchAll(.*)",
-    redirect: "/",
+    redirect: "/settings",
   },
 ];
 
@@ -67,7 +68,7 @@ router.beforeEach((to, from, next) => {
     (to.name === "Login" || to.name === "Onboard")
   ) {
     // If the user is already authenticated and tries to access the login or onboard page, redirect to the dashboard.
-    next({ path: "/" });
+    next({ path: "/settings" });
   } else {
     // If none of the above conditions apply, proceed to the requested route.
     next();
