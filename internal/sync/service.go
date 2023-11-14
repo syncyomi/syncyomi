@@ -2,6 +2,8 @@ package sync
 
 import (
 	"context"
+	"fmt"
+	"github.com/SyncYomi/SyncYomi/internal/notification"
 	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
@@ -20,18 +22,22 @@ type Service interface {
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
 }
 
-func NewService(log logger.Logger, repo domain.SyncRepo, mdata mdata.Service) Service {
+func NewService(log logger.Logger, repo domain.SyncRepo, mdata mdata.Service, notificationSvc notification.Service, apiRepo domain.APIRepo) Service {
 	return &service{
-		log:      log.With().Str("module", "sync").Logger(),
-		repo:     repo,
-		mdataSvc: mdata,
+		log:                 log.With().Str("module", "sync").Logger(),
+		repo:                repo,
+		mdataSvc:            mdata,
+		notificationService: notificationSvc,
+		apiRepo:             apiRepo,
 	}
 }
 
 type service struct {
-	log      zerolog.Logger
-	repo     domain.SyncRepo
-	mdataSvc mdata.Service
+	log                 zerolog.Logger
+	repo                domain.SyncRepo
+	mdataSvc            mdata.Service
+	notificationService notification.Service
+	apiRepo             domain.APIRepo
 }
 
 func (s service) Store(ctx context.Context, sync *domain.Sync) (*domain.Sync, error) {
@@ -106,6 +112,14 @@ func (s service) GetSyncData(ctx context.Context, apiKey string) (*domain.SyncDa
 }
 
 func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error) {
+	user, err := s.apiRepo.Get(ctx, sync.Sync.UserApiKey.Key)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not get user by api key: %v", sync.Sync.UserApiKey.Key)
+		return nil, err
+	}
+
+	s.notifySyncStarted(user.Name)
+
 	// Ensure sync record exists
 	sData, err := s.ensureSyncRecordExists(ctx, sync)
 	if err != nil {
@@ -115,6 +129,7 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	// Ensure manga data exists
 	mData, err := s.ensureMangaDataExists(ctx, sync)
 	if err != nil {
+		s.notifySyncFailed(user.Name, err.Error())
 		return nil, err
 	}
 
@@ -124,6 +139,7 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	_, err = s.repo.Update(ctx, sync.Sync)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not update sync: %+v", sync.Sync)
+		s.notifySyncError(user.Name, err.Error())
 		return nil, err
 	}
 
@@ -131,8 +147,12 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	_, err = s.mdataSvc.Update(ctx, sync.Data)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not update manga data: %+v", mData)
+		s.notifySyncError(user.Name, err.Error())
 		return nil, err
 	}
+
+	// Notify success
+	s.notifySyncSuccess(user.Name)
 
 	return &domain.SyncData{
 		Sync: sData,
@@ -180,4 +200,33 @@ func (s service) ensureMangaDataExists(ctx context.Context, sync *domain.SyncDat
 	}
 
 	return mData, nil
+}
+
+func (s service) notifySyncStarted(apiKeyName string) {
+	s.notificationService.Send(domain.NotificationEventSyncStarted, domain.NotificationPayload{
+		Subject: "Sync Initiated",
+		Message: fmt.Sprintf("A sync operation between Tachiyomi and your library has been initiated for user **%s**. "+
+			"Please wait for the process to complete.", apiKeyName),
+	})
+}
+
+func (s service) notifySyncSuccess(apiKeyName string) {
+	s.notificationService.Send(domain.NotificationEventSyncSuccess, domain.NotificationPayload{
+		Subject: "Sync Completed Successfully",
+		Message: fmt.Sprintf("The synchronization with your Tachiyomi library has completed successfully for user **%s**.", apiKeyName),
+	})
+}
+
+func (s service) notifySyncFailed(apiKeyName string, errMsg string) {
+	s.notificationService.Send(domain.NotificationEventSyncFailed, domain.NotificationPayload{
+		Subject: "Sync Operation Failed",
+		Message: fmt.Sprintf("The synchronization with Tachiyomi failed for user **%s**. Error: %s", apiKeyName, errMsg),
+	})
+}
+
+func (s service) notifySyncError(apiKeyName string, errMsg string) {
+	s.notificationService.Send(domain.NotificationEventSyncError, domain.NotificationPayload{
+		Subject: "Error During Sync",
+		Message: fmt.Sprintf("An error occurred during synchronization with Tachiyomi for user **%s**. Error: %s", apiKeyName, errMsg),
+	})
 }
