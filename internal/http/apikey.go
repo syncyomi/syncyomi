@@ -10,6 +10,7 @@ import (
 )
 
 type apikeyService interface {
+	Get(ctx context.Context, key string) (*domain.APIKey, error)
 	List(ctx context.Context) ([]domain.APIKey, error)
 	Store(ctx context.Context, key *domain.APIKey) error
 	Update(ctx context.Context, key *domain.APIKey) error

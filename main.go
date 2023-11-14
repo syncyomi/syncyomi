@@ -85,7 +85,7 @@ func main() {
 		userService         = user.NewService(userRepo)
 		authService         = auth.NewService(log, userService)
 		mangaDataService    = mdata.NewService(log, mangaDataRepo)
-		syncService         = sync.NewService(log, syncRepo, mangaDataService)
+		syncService         = sync.NewService(log, syncRepo, mangaDataService, notificationService, apikeyRepo)
 	)
 
 	// register event subscribers

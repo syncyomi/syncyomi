@@ -10,6 +10,7 @@ import (
 )
 
 type Service interface {
+	Get(ctx context.Context, key string) (*domain.APIKey, error)
 	List(ctx context.Context) ([]domain.APIKey, error)
 	Store(ctx context.Context, key *domain.APIKey) error
 	Update(ctx context.Context, key *domain.APIKey) error
@@ -30,6 +31,10 @@ func NewService(log logger.Logger, repo domain.APIRepo) Service {
 		repo:     repo,
 		keyCache: []domain.APIKey{},
 	}
+}
+
+func (s *service) Get(ctx context.Context, key string) (*domain.APIKey, error) {
+	return s.repo.Get(ctx, key)
 }
 
 func (s *service) List(ctx context.Context) ([]domain.APIKey, error) {
