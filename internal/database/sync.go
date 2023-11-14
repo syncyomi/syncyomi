@@ -25,6 +25,14 @@ type SyncRepo struct {
 }
 
 func (r SyncRepo) Store(ctx context.Context, sync *domain.Sync) (*domain.Sync, error) {
+	// Check if LastSynced is nil and set it to current time if it is
+	if sync.LastSynced == nil {
+		now := time.Now()
+		sync.LastSynced = &now
+	}
+
+	sync.Status = domain.SyncStatusSuccess
+
 	queryBuilder := r.db.squirrel.
 		Insert("manga_sync").
 		Columns(
@@ -74,6 +82,14 @@ func (r SyncRepo) Delete(ctx context.Context, id int) error {
 }
 
 func (r SyncRepo) Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error) {
+	// Check if LastSynced is nil and set it to current time if it is
+	if sync.LastSynced == nil {
+		now := time.Now()
+		sync.LastSynced = &now
+	}
+
+	sync.Status = domain.SyncStatusSuccess
+
 	queryBuilder := r.db.squirrel.
 		Update("manga_sync").
 		Set("last_sync", sync.LastSynced).
