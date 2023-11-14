@@ -9,6 +9,7 @@ type APIRepo interface {
 	Store(ctx context.Context, key *APIKey) error
 	Delete(ctx context.Context, key string) error
 	GetKeys(ctx context.Context) ([]APIKey, error)
+	Get(ctx context.Context, key string) (*APIKey, error)
 }
 
 type APIKey struct {
