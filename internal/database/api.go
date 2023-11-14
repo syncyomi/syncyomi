@@ -25,6 +25,38 @@ type APIRepo struct {
 	cache map[string]domain.APIKey
 }
 
+func (r *APIRepo) Get(ctx context.Context, key string) (*domain.APIKey, error) {
+	queryBuilder := r.db.squirrel.
+		Select(
+			"name",
+			"key",
+			"scopes",
+			"created_at",
+		).
+		From("api_key")
+
+	queryBuilder = queryBuilder.Where(sq.Eq{"key": key})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return nil, errors.Wrap(err, "error building query")
+	}
+
+	row := r.db.handler.QueryRowContext(ctx, query, args...)
+
+	var a domain.APIKey
+
+	var name sql.NullString
+
+	if err := row.Scan(&name, &a.Key, pq.Array(&a.Scopes), &a.CreatedAt); err != nil {
+		return nil, errors.Wrap(err, "error scanning row")
+	}
+
+	a.Name = name.String
+
+	return &a, nil
+}
+
 func (r *APIRepo) Store(ctx context.Context, key *domain.APIKey) error {
 	queryBuilder := r.db.squirrel.
 		Insert("api_key").
