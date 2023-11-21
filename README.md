@@ -64,6 +64,7 @@ Then start with
     docker compose up -d
 
 ### Windows
+Download the latest release and run it.
 
 <!-- Check the windows setup guide [here](https://syncyomi.com/installation/windows) -->
 
@@ -114,33 +115,37 @@ By default, the configuration is set to listen on `127.0.0.1`. It is highly reco
 If you are not running a reverse proxy change `host` in the `config.toml` to `0.0.0.0`.
 
 ## Usage
-### Configure and Run the Service
-Once the service has run once you should have a handful of files in the specified running directory. 
+### Configuring and Running the Service
+### Initial Setup
+After the first run of the SyncYomi service, several files will be generated in your specified running directory. These are essential for the service's operation.
 
-If you are running behind a reverse proxy with a sub-directory be sure to update the baseUrl value, and in your proxy rewrite omit that suffix. The following is an nginx example.
+#### Configuration for Reverse Proxy Users
+If you're using a reverse proxy and your setup includes a sub-directory, it's crucial to update the baseUrl value in your configuration. Additionally, adjust your proxy settings to exclude this suffix. Below is an example configuration for nginx:
 
-```
-location /SyncYomi/ {
+```nginx
+location /syncyomi/ {
     proxy_pass http://localhost:8282/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $http_connection;
 }
 ```
+After updating the configuration file, restart the SyncYomi service to apply these changes.
 
-You may need to restart the service once the config file has been updated.
+#### API Key Generation
+To generate an API key, access the web interface of SyncYomi at `http://<your-server-address>:8282`.
+Once the service is running, navigate to `Settings > API` Keys and create a new API key. This key is crucial for linking your Tachiyomi clients to the SyncYomi service.
 
-With the service running and accessible navigate to `Settings > API Keys` and generate a new API key. This will be used for your Tachiyomi clients.
+## Install The App
+#### Preparing for Installation
+Before proceeding, backup your existing Tachiyomi environment. The latest release of the modified Tachiyomi app can be found on our Discord channel.
 
-### Install The App
-Find the latest release of the modified tachiyomi app on the Discord. Backup your existing Tachiyomi environment before installing the modified version of the app.
+Install the modified Tachiyomi client on your device. Then, go to `Settings > Data and Storage` in the app. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key.
 
-Install the modified Tachiyomi client and navigate to `Settings > Backup and Sync` where you should find a `Sync` header.
-
-Enter both your Host (ie www.mydomain.tld/SyncYomi/ or sync.mydomain.tld) and an API Key.
-
-Syncronization presently only happens on a fixed interval, so if you are hotswapping devices be sure to manually initiate a sync in the backup and sync settings on the device you were reading on, then do the same once it has completed on the next device.
-
+### Synchronization Details
+Currently, synchronization occurs at fixed intervals. 
+If you frequently switch between devices, manually initiate a sync in the `Data and Storage` settings of the Tachiyomi app on the device you were using. 
+Repeat this process on the next device after the first synchronization is complete to ensure your reading progress is up-to-date across all devices.
 
 ## Community
 
