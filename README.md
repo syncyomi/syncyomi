@@ -9,7 +9,6 @@
 
 <!-- <img alt="syncyomi ui" src=".github/images/syncyomi-front.png"/><br/> -->
 
-
 <!-- ## Documentation -->
 
 <!-- Installation guide and documentation can be found at https://syncyomi.com -->
@@ -29,16 +28,15 @@
 
 Head to [releases](https://github.com/SyncYomi/SyncYomi/releases) and download the binary for your operating system. Then, run the binary.
 
-
 ### Docker compose
 
 docker-compose for syncyomi. Modify accordingly if running with unRAID or setting up with Portainer.
 
-* Logging is optional
-* Host port mapping might need to be changed to not collide with other apps
-* Change `BASE_DOCKER_DATA_PATH` to match your setup. Can be simply `./data`
-* Set custom network if needed
-* You may need to update the host address to 0.0.0.0 if you are running with podman
+- Logging is optional
+- Host port mapping might need to be changed to not collide with other apps
+- Change `BASE_DOCKER_DATA_PATH` to match your setup. Can be simply `./data`
+- Set custom network if needed
+- You may need to update the host address to 0.0.0.0 if you are running with podman
 
 Create `docker-compose.yml` and add the following. If you have a existing setup change to fit that.
 
@@ -65,10 +63,11 @@ Then start with
 
 ### Windows
 
+Download the latest release and run it.
+
 <!-- Check the windows setup guide [here](https://syncyomi.com/installation/windows) -->
 
 ### Linux generic
-
 
 Download the latest release, or download the [source code](https://github.com/SyncYomi/SyncYomi/releases/latest) and build it yourself using `make build`.
 
@@ -114,13 +113,19 @@ By default, the configuration is set to listen on `127.0.0.1`. It is highly reco
 If you are not running a reverse proxy change `host` in the `config.toml` to `0.0.0.0`.
 
 ## Usage
-### Configure and Run the Service
-Once the service has run once you should have a handful of files in the specified running directory. 
 
-If you are running behind a reverse proxy with a sub-directory be sure to update the baseUrl value, and in your proxy rewrite omit that suffix. The following is an nginx example.
+### Configuring and Running the Service
 
-```
-location /SyncYomi/ {
+### Initial Setup
+
+After the first run of the SyncYomi service, several files will be generated in your specified running directory. These are essential for the service's operation.
+
+#### Configuration for Reverse Proxy Users
+
+If you're using a reverse proxy and your setup includes a sub-directory, it's crucial to update the baseUrl value in your configuration. Additionally, adjust your proxy settings to exclude this suffix. Below is an example configuration for nginx:
+
+```nginx
+location /syncyomi/ {
     proxy_pass http://localhost:8282/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -128,19 +133,35 @@ location /SyncYomi/ {
 }
 ```
 
-You may need to restart the service once the config file has been updated.
+After updating the configuration file, restart the SyncYomi service to apply these changes.
 
-With the service running and accessible navigate to `Settings > API Keys` and generate a new API key. This will be used for your Tachiyomi clients.
+### API Key Generation
 
-### Install The App
-Find the latest release of the modified tachiyomi app on the Discord. Backup your existing Tachiyomi environment before installing the modified version of the app.
+To generate an API key, access the web interface of SyncYomi at `http://<your-server-address>:8282`.
+Once the service is running, navigate to `Settings > API` Keys and create a new API key. This key is crucial for linking your Tachiyomi clients to the SyncYomi service.
 
-Install the modified Tachiyomi client and navigate to `Settings > Backup and Sync` where you should find a `Sync` header.
+Important Note: Treat each API key as a unique user. To ensure a seamless syncing experience across multiple devices, it's important to use the same API key for all the devices you intend to synchronize. Using different API keys will result in the devices being treated as separate users, each with their own syncing data. Keep your API key secure and consistent across all your devices for optimal functionality.
 
-Enter both your Host (ie www.mydomain.tld/SyncYomi/ or sync.mydomain.tld) and an API Key.
+## Install The App
 
-Syncronization presently only happens on a fixed interval, so if you are hotswapping devices be sure to manually initiate a sync in the backup and sync settings on the device you were reading on, then do the same once it has completed on the next device.
+#### Preparing for Installation
 
+Before proceeding, backup your existing Tachiyomi environment. The latest release of the modified Tachiyomi app can be found on our [Discord](https://discord.gg/aydqBWAZs8).
+
+Install the modified Tachiyomi client on your device. Then, go to `Settings > Data and Storage` in the app. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key.
+
+#### Important Configuration for Direct IP Users
+
+If you are using a direct IP address (e.g., http://192.168.1.202:8282) to connect to your server, ensure the config.toml file on your server has the host set to 0.0.0.0. This setting allows connections from any IP address. Be sure to use your machine's IPv4 address. For guidance on how to find your IPv4 address, refer to an [IPv4 finding guide for Windows](https://support.microsoft.com/en-us/windows/find-your-ip-address-5cf30435-114d-41a6-9c24-eed37b8e014b).
+
+Linux:
+`ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}'`
+
+### Synchronization Details
+
+Currently, synchronization occurs at fixed intervals.
+If you frequently switch between devices, manually initiate a sync in the `Data and Storage` settings of the Tachiyomi app on the device you were using.
+Repeat this process on the next device after the first synchronization is complete to ensure your reading progress is up-to-date across all devices.
 
 ## Community
 

@@ -28,4 +28,3 @@ log/
 dist/
 .run/
 package-lock.json
-pnpm-lock*
