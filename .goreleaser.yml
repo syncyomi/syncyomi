@@ -2,8 +2,7 @@ before:
   hooks:
     - go mod tidy
 builds:
-  -
-    id: syncyomi
+  - id: syncyomi
     env:
       - CGO_ENABLED=0
     goos:
@@ -33,26 +32,29 @@ builds:
 
 archives:
   - id: syncyomi
-    #    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
-    files:
-      - none*
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
 
 release:
   prerelease: auto
   footer: |
     **Full Changelog**: https://github.com/SyncYomi/SyncYomi/compare/{{ .PreviousTag }}...{{ .Tag }}
-    
+
     ## Docker images
-    - `ghcr.io/syncyomi/syncyomi:{{ .Tag }}`
+    - `docker pull ghcr.io/syncyomi/syncyomi:{{ .Tag }}`
 
     ## What to do next?
     - Join our [Discord server](https://discord.gg/aydqBWAZs8)
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
 changelog:
@@ -63,26 +65,38 @@ changelog:
       - Merge remote-tracking branch
       - Merge branch
   groups:
-    - title: 'New Features'
+    - title: "New Features"
       regexp: "^.*feat[(\\w)]*:+.*$"
       order: 0
-    - title: 'Bug Fixes'
+    - title: "Bug Fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
       order: 1
-    - title: 'Other Changes'
+    - title: "Other Changes"
       regexp: "^.*chore[(\\w)]*:+.*$"
       order: 2
-    - title: 'Breaking Changes'
+    - title: "Breaking Changes"
       regexp: "^.*BREAKING CHANGE[(\\w)]*:+.*$"
       order: 3
-    - title: 'Documentation'
+    - title: "Documentation"
       regexp: "^.*docs[(\\w)]*:+.*$"
       order: 4
-    - title: 'Tests'
+    - title: "Tests"
       regexp: "^.*test[(\\w)]*:+.*$"
       order: 5
-    - title: 'Dependencies'
+    - title: "Dependencies"
       regexp: "^.*deps[(\\w)]*:+.*$"
       order: 6
-    - title: 'Other work'
+    - title: "Other work"
       order: 999
+
+nfpms:
+  - package_name: syncyomi
+    homepage: https://syncyomi.com
+    maintainer: Syncyomi <packages@syncyomi.com>
+    description: |-
+      SyncYomi is an open-source project designed to offer a seamless synchronization experience for your Tachiyomi manga reading progress and library across multiple devices. This server can be self-hosted, allowing you to sync your Tachiyomi library effortlessly.
+    formats:
+      - apk
+      - deb
+      - rpm
+      - archlinux
