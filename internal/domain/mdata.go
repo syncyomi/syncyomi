@@ -79,7 +79,7 @@ type Tracking struct {
 type History struct {
 	URL          string `json:"url"`
 	LastRead     int64  `json:"lastRead"`
-	ReadDuration int    `json:"readDuration"`
+	ReadDuration int64  `json:"readDuration"`
 }
 
 type Sources struct {
