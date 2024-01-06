@@ -20,6 +20,10 @@ type Service interface {
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
 	GetSyncData(ctx context.Context, apiKey string) (*domain.SyncData, error)
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
+	GetSyncLockFile(ctx context.Context, apiKey string) (*domain.SyncLockFile, error)
+	CreateSyncLockFile(ctx context.Context, apiKey string, acquiredBy string) (*domain.SyncLockFile, error)
+	UpdateSyncLockFile(ctx context.Context, syncLockFile *domain.SyncLockFile) (*domain.SyncLockFile, error)
+	DeleteSyncLockFile(ctx context.Context, apiKey string) bool
 }
 
 func NewService(log logger.Logger, repo domain.SyncRepo, mdata mdata.Service, notificationSvc notification.Service, apiRepo domain.APIRepo) Service {
@@ -118,6 +122,12 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		return nil, err
 	}
 
+	err = s.updateSyncLockFile(ctx, domain.SyncStatusSyncing, sync.Sync.UserApiKey.Key)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not update sync lock file")
+		return nil, err
+	}
+
 	s.notifySyncStarted(user.Name)
 
 	// Ensure sync record exists
@@ -151,6 +161,12 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		return nil, err
 	}
 
+	err = s.updateSyncLockFile(ctx, domain.SyncStatusSuccess, sync.Sync.UserApiKey.Key)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not update sync lock file")
+		return nil, err
+	}
+
 	// Notify success
 	s.notifySyncSuccess(user.Name)
 
@@ -158,6 +174,40 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		Sync: sData,
 		Data: mData,
 	}, nil
+}
+
+func (s service) GetSyncLockFile(ctx context.Context, apiKey string) (*domain.SyncLockFile, error) {
+	lockFile, err := s.repo.GetSyncLockFile(ctx, apiKey)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not get sync lock file by api key: %v", apiKey)
+		return nil, err
+	}
+
+	return lockFile, nil
+}
+
+func (s service) CreateSyncLockFile(ctx context.Context, apiKey string, acquiredBy string) (*domain.SyncLockFile, error) {
+	lockFile, err := s.repo.CreateSyncLockFile(ctx, apiKey, acquiredBy)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not create sync lock file by api key: %v", apiKey)
+		return nil, err
+	}
+
+	return lockFile, nil
+}
+
+func (s service) UpdateSyncLockFile(ctx context.Context, syncLockFile *domain.SyncLockFile) (*domain.SyncLockFile, error) {
+	lockFile, err := s.repo.UpdateSyncLockFile(ctx, syncLockFile)
+	if err != nil {
+		s.log.Error().Err(err).Msgf("could not update sync lock file by api key: %v", syncLockFile.UserApiKey)
+		return nil, err
+	}
+
+	return lockFile, nil
+}
+
+func (s service) DeleteSyncLockFile(ctx context.Context, apiKey string) bool {
+	return s.repo.DeleteSyncLockFile(ctx, apiKey)
 }
 
 func (s service) ensureSyncRecordExists(ctx context.Context, sync *domain.SyncData) (*domain.Sync, error) {
@@ -229,4 +279,22 @@ func (s service) notifySyncError(apiKeyName string, errMsg string) {
 		Subject: "Error During Sync",
 		Message: fmt.Sprintf("An error occurred during synchronization with Tachiyomi for user **%s**. Error: %s", apiKeyName, errMsg),
 	})
+}
+
+func (s service) updateSyncLockFile(ctx context.Context, status domain.SyncStatus, apiKey string) error {
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Minute * 5)
+
+	syncLockFile := &domain.SyncLockFile{
+		UserApiKey: apiKey,
+		LastSynced: &now,
+		Status:     status,
+		RetryCount: 0,
+		AcquiredAt: &now,
+		ExpiresAt:  &expiresAt,
+		UpdatedAt:  &now,
+	}
+
+	_, err := s.UpdateSyncLockFile(ctx, syncLockFile)
+	return err
 }

@@ -62,6 +62,21 @@ CREATE TABLE manga_sync
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
+
+CREATE TABLE sync_lock
+(
+    id INTEGER PRIMARY KEY,
+    user_api_key TEXT UNIQUE,
+    acquired_by TEXT UNIQUE,
+    last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    retry_count INT NOT NULL DEFAULT 0,
+    acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
 `
 
 var sqliteMigrations = []string{
@@ -90,4 +105,20 @@ var sqliteMigrations = []string{
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+	`
+	CREATE TABLE sync_lock
+	(
+		id INTEGER PRIMARY KEY,
+		user_api_key TEXT UNIQUE,
+		acquired_by TEXT UNIQUE,
+		last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		status TEXT NOT NULL DEFAULT 'unknown',
+		retry_count INT NOT NULL DEFAULT 0,
+		acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+	);
+`,
 }

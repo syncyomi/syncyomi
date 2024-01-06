@@ -207,11 +207,157 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 		pq.Array(&mangaSync.UserApiKey.Scopes),
 		&mangaSync.UserApiKey.CreatedAt,
 	); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return &domain.Sync{}, errors.Wrap(err, "error executing query")
 		}
 		return nil, errors.Wrap(err, "error executing query")
 	}
 
 	return &mangaSync, nil
+}
+
+func (r SyncRepo) GetSyncLockFile(ctx context.Context, apiKey string) (*domain.SyncLockFile, error) {
+	queryBuilder := r.db.squirrel.
+		Select(
+			"id",
+			"user_api_key",
+			"acquired_by",
+			"last_sync",
+			"status",
+			"retry_count",
+			"acquired_at",
+			"expires_at",
+		).
+		From("sync_lock").
+		Where(sq.Eq{"user_api_key": apiKey})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return nil, errors.Wrap(err, "error building query")
+	}
+
+	var syncLockFile domain.SyncLockFile
+
+	if err := r.db.handler.QueryRowContext(ctx, query, args...).Scan(
+		&syncLockFile.ID,
+		&syncLockFile.UserApiKey,
+		&syncLockFile.AcquiredBy,
+		&syncLockFile.LastSynced,
+		&syncLockFile.Status,
+		&syncLockFile.RetryCount,
+		&syncLockFile.AcquiredAt,
+		&syncLockFile.ExpiresAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &domain.SyncLockFile{}, errors.Wrap(err, "error executing query")
+		}
+		return nil, errors.Wrap(err, "error executing query")
+	}
+
+	return &syncLockFile, nil
+}
+
+func (r SyncRepo) CreateSyncLockFile(ctx context.Context, apiKey string, acquiredBy string) (*domain.SyncLockFile, error) {
+	queryBuilder := r.db.squirrel.
+		Insert("sync_lock").
+		Columns(
+			"user_api_key",
+			"acquired_by",
+			"last_sync",
+			"status",
+			"retry_count",
+			"acquired_at",
+			"expires_at",
+		).
+		Values(
+			apiKey,
+			acquiredBy,
+			time.Now(),
+			domain.SyncStatusPending,
+			0,
+			time.Now(),
+			time.Now().Add(time.Minute*5),
+		).
+		Suffix("RETURNING id, created_at, updated_at").RunWith(r.db.handler)
+
+	var id int
+	var createdAt time.Time
+	var updatedAt time.Time
+
+	if err := queryBuilder.QueryRowContext(ctx).Scan(&id, &createdAt, &updatedAt); err != nil {
+		return nil, errors.Wrap(err, "error executing query")
+	}
+
+	syncLockFile := &domain.SyncLockFile{
+		ID:         id,
+		UserApiKey: apiKey,
+		AcquiredBy: acquiredBy,
+		LastSynced: &createdAt,
+		Status:     domain.SyncStatusPending,
+		RetryCount: 0,
+		AcquiredAt: &createdAt,
+		ExpiresAt:  &updatedAt,
+	}
+
+	return syncLockFile, nil
+}
+
+func (r SyncRepo) UpdateSyncLockFile(ctx context.Context, syncLockFile *domain.SyncLockFile) (*domain.SyncLockFile, error) {
+	// Start building the query.
+	queryBuilder := r.db.squirrel.
+		Update("sync_lock").
+		Where(sq.Eq{"user_api_key": syncLockFile.UserApiKey})
+
+	// Dynamically add fields that are present.
+	if syncLockFile.AcquiredBy != "" {
+		queryBuilder = queryBuilder.Set("acquired_by", syncLockFile.AcquiredBy)
+	}
+	if syncLockFile.LastSynced != nil {
+		queryBuilder = queryBuilder.Set("last_sync", syncLockFile.LastSynced)
+	}
+	if syncLockFile.Status != "" {
+		queryBuilder = queryBuilder.Set("status", syncLockFile.Status)
+	}
+	if syncLockFile.RetryCount != 0 {
+		queryBuilder = queryBuilder.Set("retry_count", syncLockFile.RetryCount)
+	}
+	if syncLockFile.AcquiredAt != nil {
+		queryBuilder = queryBuilder.Set("acquired_at", syncLockFile.AcquiredAt)
+	}
+	if syncLockFile.ExpiresAt != nil {
+		queryBuilder = queryBuilder.Set("expires_at", syncLockFile.ExpiresAt)
+	}
+
+	queryBuilder = queryBuilder.Suffix("RETURNING updated_at").RunWith(r.db.handler)
+
+	var updatedAt time.Time
+	if err := queryBuilder.QueryRowContext(ctx).Scan(&updatedAt); err != nil {
+		return nil, errors.Wrap(err, "error executing query")
+	}
+
+	syncLockFile.UpdatedAt = &updatedAt
+
+	return syncLockFile, nil
+}
+
+func (r SyncRepo) DeleteSyncLockFile(ctx context.Context, apiKey string) bool {
+	queryBuilder := r.db.squirrel.
+		Delete("sync_lock").
+		Where(sq.Eq{"user_api_key": apiKey})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		r.db.log.Error().Err(err).Msgf("error building query")
+		return false
+	}
+
+	_, err = r.db.handler.ExecContext(ctx, query, args...)
+	if err != nil {
+		r.db.log.Error().Err(err).Msgf("error executing query")
+		return false
+	}
+
+	r.db.log.Debug().Msgf("Sync lock file deleted: %v", apiKey)
+
+	return true
 }
