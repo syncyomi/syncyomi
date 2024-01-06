@@ -19,6 +19,10 @@ type syncService interface {
 	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
 	GetSyncData(ctx context.Context, apiKey string) (*domain.SyncData, error)
 	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
+	GetSyncLockFile(ctx context.Context, apiKey string) (*domain.SyncLockFile, error)
+	CreateSyncLockFile(ctx context.Context, apiKey string, acquiredBy string) (*domain.SyncLockFile, error)
+	UpdateSyncLockFile(ctx context.Context, syncLockFile *domain.SyncLockFile) (*domain.SyncLockFile, error)
+	DeleteSyncLockFile(ctx context.Context, apiKey string) bool
 }
 
 type syncHandler struct {
@@ -40,6 +44,9 @@ func (h syncHandler) Routes(r chi.Router) {
 	r.Get("/{apiKey}", h.getSyncByApiKey)
 	r.Get("/download", h.getSyncData)
 	r.Post("/upload", h.sync)
+	r.Get("/lock", h.getSyncLockFile)
+	r.Post("/lock", h.createSyncLockFile)
+	r.Patch("/lock", h.updateSyncLockFile)
 }
 
 func (h syncHandler) store(w http.ResponseWriter, r *http.Request) {
@@ -184,4 +191,128 @@ func (h syncHandler) getSyncData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.encoder.StatusResponse(ctx, w, dataResult, http.StatusOK)
+}
+
+func (h syncHandler) getSyncLockFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx    = r.Context()
+		apiKey = r.Header.Get("X-API-Token")
+	)
+
+	// check if api key is set
+	if apiKey == "" {
+		h.encoder.StatusResponse(ctx, w, "No API key set", http.StatusBadRequest)
+		return
+	}
+
+	// check/try to get sync lock file from database
+	syncLockFile, err := h.syncService.GetSyncLockFile(ctx, apiKey)
+	if err != nil {
+		// check if error is due no rows found
+		if err.Error() != "error executing query: sql: no rows in result set" {
+			h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+			return
+		} else {
+			h.encoder.StatusResponse(ctx, w, "No sync lock file found", http.StatusNotFound)
+			return
+		}
+	}
+
+	h.encoder.StatusResponse(ctx, w, syncLockFile, http.StatusOK)
+}
+
+func (h syncHandler) createSyncLockFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx    = r.Context()
+		apiKey = r.Header.Get("X-API-Token")
+	)
+
+	// check if api key is set
+	if apiKey == "" {
+		h.encoder.StatusResponse(ctx, w, "No API key set", http.StatusBadRequest)
+		return
+	}
+
+	// Read data from request body
+	requestData, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Unmarshal JSON from request body
+	var syncLockFile domain.SyncLockFile
+	if err := json.Unmarshal(requestData, &syncLockFile); err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// check if sync lock exists
+	lockFile, err := h.syncService.GetSyncLockFile(ctx, apiKey)
+	if err != nil {
+		// check if error is due no rows found
+		if err.Error() != "error executing query: sql: no rows in result set" {
+			h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+			return
+		} else {
+			// create sync lock file
+			lockFile, err = h.syncService.CreateSyncLockFile(ctx, apiKey, syncLockFile.AcquiredBy)
+			if err != nil {
+				h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			h.encoder.StatusResponse(ctx, w, lockFile, http.StatusOK)
+			return
+		}
+	}
+}
+
+func (h syncHandler) updateSyncLockFile(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx    = r.Context()
+		apiKey = r.Header.Get("X-API-Token")
+	)
+
+	// check if api key is set
+	if apiKey == "" {
+		h.encoder.StatusResponse(ctx, w, "No API key set", http.StatusBadRequest)
+		return
+	}
+
+	// Read data from request body
+	requestData, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Unmarshal JSON from request body
+	var syncLockFile domain.SyncLockFile
+	if err := json.Unmarshal(requestData, &syncLockFile); err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// check if sync lock exists
+	lockFile, err := h.syncService.GetSyncLockFile(ctx, apiKey)
+	if err != nil {
+		// check if error is due no rows found
+		if err.Error() != "error executing query: sql: no rows in result set" {
+			h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+			return
+		} else {
+			h.encoder.StatusResponse(ctx, w, "No sync lock file found", http.StatusNotFound)
+			return
+		}
+	}
+
+	// update sync lock file
+	lockFile, err = h.syncService.UpdateSyncLockFile(ctx, &syncLockFile)
+	if err != nil {
+		h.encoder.StatusResponse(ctx, w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.encoder.StatusResponse(ctx, w, lockFile, http.StatusOK)
 }
