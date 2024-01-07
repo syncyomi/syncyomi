@@ -122,9 +122,6 @@ var sqliteMigrations = []string{
 	);
 `,
 	`
-    -- Migration to change default status to 'success' in sync_lock table
-    PRAGMA foreign_keys=off;
-    BEGIN TRANSACTION;
     ALTER TABLE sync_lock RENAME TO _sync_lock_old;
     CREATE TABLE sync_lock
     (
@@ -143,7 +140,5 @@ var sqliteMigrations = []string{
     INSERT INTO sync_lock (id, user_api_key, acquired_by, last_sync, status, retry_count, acquired_at, expires_at, created_at, updated_at)
         SELECT id, user_api_key, acquired_by, last_sync, 'success', retry_count, acquired_at, expires_at, created_at, updated_at FROM _sync_lock_old;
     DROP TABLE _sync_lock_old;
-    COMMIT;
-    PRAGMA foreign_keys=on;
     `,
 }
