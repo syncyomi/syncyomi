@@ -273,7 +273,7 @@ func (r SyncRepo) CreateSyncLockFile(ctx context.Context, apiKey string, acquire
 			apiKey,
 			acquiredBy,
 			time.Now(),
-			domain.SyncStatusPending,
+			domain.SyncStatusSuccess,
 			0,
 			time.Now(),
 			time.Now().Add(time.Minute*5),

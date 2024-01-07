@@ -134,4 +134,7 @@ var postgresMigrations = []string{
 	`
 	ALTER TABLE sync_lock ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
 `,
+	`
+    UPDATE sync_lock SET status = 'success' WHERE status = 'pending';
+`,
 }
