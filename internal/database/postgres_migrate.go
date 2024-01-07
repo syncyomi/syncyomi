@@ -73,7 +73,7 @@ CREATE TABLE sync_lock
 (
 id SERIAL UNIQUE ,
 user_api_key TEXT UNIQUE,
-acquired_by TEXT UNIQUE,
+acquired_by TEXT,
 last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 status TEXT NOT NULL DEFAULT 'unknown',
 retry_count INT NOT NULL DEFAULT 0,
@@ -136,5 +136,8 @@ var postgresMigrations = []string{
 `,
 	`
     UPDATE sync_lock SET status = 'success' WHERE status = 'pending';
+`,
+	`
+    ALTER TABLE sync_lock DROP CONSTRAINT IF EXISTS sync_lock_acquired_by_key;
 `,
 }
