@@ -67,7 +67,7 @@ CREATE TABLE sync_lock
 (
     id INTEGER PRIMARY KEY,
     user_api_key TEXT UNIQUE,
-    acquired_by TEXT UNIQUE,
+    acquired_by TEXT,
     last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status TEXT NOT NULL DEFAULT 'unknown',
     retry_count INT NOT NULL DEFAULT 0,
@@ -141,4 +141,30 @@ var sqliteMigrations = []string{
         SELECT id, user_api_key, acquired_by, last_sync, 'success', retry_count, acquired_at, expires_at, created_at, updated_at FROM _sync_lock_old;
     DROP TABLE _sync_lock_old;
     `,
+	`
+	ALTER TABLE sync_lock RENAME TO _sync_lock_old;
+
+    -- Create a new sync_lock table with the acquired_by column as non-unique
+    CREATE TABLE sync_lock
+    (
+        id INTEGER PRIMARY KEY,
+        user_api_key TEXT UNIQUE,
+        acquired_by TEXT,
+        last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status TEXT NOT NULL DEFAULT 'unknown',
+        retry_count INT NOT NULL DEFAULT 0,
+        acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+    );
+
+    -- Copy data from old table to new table
+    INSERT INTO sync_lock (id, user_api_key, acquired_by, last_sync, status, retry_count, acquired_at, expires_at, created_at, updated_at)
+    SELECT id, user_api_key, acquired_by, last_sync, status, retry_count, acquired_at, expires_at, created_at, updated_at FROM _sync_lock_old;
+
+    -- Drop the old table
+    DROP TABLE _sync_lock_old;
+`,
 }
