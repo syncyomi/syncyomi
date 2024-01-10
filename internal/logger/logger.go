@@ -24,7 +24,7 @@ type Logger interface {
 	Trace() *zerolog.Event
 	Debug() *zerolog.Event
 	With() zerolog.Context
-	RegisterSSEWriter(sse *sse.Server)
+	RegisterSSEHook(sse *sse.Server)
 	SetLogLevel(level string)
 }
 
@@ -75,10 +75,8 @@ func New(cfg *domain.Config) Logger {
 	return l
 }
 
-func (l *DefaultLogger) RegisterSSEWriter(sse *sse.Server) {
-	w := NewSSEWriter(sse)
-	l.writers = append(l.writers, w)
-	l.log = zerolog.New(io.MultiWriter(l.writers...)).With().Stack().Logger()
+func (l *DefaultLogger) RegisterSSEHook(sse *sse.Server) {
+	l.log = l.log.Hook(&ServerSentEventHook{sse: sse})
 }
 
 func (l *DefaultLogger) SetLogLevel(level string) {
