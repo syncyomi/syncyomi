@@ -2,6 +2,8 @@ module github.com/SyncYomi/SyncYomi
 
 go 1.20
 
+replace github.com/r3labs/sse/v2 => github.com/autobrr/sse/v2 v2.0.0-20230520125637-530e06346d7d
+
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
