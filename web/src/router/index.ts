@@ -25,15 +25,15 @@ const routes = [
     component: () => import("@/views/OnBoardView.vue"),
   },
 
-  // {
-  //   path: "/logs",
-  //   name: "Logs",
-  //   components: {
-  //     default: () => import("@/views/LogsView.vue"),
-  //     navbar: () => import("@/layouts/default/Navbar.vue"),
-  //   },
-  //   meta: { requiresAuth: true },
-  // },
+  {
+    path: "/logs",
+    name: "Logs",
+    components: {
+      default: () => import("@/views/LogsView.vue"),
+      navbar: () => import("@/layouts/default/Navbar.vue"),
+    },
+    meta: { requiresAuth: true },
+  },
 
   {
     path: "/settings",

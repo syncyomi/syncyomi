@@ -25,18 +25,18 @@
 <!--          </v-btn>-->
 <!--        </v-col>-->
 
-<!--        <v-col>-->
-<!--          <v-btn-->
-<!--            height="100%"-->
-<!--            rounded-->
-<!--            size="large"-->
-<!--            to="logs"-->
-<!--            variant="flat"-->
-<!--            width="100%"-->
-<!--          >-->
-<!--            Logs-->
-<!--          </v-btn>-->
-<!--        </v-col>-->
+        <v-col>
+          <v-btn
+            height="100%"
+            rounded
+            size="large"
+            to="logs"
+            variant="flat"
+            width="100%"
+          >
+            Logs
+          </v-btn>
+        </v-col>
 
         <v-col>
           <v-btn
@@ -67,10 +67,10 @@
 <!--        Dashboard-->
 <!--      </v-btn>-->
 
-<!--      <v-btn to="logs" value="logs">-->
-<!--        <v-icon>mdi-text-box-multiple-outline</v-icon>-->
-<!--        Logs-->
-<!--      </v-btn>-->
+      <v-btn to="logs" value="logs">
+        <v-icon>mdi-text-box-multiple-outline</v-icon>
+        Logs
+      </v-btn>
 
       <v-btn to="settings" value="settings">
         <v-icon>mdi-cog-outline</v-icon>
