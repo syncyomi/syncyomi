@@ -45,10 +45,11 @@ func main() {
 
 	// setup server-sent-events
 	serverEvents := sse.New()
-	serverEvents.CreateStreamWithOpts("logs", sse.StreamOpts{MaxEntries: 1000, AutoReplay: true})
+	serverEvents.AutoReplay = false
+	serverEvents.CreateStream("logs")
 
-	// register SSE writer
-	log.RegisterSSEWriter(serverEvents)
+	// register SSE hook on logger
+	log.RegisterSSEHook(serverEvents)
 
 	// setup internal eventbus
 	bus := EventBus.New()
