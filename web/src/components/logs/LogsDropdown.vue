@@ -16,7 +16,6 @@ const menu = ref(false); // Controls the visibility of the menu
     <template  v-slot:activator="{ props }">
       <v-btn
         v-bind="props"
-        icon
         class="ml-2"
       >
         <v-icon>mdi-dots-vertical</v-icon>
@@ -27,7 +26,7 @@ const menu = ref(false); // Controls the visibility of the menu
       <v-list>
        <v-list-item>
         <v-switch
-          v-model="logsStore.settings.scrollOnNewLog"
+          v-model="logsStore.scrollOnNewLog"
           color="purple"
           label="Scroll to bottom on new message"
           hide-details
@@ -38,7 +37,7 @@ const menu = ref(false); // Controls the visibility of the menu
           <v-list-item-title>Indent log lines </v-list-item-title>
           <v-list-item-action>
             <v-switch
-              v-model="logsStore.settings.indentLogLines"
+              v-model="logsStore.indentLogLines"
               color="purple"
               label="Indent each log line according to their respective starting position."
             ></v-switch>
@@ -49,7 +48,7 @@ const menu = ref(false); // Controls the visibility of the menu
           <v-list-item-title>Hide Wrapped text</v-list-item-title>
           <v-list-item-action>
             <v-switch
-              v-model="logsStore.settings.hideWrappedText"
+              v-model="logsStore.hideWrappedText"
               color="purple"
               label="Hides text that is meant to be wrapped."
             ></v-switch>
@@ -62,7 +61,7 @@ const menu = ref(false); // Controls the visibility of the menu
 
         <v-divider></v-divider>
         <v-list-item @click="logsStore.clearLogs()">
-          <v-btn prepend-icon="mdi-delete" variant="text" block>
+          <v-btn prepend-icon="mdi-delete" variant="text">
             Clear Logs
           </v-btn>
         </v-list-item>

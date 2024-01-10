@@ -32,8 +32,8 @@
               <template v-slot="{ item }">
                 <div :class="[
               'my-2 flex items-center',
-              logsStore.settings.indentLogLines ? 'pl-4' : '',
-              logsStore.settings.hideWrappedText ? 'truncate' : 'whitespace-normal'
+              logsStore.indentLogLines ? 'pl-4' : '',
+              logsStore.hideWrappedText ? 'truncate' : 'whitespace-normal'
             ]">
                   <span :title="formatTime(item.time)" class="font-mono grey--text mr-2">{{ formatTime(item.time) }}</span>
                   <span :class="getLogLevelColor(item.level)" class="font-mono font-weight-bold mr-2">{{ item.level }}</span>
@@ -51,12 +51,13 @@
 
 
 <script lang="ts" setup>
-import {onBeforeUnmount, ref, watch, watchEffect} from "vue";
+import {onBeforeUnmount, onMounted, ref, watch} from "vue";
 import {useLogsStore} from "@/store/logStore";
 import {APIClient} from "@/api/APIClient";
 import {format} from "date-fns";
 import LogsDropdown from "@/components/logs/LogsDropdown.vue";
 import {VVirtualScroll} from "vuetify/components";
+import {LogEvent} from "@/types/Logs";
 
 export type LogLevel = "TRC" | "DBG" | "INF" | "ERR" | "WRN" | "FTL" | "PNC";
 
@@ -76,6 +77,7 @@ const getLogLevelColor = (level: string) => {
 
 const logsStore = useLogsStore();
 const virtualScroller = ref<VVirtualScroll>();
+let es : EventSource;
 
 const formatTime = (time: string) => {
   return  format(new Date(time), "HH:mm:ss");
@@ -87,22 +89,22 @@ const scrollToBottom = () => {
   }
 };
 
-watch(() => logsStore.settings.scrollOnNewLog, () => {
-  if (logsStore.settings.scrollOnNewLog) {
+watch(() => logsStore.scrollOnNewLog, () => {
+  if (logsStore.scrollOnNewLog) {
     scrollToBottom();
   }
 });
 
 watch(() => [logsStore.logs, logsStore.filteredLogs], () => {
   // Check if scroll on new log is enabled
-  if (logsStore.settings.scrollOnNewLog) {
+  if (logsStore.scrollOnNewLog) {
     scrollToBottom();
   }
 });
 
 // Watch for new logs being added
 watch(() => logsStore.logs.length, (newLength, oldLength) => {
-  if (newLength > oldLength && logsStore.settings.scrollOnNewLog) {
+  if (newLength > oldLength && logsStore.scrollOnNewLog) {
     scrollToBottom();
   }
 });
@@ -125,20 +127,24 @@ watch([() => logsStore.logs, () => logsStore.searchFilter], () => {
   }
 }, { immediate: true });
 
-watchEffect(() => {
-  const es = APIClient.events.logs();
+onMounted(() => {
+  es = APIClient.events.logs();
 
   es.onmessage = (event) => {
-    const newData = JSON.parse(event.data); // assuming LogEvent type
+    const newData = JSON.parse(event.data) as LogEvent;
     logsStore.addLog(newData);
-    // If you want to scroll to bottom on every new log
-    if (logsStore.settings.scrollOnNewLog) {
-      scrollToBottom();
-    }
   };
+});
 
-  onBeforeUnmount(() => {
+onBeforeUnmount(() => {
+  if (es) {
     es.close();
-  });
+  }
+});
+
+watch(() => logsStore.scrollOnNewLog, (newVal) => {
+  if (newVal) {
+    scrollToBottom();
+  }
 });
 </script>
