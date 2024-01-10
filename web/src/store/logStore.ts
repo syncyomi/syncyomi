@@ -1,5 +1,5 @@
 import {defineStore} from "pinia";
-import {ref} from "vue";
+import {ref, watch} from "vue";
 import {LogEvent} from "@/types/Logs";
 
 export const useLogsStore = defineStore('logsStore', () => {
@@ -9,7 +9,11 @@ export const useLogsStore = defineStore('logsStore', () => {
   };
 
   const logs = ref<LogEvent[]>([]);
-  const settings = ref(loadFromLocalStorage('settings', { scrollOnNewLog: false }));
+  const settings = ref(loadFromLocalStorage('settings', {
+    scrollOnNewLog: false,
+    indentLogLines:false,
+    hideWrappedText: false
+  }));
   const searchFilter = ref('');
   const filteredLogs = ref<LogEvent[]>([]);
   const isInvalidRegex = ref(false);
@@ -21,6 +25,13 @@ export const useLogsStore = defineStore('logsStore', () => {
   const clearLogs = () => {
     logs.value = [];
   };
+
+  // Watch for changes in settings and update localStorage when they occur
+  watch(settings, (newSettings) => {
+    localStorage.setItem('settings', JSON.stringify(newSettings));
+  }, {
+    deep: true
+  });
 
 
   return {

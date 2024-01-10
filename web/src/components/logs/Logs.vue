@@ -1,47 +1,62 @@
 <template>
-  <v-main>
     <v-container>
       <h1 class="text-h3 py-6">Logs</h1>
 
       <v-card class="mb-12" outlined>
         <v-card-text>
-          <v-row>
-            <v-col cols="12" sm="6">
+          <div class="d-flex flex-row">
+            <!-- Text Field with flex-grow for taking up remaining space -->
+            <div class="flex-grow-1 mr-2">
               <v-text-field
                 v-model="logsStore.searchFilter"
                 label="Enter a regex pattern to filter logs by..."
                 outlined
-                clearable
-                @input="logsStore.searchFilter = $event"
+                :clearable=true
+                @click:clear="logsStore.searchFilter = ''"
               ></v-text-field>
-            </v-col>
-            <!-- Add LogsDropdown component here if needed -->
-          </v-row>
+            </div>
+
+            <div>
+              <LogsDropdown />
+            </div>
+          </div>
 
           <v-row>
             <v-col cols="12">
-              <div class="overflow-y-auto" style="max-height: 60vh;">
-                <div v-for="(entry, idx) in logsStore.filteredLogs" :key="idx" class="my-2">
-                  <span :title="formatTime(entry.time)" class="font-mono grey--text mr-2">{{ formatTime(entry.time) }}</span>
-                  <span :class="getLogLevelColor(entry.level)" class="font-mono font-weight-bold mr-2">{{ entry.level }}</span>
-                  <span>{{ entry.message }}</span>
+              <v-virtual-scroll
+                ref="virtualScroller"
+                :items="logsStore.filteredLogs"
+                height="60vh"
+                item-height="48"
+              >
+              <template v-slot="{ item }">
+                <div :class="[
+              'my-2 flex items-center',
+              logsStore.settings.indentLogLines ? 'pl-4' : '',
+              logsStore.settings.hideWrappedText ? 'truncate' : 'whitespace-normal'
+            ]">
+                  <span :title="formatTime(item.time)" class="font-mono grey--text mr-2">{{ formatTime(item.time) }}</span>
+                  <span :class="getLogLevelColor(item.level)" class="font-mono font-weight-bold mr-2">{{ item.level }}</span>
+                  <span>{{ item.message }}</span>
                 </div>
-              </div>
+              </template>
+              </v-virtual-scroll>
             </v-col>
           </v-row>
+
         </v-card-text>
       </v-card>
     </v-container>
-  </v-main>
 </template>
 
 
 <script lang="ts" setup>
-import {onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {onBeforeUnmount, ref, watch, watchEffect} from "vue";
 import {useLogsStore} from "@/store/logStore";
-import {LogEvent} from "@/types/Logs";
 import {APIClient} from "@/api/APIClient";
 import {format} from "date-fns";
+import LogsDropdown from "@/components/logs/LogsDropdown.vue";
+import {VVirtualScroll} from "vuetify/components";
 
 export type LogLevel = "TRC" | "DBG" | "INF" | "ERR" | "WRN" | "FTL" | "PNC";
 
@@ -60,63 +75,70 @@ const getLogLevelColor = (level: string) => {
 };
 
 const logsStore = useLogsStore();
-
-const messagesEndRef = ref<HTMLDivElement>();
+const virtualScroller = ref<VVirtualScroll>();
 
 const formatTime = (time: string) => {
   return  format(new Date(time), "HH:mm:ss");
 };
 
-watch(() => logsStore.filteredLogs, (newLogs, oldLogs) => {
+const scrollToBottom = () => {
+  if (logsStore.filteredLogs.length > 0) {
+    virtualScroller.value?.scrollToIndex(logsStore.filteredLogs.length - 1);
+  }
+};
+
+watch(() => logsStore.settings.scrollOnNewLog, () => {
   if (logsStore.settings.scrollOnNewLog) {
     scrollToBottom();
   }
 });
 
-watch(() => logsStore.settings.scrollOnNewLog, (newValue, oldValue) => {
-  logsStore.clearLogs();
+watch(() => [logsStore.logs, logsStore.filteredLogs], () => {
+  // Check if scroll on new log is enabled
+  if (logsStore.settings.scrollOnNewLog) {
+    scrollToBottom();
+  }
+});
+
+// Watch for new logs being added
+watch(() => logsStore.logs.length, (newLength, oldLength) => {
+  if (newLength > oldLength && logsStore.settings.scrollOnNewLog) {
+    scrollToBottom();
+  }
 });
 
 watch([() => logsStore.logs, () => logsStore.searchFilter], () => {
-  // Logic to set filteredLogs based on logs and searchFilter
-  // Similar to your useEffect logic in React
+  if (!logsStore.searchFilter.length) {
+    logsStore.filteredLogs = logsStore.logs;
+    logsStore.isInvalidRegex = false;
+    return;
+  }
+
+  try {
+    const pattern = new RegExp(logsStore.searchFilter, "i");
+    logsStore.filteredLogs = logsStore.logs.filter(log => pattern.test(log.message));
+    logsStore.isInvalidRegex = false;
+  } catch (error) {
+    // Handle regex errors by showing nothing when the regex pattern is invalid
+    logsStore.filteredLogs = [];
+    logsStore.isInvalidRegex = true;
+  }
 }, { immediate: true });
 
-const scrollToBottom = () => {
-  if (messagesEndRef.value) {
-    messagesEndRef.value.scrollTop = messagesEndRef.value.scrollHeight;
-  }
-};
-
-onMounted(() => {
+watchEffect(() => {
   const es = APIClient.events.logs();
 
   es.onmessage = (event) => {
-    const newData = JSON.parse(event.data) as LogEvent;
+    const newData = JSON.parse(event.data); // assuming LogEvent type
     logsStore.addLog(newData);
+    // If you want to scroll to bottom on every new log
+    if (logsStore.settings.scrollOnNewLog) {
+      scrollToBottom();
+    }
   };
 
   onBeforeUnmount(() => {
     es.close();
   });
-
-
-  watch([() => logsStore.logs, () => logsStore.searchFilter], () => {
-    if (!logsStore.searchFilter.length) {
-      logsStore.filteredLogs = logsStore.logs;
-      logsStore.isInvalidRegex = false;
-      return;
-    }
-
-    try {
-      const pattern = new RegExp(logsStore.searchFilter, "i");
-      logsStore.filteredLogs = logsStore.logs.filter(log => pattern.test(log.message));
-      logsStore.isInvalidRegex = false;
-    } catch (error) {
-      // Handle regex errors by showing nothing when the regex pattern is invalid
-      logsStore.filteredLogs = [];
-      logsStore.isInvalidRegex = true;
-    }
-  }, { immediate: true });
 });
 </script>
