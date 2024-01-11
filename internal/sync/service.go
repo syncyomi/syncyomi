@@ -153,7 +153,7 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		return nil, err
 	}
 
-	// Update the MangaData record
+	// Update the BackupData record
 	_, err = s.mdataSvc.Update(ctx, sync.Data)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not update manga data: %+v", mData)
@@ -233,7 +233,7 @@ func (s service) ensureSyncRecordExists(ctx context.Context, sync *domain.SyncDa
 	return sData, nil
 }
 
-func (s service) ensureMangaDataExists(ctx context.Context, sync *domain.SyncData) (*domain.MangaData, error) {
+func (s service) ensureMangaDataExists(ctx context.Context, sync *domain.SyncData) (*domain.BackupData, error) {
 	mData, err := s.mdataSvc.GetMangaDataByApiKey(ctx, sync.Sync.UserApiKey.Key)
 	if err != nil {
 		if err.Error() == "error executing query: sql: no rows in result set" {

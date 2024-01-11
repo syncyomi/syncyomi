@@ -76,7 +76,7 @@ func (r SyncRepo) Delete(ctx context.Context, id int) error {
 		return errors.Wrap(err, "error executing query")
 	}
 
-	r.db.log.Debug().Msgf("Manga sync deleted: %d", id)
+	r.db.log.Debug().Msgf("BackupManga sync deleted: %d", id)
 
 	return nil
 }
