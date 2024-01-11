@@ -10,11 +10,11 @@ import (
 )
 
 type mangaDataService interface {
-	Store(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error)
+	Store(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error)
 	Delete(ctx context.Context, id int) error
-	Update(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error)
-	ListMangaData(ctx context.Context, apiKey string) ([]domain.MangaData, error)
-	GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.MangaData, error)
+	Update(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error)
+	ListMangaData(ctx context.Context, apiKey string) ([]domain.BackupData, error)
+	GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.BackupData, error)
 }
 
 type mangaDataHandler struct {
@@ -39,7 +39,7 @@ func (h mangaDataHandler) Routes(r chi.Router) {
 func (h mangaDataHandler) store(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx   = r.Context()
-		mdata domain.MangaData
+		mdata domain.BackupData
 	)
 
 	if err := json.NewDecoder(r.Body).Decode(&mdata); err != nil {
@@ -73,7 +73,7 @@ func (h mangaDataHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.encoder.StatusResponse(ctx, w, "Manga data deleted", http.StatusOK)
+	h.encoder.StatusResponse(ctx, w, "BackupManga data deleted", http.StatusOK)
 }
 
 func (h mangaDataHandler) list(w http.ResponseWriter, r *http.Request) {

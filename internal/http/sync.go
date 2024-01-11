@@ -137,7 +137,7 @@ func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
 	sync.Sync = &domain.Sync{
 		UserApiKey: &domain.APIKey{Key: apiKey},
 	}
-	sync.Data = &domain.MangaData{UserApiKey: &domain.APIKey{Key: apiKey}}
+	sync.Data = &domain.BackupData{UserApiKey: &domain.APIKey{Key: apiKey}}
 
 	// Read data from request body
 	requestData, err := io.ReadAll(r.Body)

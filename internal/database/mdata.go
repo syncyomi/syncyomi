@@ -23,7 +23,7 @@ type MangaRepo struct {
 	db  *DB
 }
 
-func (m MangaRepo) Store(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error) {
+func (m MangaRepo) Store(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error) {
 	// Marshal the entire mdata object
 	jsonData, err := json.Marshal(mdata)
 	if err != nil {
@@ -69,7 +69,7 @@ func (m MangaRepo) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (m MangaRepo) Update(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error) {
+func (m MangaRepo) Update(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error) {
 	jsonData, err := json.Marshal(mdata)
 	if err != nil {
 		return nil, errors.Wrap(err, "error marshaling data to JSON")
@@ -92,7 +92,7 @@ func (m MangaRepo) Update(ctx context.Context, mdata *domain.MangaData) (*domain
 	return mdata, nil
 }
 
-func (m MangaRepo) ListMangaData(ctx context.Context, apiKey string) ([]domain.MangaData, error) {
+func (m MangaRepo) ListMangaData(ctx context.Context, apiKey string) ([]domain.BackupData, error) {
 	queryBuilder := m.db.squirrel.
 		Select(
 			"id",
@@ -113,9 +113,9 @@ func (m MangaRepo) ListMangaData(ctx context.Context, apiKey string) ([]domain.M
 		return nil, errors.Wrap(err, "error executing query")
 	}
 
-	mangaData := make([]domain.MangaData, 0)
+	mangaData := make([]domain.BackupData, 0)
 	for rows.Next() {
-		var mdata domain.MangaData
+		var mdata domain.BackupData
 		var jsonData []byte // Use a byte slice to store the JSON data from the database
 
 		if err := rows.Scan(
@@ -139,7 +139,7 @@ func (m MangaRepo) ListMangaData(ctx context.Context, apiKey string) ([]domain.M
 	return mangaData, nil
 }
 
-func (m MangaRepo) GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.MangaData, error) {
+func (m MangaRepo) GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.BackupData, error) {
 	queryBuilder := m.db.squirrel.
 		Select(
 			"id",
@@ -152,7 +152,7 @@ func (m MangaRepo) GetMangaDataByApiKey(ctx context.Context, apiKey string) (*do
 		Where(sq.Eq{"user_api_key": apiKey}).
 		RunWith(m.db.handler)
 
-	var mdata domain.MangaData
+	var mdata domain.BackupData
 	mdata.UserApiKey = &domain.APIKey{}
 	var jsonData []byte // Use a byte slice to store the JSON data from the database
 
@@ -163,7 +163,7 @@ func (m MangaRepo) GetMangaDataByApiKey(ctx context.Context, apiKey string) (*do
 		&mdata.CreatedAt,
 		&mdata.UpdatedAt,
 	); err != nil {
-		return &domain.MangaData{}, errors.Wrap(err, "error executing query")
+		return &domain.BackupData{}, errors.Wrap(err, "error executing query")
 	}
 
 	// Convert the JSON data back into a Go struct

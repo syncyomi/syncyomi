@@ -8,11 +8,11 @@ import (
 )
 
 type Service interface {
-	Store(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error)
+	Store(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error)
 	Delete(ctx context.Context, id int) error
-	Update(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error)
-	ListMangaData(ctx context.Context, apiKey string) ([]domain.MangaData, error)
-	GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.MangaData, error)
+	Update(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error)
+	ListMangaData(ctx context.Context, apiKey string) ([]domain.BackupData, error)
+	GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.BackupData, error)
 }
 
 func NewService(log logger.Logger, repo domain.MangaDataRepo) Service {
@@ -27,7 +27,7 @@ type service struct {
 	repo domain.MangaDataRepo
 }
 
-func (s service) Store(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error) {
+func (s service) Store(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error) {
 	data, err := s.repo.Store(ctx, mdata)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not store manga data: %+v", mdata)
@@ -47,7 +47,7 @@ func (s service) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (s service) Update(ctx context.Context, mdata *domain.MangaData) (*domain.MangaData, error) {
+func (s service) Update(ctx context.Context, mdata *domain.BackupData) (*domain.BackupData, error) {
 	data, err := s.repo.Update(ctx, mdata)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not update manga data: %+v", mdata)
@@ -57,7 +57,7 @@ func (s service) Update(ctx context.Context, mdata *domain.MangaData) (*domain.M
 	return data, nil
 }
 
-func (s service) ListMangaData(ctx context.Context, apiKey string) ([]domain.MangaData, error) {
+func (s service) ListMangaData(ctx context.Context, apiKey string) ([]domain.BackupData, error) {
 	data, err := s.repo.ListMangaData(ctx, apiKey)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not list manga data for api key: %v", apiKey)
@@ -67,7 +67,7 @@ func (s service) ListMangaData(ctx context.Context, apiKey string) ([]domain.Man
 	return data, nil
 }
 
-func (s service) GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.MangaData, error) {
+func (s service) GetMangaDataByApiKey(ctx context.Context, apiKey string) (*domain.BackupData, error) {
 	data, err := s.repo.GetMangaDataByApiKey(ctx, apiKey)
 	if err != nil {
 		s.log.Error().Err(err).Msgf("could not get manga data for api key: %v", apiKey)
