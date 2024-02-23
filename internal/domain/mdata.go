@@ -57,6 +57,8 @@ type BackupManga struct {
 	CustomDescription     *string                      `json:"customDescription,omitempty"`
 	CustomGenre           []string                     `json:"customGenre,omitempty"`
 	FilteredScanlators    *string                      `json:"filteredScanlators,omitempty"`
+	Version               int64                        `json:"version"`
+	IsSyncing             int64                        `json:"isSyncing"`
 }
 
 type BackupChapter struct {
@@ -71,6 +73,8 @@ type BackupChapter struct {
 	ChapterNumber  float32 `json:"chapterNumber"`
 	SourceOrder    int64   `json:"sourceOrder"`
 	LastModifiedAt int64   `json:"lastModifiedAt"`
+	Version        int64   `json:"version"`
+	IsSyncing      int64   `json:"isSyncing"`
 }
 
 type BackupTracking struct {
