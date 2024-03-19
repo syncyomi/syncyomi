@@ -146,9 +146,10 @@ Important Note: Treat each API key as a unique user. To ensure a seamless syncin
 
 #### Preparing for Installation
 
-Before proceeding, backup your existing Tachiyomi environment. The latest release of the modified Tachiyomi app can be found on our [Discord](https://discord.gg/aydqBWAZs8).
+Before proceeding, backup your existing Tachiyomi environment. ~~The latest release of the modified Tachiyomi app can be found on our [Discord](https://discord.gg/aydqBWAZs8).~~ It's merged to TachiyomiSY [TachiyomiSY Preview version](https://github.com/jobobby04/TachiyomiSYPreview/releases)
+Download and Install currently it's in preview version of TachiyomiSY but eventually it will be in the stable version.
 
-Install the modified Tachiyomi client on your device. Then, go to `Settings > Data and Storage` in the app. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key.
+Then, go to `Settings > Data and Storage` in the app. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key.
 
 #### Important Configuration for Direct IP Users
 
