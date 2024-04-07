@@ -112,6 +112,7 @@ func (s service) GetSyncData(ctx context.Context, apiKey string) (*domain.SyncDa
 	return &domain.SyncData{
 		Sync: sData,
 		Data: mData,
+		CreatedBy: mData.CreatedBy, // restore createdBy from manga data
 	}, nil
 }
 
@@ -152,6 +153,9 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 		s.notifySyncError(user.Name, err.Error())
 		return nil, err
 	}
+
+	// copy createdBy, ensure it save to the DB
+	sync.Data.CreatedBy = sync.CreatedBy
 
 	// Update the BackupData record
 	_, err = s.mdataSvc.Update(ctx, sync.Data)

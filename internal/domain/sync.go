@@ -37,8 +37,9 @@ const (
 )
 
 type SyncData struct {
-	Sync *Sync       `json:"sync,omitempty"`
-	Data *BackupData `json:"backup,omitempty"`
+	Sync 		*Sync       `json:"sync,omitempty"`
+	Data 		*BackupData `json:"backup,omitempty"`
+	CreatedBy 	*string		`json:"createdBy,omitempty"`
 }
 
 type SyncLockFile struct {
