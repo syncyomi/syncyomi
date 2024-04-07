@@ -162,6 +162,8 @@ func (h syncHandler) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sync.Sync.DeviceId = sync.DeviceId
+
 	// Store, check, and try to sync data
 	syncResult, err := h.syncService.SyncData(ctx, &sync)
 	if err != nil {

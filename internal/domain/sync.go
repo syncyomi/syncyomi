@@ -19,6 +19,7 @@ type SyncRepo interface {
 
 type Sync struct {
 	ID              int        `json:"id,omitempty"`
+	DeviceId        string     `json:"deviceId"`
 	LastSynced      *time.Time `json:"last_synced,omitempty"`
 	Status          SyncStatus `json:"status,omitempty"`
 	UserApiKey      *APIKey    `json:"user_api_key,omitempty"`
@@ -37,8 +38,9 @@ const (
 )
 
 type SyncData struct {
-	Sync *Sync       `json:"sync,omitempty"`
-	Data *BackupData `json:"backup,omitempty"`
+	DeviceId string      `json:"deviceId"`
+	Sync     *Sync       `json:"sync,omitempty"`
+	Data     *BackupData `json:"backup,omitempty"`
 }
 
 type SyncLockFile struct {

@@ -39,11 +39,13 @@ func (r SyncRepo) Store(ctx context.Context, sync *domain.Sync) (*domain.Sync, e
 			"user_api_key",
 			"last_sync",
 			"status",
+			"device_id",
 		).
 		Values(
 			sync.UserApiKey.Key,
 			sync.LastSynced,
 			sync.Status,
+			sync.DeviceId,
 		).
 		Suffix("RETURNING id, created_at, updated_at").RunWith(r.db.handler)
 
@@ -93,6 +95,7 @@ func (r SyncRepo) Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, 
 	queryBuilder := r.db.squirrel.
 		Update("manga_sync").
 		Set("last_sync", sync.LastSynced).
+		Set("device_id", sync.DeviceId).
 		Set("status", sync.Status).
 		Where(sq.Eq{"user_api_key": sync.UserApiKey.Key}).
 		Suffix("RETURNING updated_at").RunWith(r.db.handler)
@@ -115,6 +118,7 @@ func (r SyncRepo) ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, 
 			"manga_sync.user_api_key",
 			"manga_sync.last_sync",
 			"manga_sync.status",
+			"manga_sync.device_id",
 			"manga_sync.created_at",
 			"manga_sync.updated_at",
 			"api_key.name",
@@ -155,6 +159,7 @@ func (r SyncRepo) ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, 
 			&mangaSync.UserApiKey.Key,
 			&mangaSync.LastSynced,
 			&mangaSync.Status,
+			&mangaSync.DeviceId,
 			&mangaSync.CreatedAt,
 			&mangaSync.UpdatedAt,
 			&mangaSync.UserApiKey.Name,
@@ -177,6 +182,7 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 			"manga_sync.user_api_key",
 			"manga_sync.last_sync",
 			"manga_sync.status",
+			"manga_sync.device_id",
 			"manga_sync.created_at",
 			"manga_sync.updated_at",
 			"api_key.name",
@@ -201,6 +207,7 @@ func (r SyncRepo) GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.S
 		&mangaSync.UserApiKey.Key,
 		&mangaSync.LastSynced,
 		&mangaSync.Status,
+		&mangaSync.DeviceId,
 		&mangaSync.CreatedAt,
 		&mangaSync.UpdatedAt,
 		&mangaSync.UserApiKey.Name,
