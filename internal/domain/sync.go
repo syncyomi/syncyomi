@@ -38,7 +38,7 @@ const (
 )
 
 type SyncData struct {
-	DeviceId string      `json:"deviceId"`
+	DeviceId string      `json:"deviceId,omitempty"`
 	Sync     *Sync       `json:"sync,omitempty"`
 	Data     *BackupData `json:"backup,omitempty"`
 }

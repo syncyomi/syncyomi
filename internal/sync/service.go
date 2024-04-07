@@ -3,8 +3,9 @@ package sync
 import (
 	"context"
 	"fmt"
-	"github.com/SyncYomi/SyncYomi/internal/notification"
 	"time"
+
+	"github.com/SyncYomi/SyncYomi/internal/notification"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
@@ -109,8 +110,13 @@ func (s service) GetSyncData(ctx context.Context, apiKey string) (*domain.SyncDa
 		}
 	}
 
+	deviceId := ""
+	if sData != nil {
+		deviceId = sData.DeviceId
+	}
+
 	return &domain.SyncData{
-		DeviceId: sData.DeviceId,
+		DeviceId: deviceId,
 		Sync:     sData,
 		Data:     mData,
 	}, nil

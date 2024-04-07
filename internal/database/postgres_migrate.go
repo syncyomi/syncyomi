@@ -63,7 +63,7 @@ id SERIAL UNIQUE ,
 user_api_key TEXT UNIQUE,
 last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 status TEXT NOT NULL DEFAULT 'unknown',
-device_id TEXT,
+device_id TEXT NOT NULL DEFAULT '',
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 CONSTRAINT manga_sync_pkey PRIMARY KEY (id)
@@ -141,6 +141,6 @@ var postgresMigrations = []string{
 	`
     ALTER TABLE sync_lock DROP CONSTRAINT IF EXISTS sync_lock_acquired_by_key;
 `,
-	`ALTER TABLE manga_sync ADD COLUMN "device_id" TEXT;
+	`ALTER TABLE manga_sync ADD COLUMN "device_id" TEXT NOT NULL DEFAULT '';
 `,
 }

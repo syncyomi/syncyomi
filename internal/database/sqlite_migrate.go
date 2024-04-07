@@ -58,7 +58,7 @@ CREATE TABLE manga_sync
     user_api_key TEXT UNIQUE,
     last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status TEXT NOT NULL DEFAULT 'unknown',
-	device_id TEXT,
+	device_id TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
@@ -169,6 +169,6 @@ var sqliteMigrations = []string{
     DROP TABLE _sync_lock_old;
 `,
 	`ALTER TABLE manga_sync
-ADD COLUMN device_id TEXT;
+	ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
 `,
 }
