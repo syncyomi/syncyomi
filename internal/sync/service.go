@@ -110,8 +110,9 @@ func (s service) GetSyncData(ctx context.Context, apiKey string) (*domain.SyncDa
 	}
 
 	return &domain.SyncData{
-		Sync: sData,
-		Data: mData,
+		DeviceId: sData.DeviceId,
+		Sync:     sData,
+		Data:     mData,
 	}, nil
 }
 
@@ -171,8 +172,9 @@ func (s service) SyncData(ctx context.Context, sync *domain.SyncData) (*domain.S
 	s.notifySyncSuccess(user.Name)
 
 	return &domain.SyncData{
-		Sync: sData,
-		Data: mData,
+		DeviceId: sData.DeviceId,
+		Sync:     sData,
+		Data:     mData,
 	}, nil
 }
 
