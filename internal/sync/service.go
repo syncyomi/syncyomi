@@ -25,6 +25,17 @@ type Service interface {
 	CreateSyncLockFile(ctx context.Context, apiKey string, acquiredBy string) (*domain.SyncLockFile, error)
 	UpdateSyncLockFile(ctx context.Context, syncLockFile *domain.SyncLockFile) (*domain.SyncLockFile, error)
 	DeleteSyncLockFile(ctx context.Context, apiKey string) bool
+
+	// Get etag of sync data.
+	// For avoid memory usage, only the etag will be returned.
+	GetSyncDataETag(ctx context.Context, apiKey string) (*string, error)
+	// Get sync data and etag
+	GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte, *string, error)
+	// Create or replace sync data, returns the new etag.
+	SetSyncData(ctx context.Context, apiKey string, data []byte) (*string, error)
+	// Replace sync data only if the etag matches,
+	// returns the new etag if updated, or nil if not.
+	SetSyncDataIfMatch(ctx context.Context, apiKey string, etag string, data []byte) (*string, error)
 }
 
 func NewService(log logger.Logger, repo domain.SyncRepo, mdata mdata.Service, notificationSvc notification.Service, apiRepo domain.APIRepo) Service {
@@ -305,4 +316,26 @@ func (s service) updateSyncLockFile(ctx context.Context, status domain.SyncStatu
 
 	_, err := s.UpdateSyncLockFile(ctx, syncLockFile)
 	return err
+}
+
+// Get etag of sync data.
+// For avoid memory usage, only the etag will be returned.
+func (s service) GetSyncDataETag(ctx context.Context, apiKey string) (*string, error) {
+	return s.repo.GetSyncDataETag(ctx, apiKey)
+}
+
+// Get sync data and etag
+func (s service) GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte, *string, error) {
+	return s.repo.GetSyncDataAndETag(ctx, apiKey)
+}
+
+// Create or replace sync data, returns the new etag.
+func (s service) SetSyncData(ctx context.Context, apiKey string, data []byte) (*string, error) {
+	return s.repo.SetSyncData(ctx, apiKey, data)
+}
+
+// Replace sync data only if the etag matches,
+// returns the new etag if updated, or nil if not.
+func (s service) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag string, data []byte) (*string, error) {
+	return s.repo.SetSyncDataIfMatch(ctx, apiKey, etag, data)
 }
