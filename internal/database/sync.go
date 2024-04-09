@@ -457,12 +457,14 @@ func (r SyncRepo) SetSyncData(ctx context.Context, apiKey string, data []byte) (
 
 		if rowsAffected, err := insertResult.RowsAffected(); err != nil {
 			return nil, errors.Wrap(err, "error executing query")
+
 		} else if rowsAffected == 0 {
 			// multi devices race condition
 			return nil, errors.New("no rows affected")
 		}
 	}
 
+	r.log.Debug().Msgf("Sync data upsert: api_key=\"%v\"", apiKey)
 	return &newEtag, nil
 }
 
@@ -489,9 +491,13 @@ func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag st
 
 	if rowsAffected, err := result.RowsAffected(); err != nil {
 		return nil, errors.Wrap(err, "error executing query")
+
 	} else if rowsAffected == 0 {
+		r.log.Debug().Msgf("Sync data replace fail due to etag not match: api_key=\"%v\", etag=\"%v\"", apiKey, etag)
 		return nil, nil
+
 	} else {
+		r.log.Debug().Msgf("Sync data replaced: api_key=\"%v\", etag=\"%v\"", apiKey, etag)
 		return &newEtag, nil
 	}
 }
