@@ -11,7 +11,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_IMAGE: ghcr.io/syncyomi/syncyomi
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
 
 permissions:
   contents: write
@@ -179,9 +179,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
-            type=semver,pattern={{raw}}
+            type=semver,pattern={{version}},prefix=v
+            type=semver,pattern={{major}}.{{minor}},prefix=v
             type=ref,event=branch
             type=ref,event=pr
+          flavor: |
+            latest=auto
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -199,14 +202,16 @@ jobs:
           context: .
           file: ./ci.Dockerfile
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && 'true' || 'false' }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
-            REVISION=${{ github.event.pull_request.head.sha }}
+            REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
+
       - name: Export digest
         id: digest-prep
         run: |
@@ -215,7 +220,7 @@ jobs:
           echo "manifest-hash=${digest#sha256:}" >> "$GITHUB_OUTPUT"
           touch "/tmp/digests/${digest#sha256:}"
 
-      - name: Upload digest
+      - name: Upload image digest
         uses: actions/upload-artifact@v4
         with:
           name: docker-digests-${{ steps.digest-prep.outputs.manifest-hash }}
@@ -251,6 +256,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},prefix=v
+            type=semver,pattern={{major}}.{{minor}},prefix=v
+            type=ref,event=branch
+            type=ref,event=pr
+          flavor: |
+            latest=auto
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
@@ -261,4 +273,3 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
-
