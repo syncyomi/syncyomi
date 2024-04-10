@@ -493,7 +493,7 @@ func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag st
 		return nil, errors.Wrap(err, "error executing query")
 
 	} else if rowsAffected == 0 {
-		r.log.Debug().Msgf("Sync data replace fail due to etag not match: api_key=\"%v\", etag=\"%v\"", apiKey, etag)
+		r.log.Debug().Msgf("ETag mismatch for api_key=\"%v\". Concurrent modification detected, aborting sync to prevent data overwrite. ETag=\"%v\"", apiKey, etag)
 		return nil, nil
 
 	} else {
