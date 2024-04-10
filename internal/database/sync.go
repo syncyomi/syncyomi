@@ -433,6 +433,7 @@ func (r SyncRepo) SetSyncData(ctx context.Context, apiKey string, data []byte) (
 		RunWith(r.db.handler).ExecContext(ctx)
 
 	if err != nil {
+		r.log.Err(err).Msgf("Error when updating sync data")
 		return nil, errors.Wrap(err, "error executing query")
 	}
 
@@ -452,6 +453,7 @@ func (r SyncRepo) SetSyncData(ctx context.Context, apiKey string, data []byte) (
 			RunWith(r.db.handler).ExecContext(ctx)
 
 		if err != nil {
+			r.log.Err(err).Msgf("Error when inserting sync data")
 			return nil, errors.Wrap(err, "error executing query")
 		}
 
