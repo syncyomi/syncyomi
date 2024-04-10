@@ -1,29 +1,17 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/sync"
 	"github.com/go-chi/chi/v5"
 )
 
-type syncService interface {
-	Store(ctx context.Context, sync *domain.Sync) (*domain.Sync, error)
-	Delete(ctx context.Context, id int) error
-	Update(ctx context.Context, sync *domain.Sync) (*domain.Sync, error)
-	ListSyncs(ctx context.Context, apiKey string) ([]domain.Sync, error)
-	GetSyncByApiKey(ctx context.Context, apiKey string) (*domain.Sync, error)
-	GetSyncData(ctx context.Context, apiKey string) (*domain.SyncData, error)
-	SyncData(ctx context.Context, sync *domain.SyncData) (*domain.SyncData, error)
-	GetSyncLockFile(ctx context.Context, apiKey string) (*domain.SyncLockFile, error)
-	CreateSyncLockFile(ctx context.Context, apiKey string, acquiredBy string) (*domain.SyncLockFile, error)
-	UpdateSyncLockFile(ctx context.Context, syncLockFile *domain.SyncLockFile) (*domain.SyncLockFile, error)
-	DeleteSyncLockFile(ctx context.Context, apiKey string) bool
-}
+type syncService = sync.Service
 
 type syncHandler struct {
 	encoder     encoder
@@ -38,6 +26,8 @@ func newSyncHandler(encoder encoder, syncService syncService) *syncHandler {
 }
 
 func (h syncHandler) Routes(r chi.Router) {
+	r.Get("/content", h.getContent)
+	r.Put("/content", h.putContent)
 	r.Post("/", h.store)
 	r.Delete("/{id}", h.delete)
 	r.Get("/", h.listSyncs)
@@ -317,4 +307,75 @@ func (h syncHandler) updateSyncLockFile(w http.ResponseWriter, r *http.Request) 
 	}
 
 	h.encoder.StatusResponse(ctx, w, lockFile, http.StatusOK)
+}
+
+func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
+	apiKey := r.Header.Get("X-API-Token")
+	etag := r.Header.Get("If-None-Match")
+
+	if etag != "" {
+		etagInDb, err := h.syncService.GetSyncDataETag(r.Context(), apiKey)
+		if err != nil {
+			h.encoder.StatusInternalError(w)
+			return
+		}
+
+		if etagInDb != nil && etag == *etagInDb {
+			// nothing changed after last request
+			// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
+	syncData, syncDataETag, err := h.syncService.GetSyncDataAndETag(r.Context(), apiKey)
+
+	if err != nil {
+		h.encoder.StatusInternalError(w)
+		return
+	}
+
+	if syncData == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if syncDataETag != nil {
+		w.Header().Set("ETag", *syncDataETag)
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Write(syncData)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
+	apiKey := r.Header.Get("X-API-Token")
+	etag := r.Header.Get("If-Match")
+
+	// Read data from request body
+	requestData, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.encoder.StatusResponse(r.Context(), w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var newEtag *string
+	if etag != "" {
+		newEtag, err = h.syncService.SetSyncDataIfMatch(r.Context(), apiKey, etag, requestData)
+	} else {
+		newEtag, err = h.syncService.SetSyncData(r.Context(), apiKey, requestData)
+	}
+	if err != nil {
+		h.encoder.StatusInternalError(w)
+	}
+
+	if newEtag == nil {
+		// syncdata was changed from other clients
+		// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
+		w.WriteHeader(http.StatusPreconditionFailed)
+	} else {
+		w.Header().Set("ETag", *newEtag)
+		w.WriteHeader(http.StatusOK)
+	}
 }

@@ -88,6 +88,20 @@ CONSTRAINT sync_lock_pkey PRIMARY KEY (id)
 ALTER TABLE manga_data ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
 ALTER TABLE manga_sync ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
 ALTER TABLE sync_lock ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
+
+CREATE TABLE sync_data
+(
+	id INTEGER PRIMARY KEY,
+	user_api_key TEXT UNIQUE,
+
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+	data BLOB NOT NULL,
+	data_etag TEXT NOT NULL,
+
+	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+)
 `
 
 var postgresMigrations = []string{
@@ -142,5 +156,20 @@ var postgresMigrations = []string{
     ALTER TABLE sync_lock DROP CONSTRAINT IF EXISTS sync_lock_acquired_by_key;
 `,
 	`ALTER TABLE manga_sync ADD COLUMN "device_id" TEXT NOT NULL DEFAULT '';
+`,
+`
+	CREATE TABLE sync_data
+	(
+		id INTEGER PRIMARY KEY,
+		user_api_key TEXT UNIQUE,
+
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+		data BLOB NOT NULL,
+		data_etag TEXT NOT NULL,
+
+		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+	)
 `,
 }

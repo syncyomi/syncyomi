@@ -78,6 +78,20 @@ CREATE TABLE sync_lock
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
+
+CREATE TABLE sync_data
+(
+    id INTEGER PRIMARY KEY,
+    user_api_key TEXT UNIQUE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    data BLOB NOT NULL,
+    data_etag TEXT NOT NULL,
+
+	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+)
 `
 
 var sqliteMigrations = []string{
@@ -171,4 +185,19 @@ var sqliteMigrations = []string{
 	`ALTER TABLE manga_sync
 	ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
 `,
+    `
+    CREATE TABLE sync_data
+    (
+        id INTEGER PRIMARY KEY,
+        user_api_key TEXT UNIQUE,
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+        data BLOB NOT NULL,
+        data_etag TEXT NOT NULL,
+
+        FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+    )
+    `,
 }
