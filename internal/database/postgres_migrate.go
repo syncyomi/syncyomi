@@ -91,13 +91,13 @@ ALTER TABLE sync_lock ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON
 
 CREATE TABLE sync_data
 (
-	id INTEGER PRIMARY KEY,
+	id SERIAL PRIMARY KEY,
 	user_api_key TEXT UNIQUE,
 
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-	data BLOB NOT NULL,
+	data BYTEA NOT NULL,
 	data_etag TEXT NOT NULL,
 
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
@@ -160,13 +160,13 @@ var postgresMigrations = []string{
 `
 	CREATE TABLE sync_data
 	(
-		id INTEGER PRIMARY KEY,
+		id SERIAL PRIMARY KEY,
 		user_api_key TEXT UNIQUE,
 
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-		data BLOB NOT NULL,
+		data BYTEA NOT NULL,
 		data_etag TEXT NOT NULL,
 
 		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
