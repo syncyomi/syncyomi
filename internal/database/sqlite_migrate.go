@@ -166,6 +166,6 @@ var sqliteMigrations = []string{
 	`
 	DROP TABLE IF EXISTS manga_data;
 	DROP TABLE IF EXISTS manga_sync;
-	DROP TABLE IF EXIST sync_lock;
+	DROP TABLE IF EXISTS sync_lock;
 `,
 }
