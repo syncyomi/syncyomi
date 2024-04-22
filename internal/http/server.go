@@ -33,8 +33,7 @@ type Server struct {
 	notificationService notificationService
 	updateService       updateService
 
-	syncService      syncService
-	mangaDataService mangaDataService
+	syncService syncService
 }
 
 func NewServer(
@@ -50,7 +49,6 @@ func NewServer(
 	notificationSvc notificationService,
 	updateSvc updateService,
 	syncService syncService,
-	mangaDataService mangaDataService,
 ) Server {
 	return Server{
 		log:     log.With().Str("module", "http").Logger(),
@@ -68,7 +66,6 @@ func NewServer(
 		notificationService: notificationSvc,
 		updateService:       updateSvc,
 		syncService:         syncService,
-		mangaDataService:    mangaDataService,
 	}
 }
 
@@ -122,7 +119,6 @@ func (s Server) Handler() http.Handler {
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
 			r.Route("/sync", newSyncHandler(encoder, s.syncService).Routes)
-			r.Route("/manga", newMangaDataHandler(encoder, s.mangaDataService).Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 

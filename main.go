@@ -8,7 +8,6 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/events"
 	"github.com/SyncYomi/SyncYomi/internal/http"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
-	"github.com/SyncYomi/SyncYomi/internal/mdata"
 	"github.com/SyncYomi/SyncYomi/internal/notification"
 	"github.com/SyncYomi/SyncYomi/internal/scheduler"
 	"github.com/SyncYomi/SyncYomi/internal/server"
@@ -73,7 +72,6 @@ func main() {
 		notificationRepo = database.NewNotificationRepo(log, db)
 		userRepo         = database.NewUserRepo(log, db)
 		syncRepo         = database.NewSyncRepo(log, db)
-		mangaDataRepo    = database.NewMangaDataRepo(log, db)
 	)
 
 	// setup services
@@ -84,8 +82,7 @@ func main() {
 		schedulingService   = scheduler.NewService(log, cfg.Config, notificationService, updateService)
 		userService         = user.NewService(userRepo)
 		authService         = auth.NewService(log, userService)
-		mangaDataService    = mdata.NewService(log, mangaDataRepo)
-		syncService         = sync.NewService(log, syncRepo, mangaDataService, notificationService, apikeyRepo)
+		syncService         = sync.NewService(log, syncRepo, notificationService, apikeyRepo)
 	)
 
 	// register event subscribers
@@ -107,7 +104,6 @@ func main() {
 			notificationService,
 			updateService,
 			syncService,
-			mangaDataService,
 		)
 		errorChannel <- httpServer.Open()
 	}()

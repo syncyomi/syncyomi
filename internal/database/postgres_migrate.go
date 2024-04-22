@@ -44,51 +44,6 @@ CREATE TABLE notification
 	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-/*Holds the manga data for each user (API key) in JSON format.*/
-CREATE TABLE manga_data
-(
-id SERIAL UNIQUE ,
-user_api_key TEXT,
-data JSON NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-CONSTRAINT manga_data_pkey PRIMARY KEY (id)
-);
-
-
-/*Keeps track of the last sync details and status for each device.*/
-CREATE TABLE manga_sync
-(
-id SERIAL UNIQUE ,
-user_api_key TEXT UNIQUE,
-last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-status TEXT NOT NULL DEFAULT 'unknown',
-device_id TEXT NOT NULL DEFAULT '',
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-CONSTRAINT manga_sync_pkey PRIMARY KEY (id)
-);
-
-/*Keeps track of lock files when syncing.*/
-CREATE TABLE sync_lock
-(
-id SERIAL UNIQUE ,
-user_api_key TEXT UNIQUE,
-acquired_by TEXT,
-last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-status TEXT NOT NULL DEFAULT 'unknown',
-retry_count INT NOT NULL DEFAULT 0,
-acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-CONSTRAINT sync_lock_pkey PRIMARY KEY (id)
-);
-
-ALTER TABLE manga_data ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
-ALTER TABLE manga_sync ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
-ALTER TABLE sync_lock ADD FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE  ON UPDATE CASCADE;
-
 CREATE TABLE sync_data
 (
 	id SERIAL PRIMARY KEY,
@@ -155,9 +110,22 @@ var postgresMigrations = []string{
 	`
     ALTER TABLE sync_lock DROP CONSTRAINT IF EXISTS sync_lock_acquired_by_key;
 `,
-	`ALTER TABLE manga_sync ADD COLUMN "device_id" TEXT NOT NULL DEFAULT '';
+	`	DO $$
+BEGIN
+    -- Check if the column exists
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public'  -- or your specific schema if not default
+        AND table_name = 'manga_sync'
+        AND column_name = 'device_id'
+    ) THEN
+        -- Add the column if it does not exist
+        ALTER TABLE manga_sync ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
+    END IF;
+END $$;
+
 `,
-`
+	`
 	CREATE TABLE sync_data
 	(
 		id SERIAL PRIMARY KEY,
@@ -171,5 +139,10 @@ var postgresMigrations = []string{
 
 		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 	)
+`,
+	`
+	DROP TABLE IF EXISTS manga_data;
+	DROP TABLE IF EXISTS manga_sync;
+	DROP TABLE IF EXISTS sync_lock;
 `,
 }

@@ -42,43 +42,6 @@ CREATE TABLE notification
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE manga_data
-(
-    id INTEGER PRIMARY KEY,
-    user_api_key TEXT,
-    data TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
-);
-
-CREATE TABLE manga_sync
-(
-    id INTEGER PRIMARY KEY,
-    user_api_key TEXT UNIQUE,
-    last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    status TEXT NOT NULL DEFAULT 'unknown',
-	device_id TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
-);
-
-CREATE TABLE sync_lock
-(
-    id INTEGER PRIMARY KEY,
-    user_api_key TEXT UNIQUE,
-    acquired_by TEXT,
-    last_sync TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    status TEXT NOT NULL DEFAULT 'unknown',
-    retry_count INT NOT NULL DEFAULT 0,
-    acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
-);
-
 CREATE TABLE sync_data
 (
     id INTEGER PRIMARY KEY,
@@ -90,7 +53,7 @@ CREATE TABLE sync_data
     data BLOB NOT NULL,
     data_etag TEXT NOT NULL,
 
-	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 )
 `
 
@@ -185,7 +148,7 @@ var sqliteMigrations = []string{
 	`ALTER TABLE manga_sync
 	ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
 `,
-    `
+	`
     CREATE TABLE sync_data
     (
         id INTEGER PRIMARY KEY,
@@ -199,5 +162,10 @@ var sqliteMigrations = []string{
 
         FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
     )
-    `,
+`,
+	`
+	DROP TABLE IF EXISTS manga_data;
+	DROP TABLE IF EXISTS manga_sync;
+	DROP TABLE IF EXIST sync_lock;
+`,
 }
