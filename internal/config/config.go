@@ -74,6 +74,12 @@ port = 8282
 #
 #PostgresPass = "SyncYomi"
 
+# Postgres SSL Mode
+# Set which SSL mode to communicate with Postgres. 
+# Options: disable, allow, prefer, require, verify-ca, verify-full
+# View impact of each option in official Postgres documentation: https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS
+#PostgresSslMode = "disable"
+
 # Base url
 # Set custom baseUrl eg /SyncYomi/ to serve in subdirectory.
 # Not needed for subdomain, or by accessing with the :port directly.
@@ -244,6 +250,7 @@ func (c *AppConfig) defaults() {
 		PostgresDatabase: "postgres",
 		PostgresUser:     "SyncYomi",
 		PostgresPass:     "SyncYomi",
+		PostgresSslMode:  "disable",
 	}
 }
 
