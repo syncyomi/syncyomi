@@ -1,11 +1,11 @@
-<h1 align="center">
+<h1 style="text-align: center">
   <img alt="syncyomi logo" src=".github/images/logo.png" width="160px"/><br/>
   SyncYomi
 </h1>
 
-<p align="center">SyncYomi is an open-source project designed to offer a seamless synchronization experience for your Tachiyomi manga reading progress and library across multiple devices. This server can be self-hosted, allowing you to sync your Tachiyomi library effortlessly.</p>
+<p style="text-align: center">SyncYomi is an open-source project designed to offer a seamless synchronization experience for your Tachiyomi manga reading progress and library across multiple devices. This server can be self-hosted, allowing you to sync your Tachiyomi library effortlessly.</p>
 
-<p align="center"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/SyncYomi/SyncYomi?style=for-the-badge">&nbsp;<img alt="GitHub all releases" src="https://img.shields.io/github/downloads/SyncYomi/SyncYomi/total?style=for-the-badge">&nbsp;<img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/SyncYomi/SyncYomi/release.yml?style=for-the-badge"><img alt="Discord" src="https://img.shields.io/discord/1099009852791083058?label=Discord&logo=discord&logoColor=blue&style=for-the-badge"></p>
+<p style="text-align: center"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/SyncYomi/SyncYomi?style=for-the-badge">&nbsp;<img alt="GitHub all releases" src="https://img.shields.io/github/downloads/SyncYomi/SyncYomi/total?style=for-the-badge">&nbsp;<img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/SyncYomi/SyncYomi/release.yml?style=for-the-badge"><img alt="Discord" src="https://img.shields.io/discord/1099009852791083058?label=Discord&logo=discord&logoColor=blue&style=for-the-badge"></p>
 
 <!-- <img alt="syncyomi ui" src=".github/images/syncyomi-front.png"/><br/> -->
 
@@ -50,7 +50,6 @@ services:
     restart: unless-stopped
     environment:
       - TZ=${TZ}
-    user: 1000:1000
     volumes:
       - ${BASE_DOCKER_DATA_PATH}/syncyomi/config:/config
     ports:
@@ -110,6 +109,7 @@ systemctl enable -q --now --user syncyomi@$USER
 
 By default, the configuration is set to listen on `127.0.0.1`. It is highly recommended to use a reverse proxy like caddy, nginx or traefik.
 
+### Note
 If you are not running a reverse proxy change `host` in the `config.toml` to `0.0.0.0`.
 
 ## Usage
@@ -146,8 +146,8 @@ Important Note: Treat each API key as a unique user. To ensure a seamless syncin
 
 #### Preparing for Installation
 
-Before proceeding, backup your existing Tachiyomi environment. ~~The latest release of the modified Tachiyomi app can be found on our [Discord](https://discord.gg/aydqBWAZs8).~~ It's merged to TachiyomiSY [TachiyomiSY Preview version](https://github.com/jobobby04/TachiyomiSYPreview/releases)
-Download and Install currently it's in preview version of TachiyomiSY but eventually it will be in the stable version.
+Before proceeding, backup your existing Tachiyomi environment. Then go to TachiyomiSY [TachiyomiSY Preview version](https://github.com/jobobby04/TachiyomiSYPreview/releases)
+Download and Install it. Currently, it's in preview version of TachiyomiSY, but eventually it will be in the stable version.
 
 Then, go to `Settings > Data and Storage` in the app. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key.
 
@@ -157,12 +157,6 @@ If you are using a direct IP address (e.g., http://192.168.1.202:8282) to connec
 
 Linux:
 `ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}'`
-
-### Synchronization Details
-
-Currently, synchronization occurs at fixed intervals.
-If you frequently switch between devices, manually initiate a sync in the `Data and Storage` settings of the Tachiyomi app on the device you were using.
-Repeat this process on the next device after the first synchronization is complete to ensure your reading progress is up-to-date across all devices.
 
 ## Community
 
