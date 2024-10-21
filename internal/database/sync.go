@@ -120,7 +120,7 @@ func (r SyncRepo) SetSyncData(ctx context.Context, apiKey string, data []byte) (
 		}
 	}
 
-	r.log.Debug().Msgf("Sync data upsert: api_key=\"%v\"", apiKey)
+	r.log.Debug().Msgf("Sync data upsert: api_key=\"%v\"", "REDACTED")
 	return &newEtag, nil
 }
 
@@ -151,11 +151,11 @@ func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag st
 	} else if rowsAffected == 0 {
 		r.log.Debug().Msgf(
 			"ETag mismatch detected for api_key=\"%v\". This indicates remote data has been modified since last fetched. Aborting update to avoid overwriting recent changes. Expected ETag=\"%v\", found different ETag on server.",
-			apiKey, etag)
+			"REDACTED", etag)
 		return nil, nil
 
 	} else {
-		r.log.Debug().Msgf("Sync data replaced: api_key=\"%v\", etag=\"%v\"", apiKey, etag)
+		r.log.Debug().Msgf("Sync data replaced: api_key=\"%v\", etag=\"%v\"", "REDACTED", etag)
 		return &newEtag, nil
 	}
 }
