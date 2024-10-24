@@ -1,6 +1,10 @@
 package main
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/SyncYomi/SyncYomi/internal/api"
 	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"github.com/SyncYomi/SyncYomi/internal/config"
@@ -17,9 +21,6 @@ import (
 	"github.com/asaskevich/EventBus"
 	"github.com/r3labs/sse/v2"
 	"github.com/spf13/pflag"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 var (
@@ -54,7 +55,11 @@ func main() {
 	bus := EventBus.New()
 
 	// open database connection
-	db, _ := database.NewDB(cfg.Config, log)
+	db, err := database.NewDB(cfg.Config, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not create new db")
+	}
+
 	if err := db.Open(); err != nil {
 		log.Fatal().Err(err).Msg("could not open db connection")
 	}

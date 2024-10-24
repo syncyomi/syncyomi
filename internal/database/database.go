@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/SyncYomi/SyncYomi/pkg/errors"
 	"github.com/rs/zerolog"
-	"sync"
 )
 
 var databaseDriver = "postgres"
@@ -40,7 +41,7 @@ func NewDB(cfg *domain.Config, log logger.Logger) (*DB, error) {
 		databaseDriver = "sqlite"
 		db.Driver = "sqlite"
 		db.DSN = dataSourceName(cfg.ConfigPath, "syncyomi.db")
-	case "postgres":
+	case "postgres", "postgresql":
 		if cfg.PostgresHost == "" || cfg.PostgresPort == 0 || cfg.PostgresDatabase == "" {
 			return nil, errors.New("postgres: bad variables")
 		}
