@@ -80,7 +80,7 @@
 
 <script lang="ts" setup>
 import { APIClient } from "@/api/APIClient";
-import { computed, reactive, Ref, ref } from "vue";
+import { computed, reactive, Ref, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
 import AddApiKey from "@/components/modals/AddApiKey.vue";
@@ -99,15 +99,24 @@ const showPassword: ShowPassword = reactive({});
 // Get QueryClient from context
 const queryClient = useQueryClient();
 
-const { isLoading, data } = useQuery({
+const { isLoading, isError, data } = useQuery({
   queryKey: ["apiKeys"],
   queryFn: () => APIClient.apikeys.getAll(),
   retry: false,
   refetchOnWindowFocus: false,
-  onError: (error) => {
-    console.log(error);
-  },
 });
+
+watch(
+  () => isError,
+  (newVal) => {
+    if (newVal && isError.value) {
+      console.error("Error fetching API Keys:", isError.value);
+      snackbarMessage.value = "Error fetching API Keys!";
+      snackbarColor.value = "error";
+      snackbarVisible.value = true;
+    }
+  },
+);
 
 const deleteApiKey = useMutation({
   mutationFn: (name: string) => APIClient.apikeys.delete(name),
@@ -115,7 +124,7 @@ const deleteApiKey = useMutation({
     snackbarVisible.value = true;
     snackbarMessage.value = "Api Key deleted successfully!";
     snackbarColor.value = "success";
-    queryClient.invalidateQueries(["apiKeys"]);
+    queryClient.invalidateQueries({ queryKey: ["apiKeys"] });
   },
   onError: (error) => {
     console.log(error);
@@ -165,7 +174,6 @@ const copyToClipboard = async (text: string) => {
     console.error("Copy to clipboard failed:", err);
   }
 };
-
 </script>
 
 <style scoped></style>

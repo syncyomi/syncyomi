@@ -127,7 +127,7 @@
 <script lang="ts" setup>
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
-import { Ref, ref } from "vue";
+import { Ref, ref, watch } from "vue";
 import { LogLevelOptions } from "@/domain/constants";
 import { baseUrl, simplifyDate } from "@/utils";
 
@@ -138,25 +138,43 @@ const snackbarColor: Ref<string> = ref("success");
 // Get QueryClient from context
 const queryClient = useQueryClient();
 
-const { isLoading, data } = useQuery({
+const { isLoading, data, isError } = useQuery({
   queryKey: ["config"],
   queryFn: () => APIClient.config.get(),
   retry: false,
   refetchOnWindowFocus: false,
-  onError: (error) => {
-    console.log(error);
-  },
 });
 
-const { data: logFiles } = useQuery({
+watch(
+  () => isError,
+  (newVal) => {
+    if (newVal && isError.value) {
+      console.error("Error fetching config", isError.value);
+      snackbarMessage.value = "Error fetching config!";
+      snackbarColor.value = "error";
+      snackbarVisible.value = true;
+    }
+  },
+);
+
+const { data: logFiles, isError: logFilesError } = useQuery({
   queryKey: ["log-files"],
   queryFn: () => APIClient.logs.files(),
   retry: false,
   refetchOnWindowFocus: false,
-  onError: (error) => {
-    console.log(error);
-  },
 });
+
+watch(
+  () => isError,
+  (newVal) => {
+    if (newVal && isError.value) {
+      console.error("Error fetching log-files", isError.value);
+      snackbarMessage.value = "Error fetching log-files!";
+      snackbarColor.value = "error";
+      snackbarVisible.value = true;
+    }
+  },
+);
 
 const setLogLevelUpdateMutation = useMutation({
   mutationFn: (val: string) =>
@@ -164,7 +182,7 @@ const setLogLevelUpdateMutation = useMutation({
       log_level: val,
     }),
   onSuccess: () => {
-    queryClient.invalidateQueries(["config"]);
+    queryClient.invalidateQueries({ queryKey: ["config"] });
     snackbarVisible.value = true;
   },
   onError: () => {
