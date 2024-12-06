@@ -80,7 +80,7 @@ const createNewApiKey = useMutation({
   onSuccess: () => {
     dialog.value = false;
     form.value.reset();
-    queryClient.invalidateQueries(["apiKeys"]);
+    queryClient.invalidateQueries({queryKey: ["apiKeys"]});
   },
   onError: (error) => {
     console.log("createMutation error", error);

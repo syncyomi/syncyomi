@@ -63,16 +63,16 @@ func (s service) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag str
 
 func (s service) notifySyncStarted(apiKeyName string) {
 	s.notificationService.Send(domain.NotificationEventSyncStarted, domain.NotificationPayload{
-		Subject: "Sync Initiated",
-		Message: fmt.Sprintf("A sync operation between Tachiyomi and your library has been initiated for user **%s**. "+
+		Subject: "Data Transmission Initiated",
+		Message: fmt.Sprintf("A data transmission between your Tachiyomi library and user **%s** has been initiated. "+
 			"Please wait for the process to complete.", apiKeyName),
 	})
 }
 
 func (s service) notifySyncSuccess(apiKeyName string) {
 	s.notificationService.Send(domain.NotificationEventSyncSuccess, domain.NotificationPayload{
-		Subject: "Sync Completed Successfully",
-		Message: fmt.Sprintf("The synchronization with your Tachiyomi library has completed successfully for user **%s**.", apiKeyName),
+		Subject: "Data Send Successful",
+		Message: fmt.Sprintf("Your Tachiyomi library data has been successfully sent to user **%s**.", apiKeyName),
 	})
 }
 

@@ -76,7 +76,7 @@
 
 <script lang="ts" setup>
 import { APIClient } from "@/api/APIClient";
-import { computed, Ref, ref } from "vue";
+import { computed, Ref, ref, watch } from "vue";
 import AddNotification from "@/components/modals/AddNotification.vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { Notification } from "@/types/Notification";
@@ -91,15 +91,24 @@ const selectedNotificationId: Ref<number> = ref(0);
 // Get QueryClient from context
 const queryClient = useQueryClient();
 
-const { isLoading, data, refetch } = useQuery({
+const { isLoading, data, refetch, isError } = useQuery({
   queryKey: ["notifications"],
   queryFn: () => APIClient.notifications.getAll(),
   retry: false,
   refetchOnWindowFocus: false,
-  onError: (error) => {
-    console.log(error);
-  },
 });
+
+watch(
+  () => isError,
+  (newVal) => {
+    if (newVal && isError.value) {
+      console.error("Error fetching log-files", isError.value);
+      snackbarMessage.value = "Error fetching log-files!";
+      snackbarColor.value = "error";
+      snackbarVisible.value = true;
+    }
+  },
+);
 
 const deleteNotification = useMutation({
   mutationFn: (id: number) => APIClient.notifications.delete(id),
@@ -107,7 +116,7 @@ const deleteNotification = useMutation({
     snackbarVisible.value = true;
     snackbarMessage.value = "Notification deleted successfully!";
     snackbarColor.value = "success";
-    queryClient.invalidateQueries(["notifications"]);
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
     refetch();
   },
   onError: (error) => {

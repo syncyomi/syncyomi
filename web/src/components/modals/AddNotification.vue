@@ -276,7 +276,7 @@ const createNotificationMutation = useMutation({
     dialog.value = false;
     form.value.reset();
     resetSelectedNotifications();
-    queryClient.invalidateQueries(["notifications"]);
+    queryClient.invalidateQueries({queryKey: ["notifications"]});
   },
   onError: (error) => {
     console.log("createMutation error", error);
@@ -292,7 +292,7 @@ const testNotificationMutation = useMutation({
     dialog.value = false;
     form.value.reset();
     resetSelectedNotifications();
-    queryClient.invalidateQueries(["notifications"]);
+    queryClient.invalidateQueries({queryKey: ["notifications"]});
   },
   onError: (error) => {
     console.log("createMutation error", error);

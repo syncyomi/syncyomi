@@ -228,15 +228,24 @@ watch(toggleTheme, (newValue) => {
   }
 });
 
-const { isLoading, data } = useQuery({
+const { isLoading, data, isError } = useQuery({
   queryKey: ["config"],
   queryFn: () => APIClient.config.get(),
   retry: false,
   refetchOnWindowFocus: false,
-  onError: (error) => {
-    console.log(error);
-  },
 });
+
+watch(
+  () => isError,
+  (newVal) => {
+    if (newVal && isError.value) {
+      console.error("Error fetching Config ", isError.value);
+      snackbarMessage.value = "Error fetching Config";
+      snackbarColor.value = "error";
+      snackbarVisible.value = true;
+    }
+  },
+);
 
 const toggleCheckUpdateMutation = useMutation({
   mutationFn: (val: boolean) =>
@@ -244,7 +253,7 @@ const toggleCheckUpdateMutation = useMutation({
       check_for_updates: val,
     }),
   onSuccess: () => {
-    queryClient.invalidateQueries(["config"]);
+    queryClient.invalidateQueries({ queryKey: ["config"] });
     checkUpdateMutation.mutate();
     snackbarVisible.value = true;
   },
@@ -255,21 +264,29 @@ const toggleCheckUpdateMutation = useMutation({
   },
 });
 
-const { data: updateData } = useQuery({
+const { data: updateData, isError: updateError } = useQuery({
   queryKey: ["updates"],
   queryFn: () => APIClient.updates.getLatestRelease(),
   retry: false,
   refetchOnWindowFocus: false,
-  onSuccess: () => {},
-  onError: (error) => {
-    console.log(error);
-  },
 });
+
+watch(
+  () => updateError,
+  (newVal) => {
+    if (newVal && updateError.value) {
+      console.error("Error fetching updates ", updateError.value);
+      snackbarMessage.value = "Error fetching updates";
+      snackbarColor.value = "error";
+      snackbarVisible.value = true;
+    }
+  },
+);
 
 const checkUpdateMutation = useMutation({
   mutationFn: () => APIClient.updates.check(),
   onSuccess: () => {
-    queryClient.invalidateQueries(["updates"]);
+    queryClient.invalidateQueries({ queryKey: ["updates"] });
   },
   onError: (error) => {
     console.log(error);

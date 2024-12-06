@@ -2,7 +2,7 @@
   <v-container class="d-flex fill-height">
     <v-row class="align-center justify-center">
       <v-col md="8" sm="12">
-        <h1 class="text-center text-uppercase">Login</h1>
+        <h1 class="text-center text-uppercase text-h2">SYNCYOMI</h1>
         <v-sheet
           class="pa-4 mx-auto mt-5"
           elevation="10"
