@@ -126,10 +126,11 @@ If you're using a reverse proxy and your setup includes a sub-directory, it's cr
 
 ```nginx
 location /syncyomi/ {
-    proxy_pass http://localhost:8282/;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $http_connection;
+    proxy_pass              http://127.0.0.1:8282;
+    proxy_http_version      1.1;
+    proxy_set_header        X-Forwarded-Host        $http_host;
+
+    rewrite ^/syncyomi/(.*) /$1 break;
 }
 ```
 
