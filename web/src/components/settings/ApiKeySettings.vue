@@ -43,6 +43,9 @@
                   <v-icon @click="togglePasswordVisibility(index)" class="mr-2">
                     mdi-eye{{ showPassword[index] ? "-off" : "" }}
                   </v-icon>
+                  <v-icon @click="showQrCode(item.key)" class="mr-2">
+                    mdi-qrcode
+                  </v-icon>
                   <v-icon @click="copyToClipboard(item.key)">
                     mdi-content-copy
                   </v-icon>
@@ -68,6 +71,8 @@
       {{ snackbarMessage }}
     </v-snackbar>
 
+    <qr-code-modal ref="qrCodeModal" />
+
     <confirmation-modal
       ref="deleteConfirmationModal"
       title="Delete Api Key"
@@ -83,6 +88,7 @@ import { APIClient } from "@/api/APIClient";
 import { computed, reactive, Ref, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
+import QrCodeModal from "@/components/modals/ShowQRCode.vue"
 import AddApiKey from "@/components/modals/AddApiKey.vue";
 
 interface ShowPassword {
@@ -92,6 +98,7 @@ interface ShowPassword {
 const snackbarVisible: Ref<boolean> = ref(false);
 const snackbarMessage: Ref<string> = ref("Config updated successfully!");
 const snackbarColor: Ref<string> = ref("success");
+const qrCodeModal: Ref<any> = ref(null);
 const deleteConfirmationModal: Ref<any> = ref(null);
 const selectedApiKey: Ref<string> = ref("");
 const showPassword: ShowPassword = reactive({});
@@ -150,6 +157,10 @@ const confirmedDeleteNotification = () => {
 const canceledDeleteNotification = () => {
   selectedApiKey.value = "";
 };
+
+const showQrCode = (key: string) => {
+  qrCodeModal.value.showModal(key);
+}
 
 const dataTableComputed = computed(() => {
   if (data.value && data.value.length > 0) {

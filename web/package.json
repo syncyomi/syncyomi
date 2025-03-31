@@ -17,6 +17,7 @@
     "date-fns": "^3.2.0",
     "pinia": "^2.1.7",
     "portal-vue": "3.0.0",
+    "qrcode.vue": "^3.6.0",
     "roboto-fontface": "^0.10.0",
     "vue": "^3.4.7",
     "vue-router": "^4.2.5",
