@@ -62,6 +62,7 @@ const (
 	NotificationTypeRocketChat NotificationType = "ROCKETCHAT"
 	NotificationTypeSlack      NotificationType = "SLACK"
 	NotificationTypeTelegram   NotificationType = "TELEGRAM"
+	NotificationTypeNtfy       NotificationType = "NTFY"
 )
 
 type NotificationEvent string

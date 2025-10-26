@@ -26,6 +26,10 @@ export const NotificationTypeOptions: OptionBasicTyped<NotificationType>[] = [
     title: "Telegram",
     value: "TELEGRAM",
   },
+  {
+    title: "ntfy",
+    value: "NTFY"
+  }
 ];
 
 export const EventOptions = [
