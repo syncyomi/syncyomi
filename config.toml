@@ -4,7 +4,7 @@
 #
 # Default: "localhost"
 #
-host = "127.0.0.1"
+host = "0.0.0.0"
 
 # Port
 #
@@ -19,14 +19,21 @@ port = 8282
 #
 # Optional
 #
-#DatabaseType = "sqlite"
+DatabaseType = "postgres"
 
 # Postgres Host
 # Set postgres host to use.
 #
 # Optional
 #
-#PostgresHost = "localhost"
+PostgresHost = "ep-twilight-bird-ahir5ywf-pooler.c-3.us-east-1.aws.neon.tech"
+PostgresPort = "5432"
+PostgresDatabase = "neondb"
+PostgresUser = "neondb_owner"
+PostgresPass = "npg_bQ7xArtDLve5"
+
+# Wajib require karena Neon pakai SSL
+PostgresSslMode = "require"
 
 # Postgres Port
 # Set postgres port to use.
