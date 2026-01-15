@@ -1,4 +1,4 @@
-export type NotificationType = "DISCORD" | "NOTIFIARR" | "TELEGRAM";
+export type NotificationType = "DISCORD" | "NOTIFIARR" | "TELEGRAM" | "NTFY";
 export type NotificationEvent =
   | "SYNC_STARTED"
   | "SYNC_SUCCESS"
