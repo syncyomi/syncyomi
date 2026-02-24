@@ -177,6 +177,41 @@
                 </v-list-item>
               </v-list>
             </div>
+
+            <div v-if="initialValuesRef.type === 'NTFY'">
+              <v-divider></v-divider>
+              <v-list subheader>
+                <v-list-subheader>
+                  ntfy
+                  <v-list-item-subtitle>
+                    Put link to a topic on a desirable server. Learn more at
+                    <a
+                      class="text-decoration-none"
+                      href="https://ntfy.sh"
+                      target="_blank"
+                    >
+                      htfy.sh
+                    </a>
+                  </v-list-item-subtitle>
+                </v-list-subheader>
+                <v-list-item>
+                  <v-text-field
+                    v-model="initialValuesRef.webhook"
+                    :rules="[rules.required]"
+                    aria-required="true"
+                    dense
+                    label="ntfy topic URL"
+                    placeholder="https://ntfy.sh/<token>"
+                    variant="filled"
+                    :type="showPassword ? 'text' : 'password'"
+                    :append-inner-icon="
+                      showPassword ? 'mdi-eye' : 'mdi-eye-off'
+                    "
+                    @click:append-inner="showPassword = !showPassword"
+                  ></v-text-field>
+                </v-list-item>
+              </v-list>
+            </div>
           </v-form>
           <v-card-actions>
             <v-spacer></v-spacer>
