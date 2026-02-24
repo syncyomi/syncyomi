@@ -56,12 +56,12 @@ port = 8282
 #PostgresPort = "5434"
 
 # Postgres Database
-# Set postgres database to use.
-# If not defined, It will use the default database. (postgres)
+# Set postgres database to use. Default: syncyomi (use this with the included docker-compose).
+# Use "postgres" only if your Postgres user has CREATE on schema public (e.g. pre-15 or custom grants).
 #
 # Optional
 #
-#PostgresDatabase = "postgres"
+#PostgresDatabase = "syncyomi"
 
 # Postgres User
 # Set postgres user to use.
@@ -247,7 +247,7 @@ func (c *AppConfig) defaults() {
 		DatabaseType:     "sqlite",
 		PostgresHost:     "localhost",
 		PostgresPort:     5434,
-		PostgresDatabase: "postgres",
+		PostgresDatabase: "syncyomi",
 		PostgresUser:     "SyncYomi",
 		PostgresPass:     "SyncYomi",
 		PostgresSslMode:  "disable",

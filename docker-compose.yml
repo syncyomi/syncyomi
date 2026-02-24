@@ -1,4 +1,3 @@
-version: '3.9'
 services:
   syncyomi:
     image: syncyomi:dev
@@ -14,6 +13,8 @@ services:
     environment:
       - POSTGRES_USER=SyncYomi
       - POSTGRES_PASSWORD=SyncYomi
+      # Use a dedicated DB (owned by SyncYomi). Required on Postgres 15+ so the app can create tables.
+      - POSTGRES_DB=syncyomi
     ports:
       - '5434:5432'
     volumes:
