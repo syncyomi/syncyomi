@@ -1,7 +1,6 @@
 package version
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -98,11 +97,21 @@ func TestGitHubReleaseChecker_checkNewVersion(t *testing.T) {
 				Repo: tt.fields.Repo,
 			}
 			got, gotVersion, err := g.checkNewVersion(tt.args.version, tt.args.release)
-			if tt.wantErr && assert.Error(t, err) {
-				assert.Equal(t, tt.wantErr, err)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("checkNewVersion() expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("checkNewVersion() unexpected error: %v", err)
+				}
 			}
-			assert.Equal(t, tt.wantNew, got)
-			assert.Equal(t, tt.wantVersion, gotVersion)
+			if got != tt.wantNew {
+				t.Errorf("checkNewVersion() got = %v, want %v", got, tt.wantNew)
+			}
+			if gotVersion != tt.wantVersion {
+				t.Errorf("checkNewVersion() gotVersion = %q, want %q", gotVersion, tt.wantVersion)
+			}
 		})
 	}
 }
@@ -122,7 +131,9 @@ func Test_isDevelop(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, isDevelop(tt.version), "isDevelop(%v)", tt.version)
+			if got := isDevelop(tt.version); got != tt.want {
+				t.Errorf("isDevelop(%q) = %v, want %v", tt.version, got, tt.want)
+			}
 		})
 	}
 }

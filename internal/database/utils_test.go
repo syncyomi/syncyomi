@@ -2,8 +2,6 @@ package database
 
 import (
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestDataSourceName(t *testing.T) {
@@ -52,7 +50,9 @@ func TestDataSourceName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := dataSourceName(tt.args.configPath, tt.args.name)
-			assert.Equal(t, tt.want, got)
+			if got != tt.want {
+				t.Errorf("dataSourceName() = %q, want %q", got, tt.want)
+			}
 		})
 	}
 }
