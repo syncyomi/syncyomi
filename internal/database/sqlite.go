@@ -79,8 +79,7 @@ func (db *DB) migrateSQLite() error {
 		return err
 	}
 	defer func(tx *sql.Tx) {
-		err := tx.Rollback()
-		if err != nil {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
 			db.log.Error().Msgf("Failed to rollback DB: %v", err)
 		}
 	}(tx)

@@ -1,5 +1,5 @@
-# build web
-FROM node:18.7.0-alpine3.16 AS web-builder
+# build web (Node 18.12+ required by pnpm)
+FROM node:20-alpine AS web-builder
 WORKDIR /web
 COPY web/package.json web/pnpm-lock.yaml ./
 # install pnpm
@@ -34,7 +34,7 @@ RUN go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${REVISIO
 # build final image
 FROM alpine:latest
 
-LABEL org.opencontainers.image.source = "https://github/SyncYomi/SyncYomi"
+LABEL org.opencontainers.image.source="https://github.com/SyncYomi/SyncYomi"
 
 ENV HOME="/config" \
 XDG_CONFIG_HOME="/config" \

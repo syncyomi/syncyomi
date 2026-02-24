@@ -19,6 +19,8 @@ ehthumbs.db
 Thumbs.db
 
 # Other
+config.toml
+config/config.toml
 .idea
 .pnp.*
 node_modules/
