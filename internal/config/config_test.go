@@ -1,11 +1,11 @@
 package config
 
 import (
-	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"reflect"
 	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
 )
 
 func TestAppConfig_processLines(t *testing.T) {
@@ -48,7 +48,10 @@ func TestAppConfig_processLines(t *testing.T) {
 				m:      tt.fields.m,
 			}
 
-			assert.Equalf(t, tt.want, c.processLines(tt.args.lines), tt.name)
+			got := c.processLines(tt.args.lines)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("processLines() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
