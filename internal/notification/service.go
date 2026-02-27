@@ -2,12 +2,13 @@ package notification
 
 import (
 	"context"
+	"time"
+
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
-	"time"
 )
 
 type Service interface {
@@ -127,8 +128,6 @@ func (s *service) registerSenders() {
 			}
 		}
 	}
-
-	return
 }
 
 // Send notifications
@@ -145,8 +144,6 @@ func (s *service) Send(event domain.NotificationEvent, payload domain.Notificati
 			}
 		}
 	}()
-
-	return
 }
 
 func (s *service) Test(ctx context.Context, notification domain.Notification) error {
@@ -156,7 +153,7 @@ func (s *service) Test(ctx context.Context, notification domain.Notification) er
 	events := []domain.NotificationPayload{
 		{
 			Subject:   "Test Notification",
-			Message:   "tachi-server-sync goes brr!!",
+			Message:   "syncyomi goes brr!!",
 			Event:     domain.NotificationEventTest,
 			Timestamp: time.Now(),
 		},
@@ -176,6 +173,18 @@ func (s *service) Test(ctx context.Context, notification domain.Notification) er
 			Subject:   "Sync Failed!",
 			Message:   "Syncing FAILED BETWEEN DEVICE {Device Name? (Device ID)} AND SERVER {Server Name? (Server ID)}",
 			Event:     domain.NotificationEventSyncFailed,
+			Timestamp: time.Now(),
+		},
+		{
+			Subject:   "Sync Error!",
+			Message:   "An error occurred during sync BETWEEN DEVICE {Device Name? (Device ID)} AND SERVER {Server Name? (Server ID)}",
+			Event:     domain.NotificationEventSyncError,
+			Timestamp: time.Now(),
+		},
+		{
+			Subject:   "Sync Cancelled",
+			Message:   "Synchronization was cancelled for device {Device Name? (Device ID)} (user {Server Name? (Server ID)})",
+			Event:     domain.NotificationEventSyncCancelled,
 			Timestamp: time.Now(),
 		},
 		{
