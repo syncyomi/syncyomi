@@ -113,7 +113,7 @@ func main() {
 	}()
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGKILL, syscall.SIGTERM)
+	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
 	srv := server.NewServer(log, cfg.Config, schedulingService, updateService)
 	if err := srv.Start(); err != nil {
