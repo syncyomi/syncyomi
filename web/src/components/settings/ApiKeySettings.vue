@@ -88,7 +88,8 @@ import { APIClient } from "@/api/APIClient";
 import { computed, reactive, Ref, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
-import QrCodeModal from "@/components/modals/ShowQRCode.vue"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in template as <qr-code-modal>
+import QrCodeModal from "@/components/modals/ShowQRCode.vue";
 import AddApiKey from "@/components/modals/AddApiKey.vue";
 
 interface ShowPassword {

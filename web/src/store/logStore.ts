@@ -17,6 +17,7 @@ export const useLogsStore = defineStore('logsStore', () => {
 
   const clearLogs = () => {
     logs.value = [];
+    filteredLogs.value = [];
   };
 
 

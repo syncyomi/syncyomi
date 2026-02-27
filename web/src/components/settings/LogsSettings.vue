@@ -157,7 +157,7 @@ watch(
   },
 );
 
-const { data: logFiles, isError: logFilesError } = useQuery({
+const { data: logFiles } = useQuery({
   queryKey: ["log-files"],
   queryFn: () => APIClient.logs.files(),
   retry: false,

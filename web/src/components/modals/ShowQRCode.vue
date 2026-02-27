@@ -7,7 +7,7 @@
         renderAs="svg"
         background="#00000000"
         :foreground="foreground"
-        margin=2
+        :margin="2"
         class="w-auto h-auto aspect-square"
       />
       <v-card-actions>
