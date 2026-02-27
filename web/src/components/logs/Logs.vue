@@ -128,6 +128,7 @@ watch([() => logsStore.logs, () => logsStore.searchFilter], () => {
 }, { immediate: true });
 
 onMounted(() => {
+  logsStore.clearLogs();
   es = APIClient.events.logs();
 
   es.onmessage = (event) => {
