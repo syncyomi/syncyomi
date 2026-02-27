@@ -63,4 +63,10 @@ export const EventOptions = [
     subtitle: "An error occurred during the synchronization process",
     enabled: false,
   },
+  {
+    title: "Sync Cancelled",
+    value: "SYNC_CANCELLED",
+    subtitle: "Synchronization was cancelled",
+    enabled: false,
+  },
 ];

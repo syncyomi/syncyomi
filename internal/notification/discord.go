@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"github.com/SyncYomi/SyncYomi/internal/domain"
-	"github.com/SyncYomi/SyncYomi/pkg/errors"
-	"github.com/rs/zerolog"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/pkg/errors"
+	"github.com/rs/zerolog"
 )
 
 type DiscordMessage struct {
@@ -142,68 +143,13 @@ func (a *discordSender) buildEmbed(event domain.NotificationEvent, payload domai
 		color = RED
 	case domain.NotificationEventSyncError:
 		color = RED
+	case domain.NotificationEventSyncCancelled:
+		color = GRAY
 	case domain.NotificationEventTest:
 		color = LIGHT_BLUE
 	}
 
 	var fields []DiscordEmbedsFields
-
-	//if payload.Status != "" {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Status",
-	//		Value:  payload.Status.String(),
-	//		Inline: true,
-	//	}
-	//	fields = append(fields, f)
-	//}
-	//if payload.Indexer != "" {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Indexer",
-	//		Value:  payload.Indexer,
-	//		Inline: true,
-	//	}
-	//	fields = append(fields, f)
-	//}
-	//if payload.Filter != "" {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Filter",
-	//		Value:  payload.Filter,
-	//		Inline: true,
-	//	}
-	//	fields = append(fields, f)
-	//}
-	//if payload.Action != "" {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Action",
-	//		Value:  payload.Action,
-	//		Inline: true,
-	//	}
-	//	fields = append(fields, f)
-	//}
-	//if payload.ActionType != "" {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Action type",
-	//		Value:  string(payload.ActionType),
-	//		Inline: true,
-	//	}
-	//	fields = append(fields, f)
-	//}
-	//if payload.ActionClient != "" {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Action client",
-	//		Value:  payload.ActionClient,
-	//		Inline: true,
-	//	}
-	//	fields = append(fields, f)
-	//}
-	//if len(payload.Rejections) > 0 {
-	//	f := DiscordEmbedsFields{
-	//		Name:   "Reasons",
-	//		Value:  fmt.Sprintf("```\n%v\n```", strings.Join(payload.Rejections, ", ")),
-	//		Inline: false,
-	//	}
-	//	fields = append(fields, f)
-	//}
 
 	embed := DiscordEmbeds{
 		Title:       payload.Subject,

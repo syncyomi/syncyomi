@@ -1,6 +1,8 @@
 package http
 
 import (
+	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -23,9 +25,17 @@ func newSyncHandler(encoder encoder, syncService syncService) *syncHandler {
 	}
 }
 
+// syncEventRequest is the body for POST /api/sync/event (device-reported sync status).
+type syncEventRequest struct {
+	Event      string `json:"event"`
+	DeviceName string `json:"device_name"`
+	Message    string `json:"message"`
+}
+
 func (h syncHandler) Routes(r chi.Router) {
 	r.Get("/content", h.getContent)
 	r.Put("/content", h.putContent)
+	r.Post("/event", h.reportEvent)
 }
 
 func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
@@ -98,4 +108,37 @@ func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", *newEtag)
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (h syncHandler) reportEvent(w http.ResponseWriter, r *http.Request) {
+	apiKey := r.Header.Get("X-API-Token")
+	if apiKey == "" {
+		apiKey = r.URL.Query().Get("apikey")
+	}
+	if apiKey == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var body syncEventRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "invalid JSON body"}, http.StatusBadRequest)
+		return
+	}
+	if body.Event == "" {
+		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "event is required"}, http.StatusBadRequest)
+		return
+	}
+
+	if err := h.syncService.ReportSyncEvent(r.Context(), apiKey, body.Event, body.DeviceName, body.Message); err != nil {
+		if errors.Is(err, sync.ErrInvalidSyncEvent) {
+			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "invalid sync event"}, http.StatusBadRequest)
+			return
+		}
+		log.Println(err)
+		h.encoder.StatusInternalError(w)
+		return
+	}
+
+	h.encoder.NoContent(w)
 }

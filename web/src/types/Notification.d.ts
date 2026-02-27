@@ -4,6 +4,7 @@ export type NotificationEvent =
   | "SYNC_SUCCESS"
   | "SYNC_FAILED"
   | "SYNC_ERROR"
+  | "SYNC_CANCELLED"
   | "SERVER_UPDATE_AVAILABLE";
 
 interface Notification {

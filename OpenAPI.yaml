@@ -466,6 +466,33 @@ paths:
           description: Bad request
         '500':
           description: Internal server error
+  /sync/event:
+    post:
+      tags:
+        - Sync
+      summary: Report sync event
+      description: |
+        Report a device-reported sync status (e.g. started, success, failed, cancelled).
+        Used by the Android app to notify the server of sync progress. Triggers configured
+        notifications (Discord, Telegram, etc.) with optional device name.
+      operationId: reportSyncEvent
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncEventRequest'
+      responses:
+        '204':
+          description: Event reported successfully
+        '400':
+          description: Invalid event type or bad request body
+        '401':
+          description: Unauthorized (missing or invalid API key)
+        '500':
+          description: Internal server error
   /sync/{apiKey}:
     get:
       tags:
@@ -722,6 +749,7 @@ components:
               - SYNC_SUCCESS
               - SYNC_FAILED
               - SYNC_ERROR
+              - SYNC_CANCELLED
               - TEST
         token:
           type: string
@@ -807,3 +835,24 @@ components:
         updated_at:
           type: string
           format: date-time
+    SyncEventRequest:
+      type: object
+      description: Body for reporting a device sync event (POST /sync/event)
+      required:
+        - event
+      properties:
+        event:
+          type: string
+          enum:
+            - SYNC_STARTED
+            - SYNC_SUCCESS
+            - SYNC_FAILED
+            - SYNC_ERROR
+            - SYNC_CANCELLED
+          description: The sync event type reported by the device
+        device_name:
+          type: string
+          description: Optional name of the device that triggered the sync
+        message:
+          type: string
+          description: Optional detail (e.g. error message for SYNC_FAILED, reason for SYNC_CANCELLED)

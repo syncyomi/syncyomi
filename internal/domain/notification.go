@@ -73,6 +73,7 @@ const (
 	NotificationEventSyncSuccess        NotificationEvent = "SYNC_SUCCESS"
 	NotificationEventSyncFailed         NotificationEvent = "SYNC_FAILED"
 	NotificationEventSyncError          NotificationEvent = "SYNC_ERROR"
+	NotificationEventSyncCancelled      NotificationEvent = "SYNC_CANCELLED"
 	NotificationEventTest               NotificationEvent = "TEST"
 )
 
