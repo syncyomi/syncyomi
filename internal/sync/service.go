@@ -110,47 +110,47 @@ func (s service) buildSyncPayload(event domain.NotificationEvent, keyName string
 	switch event {
 	case domain.NotificationEventSyncStarted:
 		return domain.NotificationPayload{
-			Subject:   "Data Transmission Initiated",
-			Message:   fmt.Sprintf("A data transmission between your Tachiyomi library and user **%s** has been initiated%s. Please wait for the process to complete.", keyName, devicePart),
+			Subject:   "Sync started",
+			Message:   fmt.Sprintf("Your library is syncing%s with **%s**. Give it a moment to finish.", devicePart, keyName),
 			Event:     event,
 			Timestamp: ts,
 		}
 	case domain.NotificationEventSyncSuccess:
 		return domain.NotificationPayload{
-			Subject:   "Data Send Successful",
-			Message:   fmt.Sprintf("Your Tachiyomi library data has been successfully sent%s. User: **%s**.", devicePart, keyName),
+			Subject:   "Sync completed",
+			Message:   fmt.Sprintf("Your library finished syncing%s. All set with **%s**.", devicePart, keyName),
 			Event:     event,
 			Timestamp: ts,
 		}
 	case domain.NotificationEventSyncFailed:
-		msg := fmt.Sprintf("The synchronization with Tachiyomi failed for user **%s**%s.", keyName, devicePart)
+		msg := fmt.Sprintf("Sync didn’t complete for **%s**%s.", keyName, devicePart)
 		if detailMessage != "" {
-			msg += " Error: " + detailMessage
+			msg += " " + detailMessage
 		}
 		return domain.NotificationPayload{
-			Subject:   "Sync Operation Failed",
+			Subject:   "Sync failed",
 			Message:   msg,
 			Event:     event,
 			Timestamp: ts,
 		}
 	case domain.NotificationEventSyncError:
-		msg := fmt.Sprintf("An error occurred during synchronization with Tachiyomi for user **%s**%s.", keyName, devicePart)
+		msg := fmt.Sprintf("Something went wrong while syncing with **%s**%s.", keyName, devicePart)
 		if detailMessage != "" {
-			msg += " Error: " + detailMessage
+			msg += " " + detailMessage
 		}
 		return domain.NotificationPayload{
-			Subject:   "Error During Sync",
+			Subject:   "Sync error",
 			Message:   msg,
 			Event:     event,
 			Timestamp: ts,
 		}
 	case domain.NotificationEventSyncCancelled:
-		msg := fmt.Sprintf("Synchronization was cancelled for user **%s**%s.", keyName, devicePart)
+		msg := fmt.Sprintf("Sync was cancelled for **%s**%s.", keyName, devicePart)
 		if detailMessage != "" {
 			msg += " " + detailMessage
 		}
 		return domain.NotificationPayload{
-			Subject:   "Sync Cancelled",
+			Subject:   "Sync cancelled",
 			Message:   msg,
 			Event:     event,
 			Timestamp: ts,
@@ -163,20 +163,4 @@ func (s service) buildSyncPayload(event domain.NotificationEvent, keyName string
 			Timestamp: ts,
 		}
 	}
-}
-
-func (s service) notifySyncStarted(apiKeyName string) {
-	s.notificationService.Send(domain.NotificationEventSyncStarted, s.buildSyncPayload(domain.NotificationEventSyncStarted, apiKeyName, "", ""))
-}
-
-func (s service) notifySyncSuccess(apiKeyName string) {
-	s.notificationService.Send(domain.NotificationEventSyncSuccess, s.buildSyncPayload(domain.NotificationEventSyncSuccess, apiKeyName, "", ""))
-}
-
-func (s service) notifySyncFailed(apiKeyName string, errMsg string) {
-	s.notificationService.Send(domain.NotificationEventSyncFailed, s.buildSyncPayload(domain.NotificationEventSyncFailed, apiKeyName, "", errMsg))
-}
-
-func (s service) notifySyncError(apiKeyName string, errMsg string) {
-	s.notificationService.Send(domain.NotificationEventSyncError, s.buildSyncPayload(domain.NotificationEventSyncError, apiKeyName, "", errMsg))
 }
