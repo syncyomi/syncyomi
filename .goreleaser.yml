@@ -43,6 +43,7 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
 
 release:
+  mode: keep-existing
   prerelease: auto
   footer: |
     **Full Changelog**: https://github.com/SyncYomi/SyncYomi/compare/{{ .PreviousTag }}...{{ .Tag }}
