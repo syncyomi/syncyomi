@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "syncyomi",
+      "changelog-path": "CHANGELOG.md",
+      "changelog-sections": [
+        { "type": "feat", "section": "New Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "chore", "section": "Other Changes" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "test", "section": "Tests" },
+        { "type": "deps", "section": "Dependencies" },
+        { "type": "refactor", "section": "Other Changes" },
+        { "type": "perf", "section": "Other Changes" }
+      ]
+    }
+  }
+}
