@@ -73,11 +73,10 @@ jobs:
           name: web-dist
           path: web/dist
 
-      # 1.20 is the last version to support Windows < 10, Server < 2016, and MacOS < 1.15.
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.20.12"
+          go-version: "1.26.5"
           cache: true
 
       - name: Test
@@ -99,11 +98,10 @@ jobs:
           name: web-dist
           path: web/dist
 
-      # 1.20 is the last version to support Windows < 10, Server < 2016, and MacOS < 1.15.
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.20.12"
+          go-version: "1.26.5"
           cache: true
 
       - name: Run GoReleaser build
