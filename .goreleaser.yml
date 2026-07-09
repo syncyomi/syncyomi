@@ -15,7 +15,7 @@ builds:
       - arm64
       - arm
     goarm:
-      - 6
+      - "6"
     ignore:
       - goos: windows
         goarch: arm
@@ -43,6 +43,7 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
 
 release:
+  mode: keep-existing
   prerelease: auto
   footer: |
     **Full Changelog**: https://github.com/SyncYomi/SyncYomi/compare/{{ .PreviousTag }}...{{ .Tag }}
