@@ -3,7 +3,7 @@ name: release-please
 on:
   push:
     branches:
-      - master
+      - develop
 
 permissions:
   contents: write
@@ -17,4 +17,4 @@ jobs:
         id: release-please
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          target-branch: master
+          target-branch: develop
