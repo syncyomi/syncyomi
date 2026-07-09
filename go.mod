@@ -11,7 +11,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/render v1.0.2
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.2.1
 	github.com/hashicorp/go-version v1.6.0
 	github.com/lib/pq v1.10.7
