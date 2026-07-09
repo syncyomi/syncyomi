@@ -68,7 +68,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -94,7 +94,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -161,7 +161,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -235,7 +235,7 @@ jobs:
     needs: [docker, test]
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: docker-digests-*
