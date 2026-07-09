@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -52,7 +52,7 @@ jobs:
         run: CI= pnpm run build
 
       - name: Upload web production build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -63,7 +63,7 @@ jobs:
     needs: web
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -73,11 +73,10 @@ jobs:
           name: web-dist
           path: web/dist
 
-      # 1.20 is the last version to support Windows < 10, Server < 2016, and MacOS < 1.15.
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.20.12"
+          go-version: "1.26.5"
           cache: true
 
       - name: Test
@@ -89,7 +88,7 @@ jobs:
     needs: [web, test]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -99,11 +98,10 @@ jobs:
           name: web-dist
           path: web/dist
 
-      # 1.20 is the last version to support Windows < 10, Server < 2016, and MacOS < 1.15.
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.20.12"
+          go-version: "1.26.5"
           cache: true
 
       - name: Run GoReleaser build
@@ -127,7 +125,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: syncyomi
           path: |
@@ -156,7 +154,7 @@ jobs:
     needs: [web, test]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -221,7 +219,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-digests-${{ steps.digest-prep.outputs.manifest-hash }}
           path: /tmp/digests/*
