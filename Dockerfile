@@ -1,5 +1,5 @@
 # build web (Node 18.12+ required by pnpm)
-FROM node:20-alpine AS web-builder
+FROM node:26-alpine AS web-builder
 WORKDIR /web
 COPY web/package.json web/pnpm-lock.yaml ./
 # install pnpm
@@ -9,7 +9,7 @@ COPY web/ .
 RUN pnpm run build
 
 # build app
-FROM golang:1.20-alpine3.16 AS app-builder
+FROM golang:1.25-alpine3.23 AS app-builder
 
 ARG VERSION=dev
 ARG REVISION=dev
