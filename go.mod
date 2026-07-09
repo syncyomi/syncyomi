@@ -1,6 +1,6 @@
 module github.com/SyncYomi/SyncYomi
 
-go 1.20
+go 1.23
 
 replace github.com/r3labs/sse/v2 => github.com/autobrr/sse/v2 v2.0.0-20230520125637-530e06346d7d
 
@@ -8,7 +8,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
 	github.com/dustin/go-humanize v1.0.0
-	github.com/fsnotify/fsnotify v1.6.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/render v1.0.2
 	github.com/google/uuid v1.6.0
@@ -48,7 +48,7 @@ require (
 	github.com/subosito/gotenv v1.4.2 // indirect
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
-	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
