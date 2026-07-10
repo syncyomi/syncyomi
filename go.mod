@@ -13,7 +13,7 @@ require (
 	github.com/go-chi/render v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.2.1
-	github.com/hashicorp/go-version v1.6.0
+	github.com/hashicorp/go-version v1.9.0
 	github.com/lib/pq v1.12.3
 	github.com/pkg/errors v0.9.1
 	github.com/r3labs/sse/v2 v2.10.0
