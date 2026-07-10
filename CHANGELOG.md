@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.11](https://github.com/syncyomi/syncyomi/compare/v1.1.10...v1.1.11) (2026-07-10)
+
+
+### Dependencies
+
+* bump @types/node from 20.19.35 to 26.1.1 in /web ([#127](https://github.com/syncyomi/syncyomi/issues/127)) ([5969cdf](https://github.com/syncyomi/syncyomi/commit/5969cdfd3a96e814893a7df87d45f6a3ef4b8e86))
+* bump date-fns from 3.6.0 to 4.4.0 in /web ([#129](https://github.com/syncyomi/syncyomi/issues/129)) ([ed40229](https://github.com/syncyomi/syncyomi/commit/ed4022904209200db62355d1893f0e197fa4ac25))
+* bump eslint from 8.57.1 to 10.6.0 in /web ([#128](https://github.com/syncyomi/syncyomi/issues/128)) ([d8a85a7](https://github.com/syncyomi/syncyomi/commit/d8a85a7b515f8ef40cf5f02ab1d1baf5b549e0da))
+* bump github.com/go-chi/chi/v5 from 5.0.8 to 5.3.1 ([#125](https://github.com/syncyomi/syncyomi/issues/125)) ([07f2d74](https://github.com/syncyomi/syncyomi/commit/07f2d746ffcfee7f398e2ca219f684f339998596))
+* bump github.com/go-chi/render from 1.0.2 to 1.0.3 ([#123](https://github.com/syncyomi/syncyomi/issues/123)) ([e421fdc](https://github.com/syncyomi/syncyomi/commit/e421fdc96dd18d8beddf684d0b624d5ab94ee0d0))
+* bump github.com/hashicorp/go-version from 1.6.0 to 1.9.0 ([#120](https://github.com/syncyomi/syncyomi/issues/120)) ([c8e5aae](https://github.com/syncyomi/syncyomi/commit/c8e5aae95a1055ea7692d96a2a0216a79f8f292a))
+* bump github.com/rs/zerolog from 1.29.0 to 1.35.1 ([#122](https://github.com/syncyomi/syncyomi/issues/122)) ([81b1ca4](https://github.com/syncyomi/syncyomi/commit/81b1ca442cc93efb4340269ec2e16941e06c5a6e))
+* bump golang from 1.25-alpine3.23 to 1.26-alpine3.23 ([#119](https://github.com/syncyomi/syncyomi/issues/119)) ([1b1e8c9](https://github.com/syncyomi/syncyomi/commit/1b1e8c942c7b3a68dfed22d83bac04d9b88692fa))
+* bump googleapis/release-please-action from 4 to 5 ([#118](https://github.com/syncyomi/syncyomi/issues/118)) ([8fd8e18](https://github.com/syncyomi/syncyomi/commit/8fd8e188905d8064266c2ca8cad7dba79c9f6219))
+* bump modernc.org/sqlite from 1.21.1 to 1.53.0 ([#121](https://github.com/syncyomi/syncyomi/issues/121)) ([13879f8](https://github.com/syncyomi/syncyomi/commit/13879f8d54354aec696c0d3b69541d3c32a84d90))
+* bump qrcode.vue from 3.8.0 to 3.10.0 in /web ([#126](https://github.com/syncyomi/syncyomi/issues/126)) ([26ee015](https://github.com/syncyomi/syncyomi/commit/26ee015866a0a7cf3b4100d06dd8a5cb9ea73a98))
+* bump vuetify from 3.12.1 to 4.1.4 in /web ([#124](https://github.com/syncyomi/syncyomi/issues/124)) ([b7f1811](https://github.com/syncyomi/syncyomi/commit/b7f1811a4d3730053a8405f938c6ba08af3538c6))
+
 ## [1.1.10](https://github.com/syncyomi/syncyomi/compare/v1.1.9...v1.1.10) (2026-07-10)
 
 
