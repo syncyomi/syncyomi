@@ -1,9 +1,12 @@
 # build app
-FROM golang:1.25-alpine3.23 AS app-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine3.23 AS app-builder
 
 ARG VERSION=dev
 ARG REVISION=dev
 ARG BUILDTIME
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
 
 RUN apk add --no-cache git make build-base tzdata
 
@@ -16,7 +19,9 @@ RUN go mod download
 
 COPY . ./
 
-RUN go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${REVISION} -X main.date=${BUILDTIME}" -o bin/syncyomi main.go
+# Cross-compile natively on the build host (CGO disabled) instead of under QEMU.
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
+    go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${REVISION} -X main.date=${BUILDTIME}" -o bin/syncyomi main.go
 
 # build final image
 FROM alpine:3.24
