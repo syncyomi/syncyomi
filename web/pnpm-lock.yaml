@@ -36,8 +36,8 @@ importers:
         specifier: 3.0.0
         version: 3.0.0(vue@3.5.29(typescript@6.0.3))
       qrcode.vue:
-        specifier: ^3.8.0
-        version: 3.8.0(vue@3.5.29(typescript@6.0.3))
+        specifier: ^3.10.0
+        version: 3.10.0(vue@3.5.29(typescript@6.0.3))
       roboto-fontface:
         specifier: ^0.10.0
         version: 0.10.0
@@ -1089,8 +1089,8 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
-  qrcode.vue@3.8.0:
-    resolution: {integrity: sha512-+XKbSKvQu158zlHsJm+HObGUQM3Q+9Oq6yb2op/6lMM2gwOiiG9uIhujvrSV5UoTjrzR0BcNxCdW2kk7KE4NEg==}
+  qrcode.vue@3.10.0:
+    resolution: {integrity: sha512-1bjeBds9hRKMszZuBuYQZor9HdJYWtb0S44HG1JofZ9uicpJpdF+TtDvqo3+2ZlH0k80WVIkmiKB4hq0/N6/rA==}
     peerDependencies:
       vue: ^3.0.0
 
@@ -2249,7 +2249,7 @@ snapshots:
 
   punycode@2.3.1: {}
 
-  qrcode.vue@3.8.0(vue@3.5.29(typescript@6.0.3)):
+  qrcode.vue@3.10.0(vue@3.5.29(typescript@6.0.3)):
     dependencies:
       vue: 3.5.29(typescript@6.0.3)
 
