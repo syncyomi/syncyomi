@@ -16,7 +16,7 @@
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@mdi/font": "7.4.47",
     "@tanstack/vue-query": "^5.92.9",
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.4.0",
     "pinia": "^3.0.4",
     "portal-vue": "3.0.0",
     "qrcode.vue": "^3.8.0",
