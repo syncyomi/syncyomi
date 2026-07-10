@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.10](https://github.com/syncyomi/syncyomi/compare/v1.1.9...v1.1.10) (2026-07-10)
+
+
+### Other Changes
+
+* speed up docker builds and fix node 20 deprecations ([#116](https://github.com/syncyomi/syncyomi/issues/116)) ([47c14a1](https://github.com/syncyomi/syncyomi/commit/47c14a19ef168222c21012445807bbe1853bed00))
+
 ## [1.1.9](https://github.com/syncyomi/syncyomi/compare/v1.1.8...v1.1.9) (2026-07-10)
 
 
