@@ -12,7 +12,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-chi/render v1.0.3
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/sessions v1.2.1
+	github.com/gorilla/sessions v1.4.0
 	github.com/hashicorp/go-version v1.9.0
 	github.com/lib/pq v1.12.3
 	github.com/pkg/errors v0.9.1
@@ -31,7 +31,7 @@ require (
 require (
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/gorilla/securecookie v1.1.1 // indirect
+	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
