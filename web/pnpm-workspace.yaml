@@ -1,3 +1,8 @@
 allowBuilds:
   esbuild: true
   vue-demi: true
+
+# Reject dependencies published within this window (minutes) as a supply-chain
+# safeguard. Pins the pnpm 11 default (1 day) explicitly. Dependabot's cooldown
+# (see .github/dependabot.yml) keeps proposed bumps past this cutoff.
+minimumReleaseAge: 1440

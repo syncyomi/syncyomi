@@ -6,6 +6,8 @@ updates:
       interval: "daily"
     commit-message:
       prefix: "deps"
+    cooldown:
+      default-days: 2
 
   - package-ecosystem: "npm"
     directory: "/web"
@@ -13,6 +15,10 @@ updates:
       interval: "daily"
     commit-message:
       prefix: "deps"
+    # Only propose packages past the pnpm minimumReleaseAge cutoff (1 day),
+    # so --frozen-lockfile never rejects a fresh bump. See web/pnpm-workspace.yaml.
+    cooldown:
+      default-days: 2
 
   - package-ecosystem: "github-actions"
     directory: "/"
