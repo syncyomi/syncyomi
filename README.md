@@ -147,10 +147,9 @@ Important Note: Treat each API key as a unique user. To ensure a seamless syncin
 
 #### Preparing for Installation
 
-Before proceeding, backup your existing Tachiyomi environment. Then go to TachiyomiSY [TachiyomiSY Preview version](https://github.com/jobobby04/TachiyomiSYPreview/releases)
-Download and Install it. Currently, it's in preview version of TachiyomiSY, but eventually it will be in the stable version.
+Before proceeding, backup your existing Tachiyomi environment by making a manual backup in `More > Data and storage` then `Create backup`. Then either download [TachiyomiSY](https://github.com/jobobby04/TachiyomiSY/releases/latest) or [Komikku](https://github.com/komikku-app/komikku/releases/latest) and install it.
 
-Then, go to `Settings > Data and Storage` in the app. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key.
+Once installed, go to `More > Data and Storage` in the app and change the Sync option from `Off` to `SyncYomi`. Under the Sync section, input your Host details (e.g., `http://192.168.1.202:8282` or `https://sync.mydomain.tld`) and the previously generated API Key by either pasting it or scanning the QR code.
 
 #### Important Configuration for Direct IP Users
 
