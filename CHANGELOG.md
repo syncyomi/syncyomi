@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.12](https://github.com/syncyomi/syncyomi/compare/v1.1.11...v1.1.12) (2026-07-14)
+
+
+### Bug Fixes
+
+* **build:** pnpm lockfile mismatch ([#143](https://github.com/syncyomi/syncyomi/issues/143)) ([27dc7f8](https://github.com/syncyomi/syncyomi/commit/27dc7f8de06a05d6b1122fad9ae3a21e8248b7ee))
+* go build failing and add minimumAge for pnpm ([#141](https://github.com/syncyomi/syncyomi/issues/141)) ([c60a19f](https://github.com/syncyomi/syncyomi/commit/c60a19f6f64c1a66e651da775b56ee9e51f311d7))
+
+
+### Dependencies
+
+* bump @vue/eslint-config-typescript from 12.0.0 to 14.9.0 in /web ([#139](https://github.com/syncyomi/syncyomi/issues/139)) ([af789bf](https://github.com/syncyomi/syncyomi/commit/af789bf862eb875945a4d68698d1fa4aab2187ed))
+* bump eslint from 10.6.0 to 10.7.0 in /web ([#137](https://github.com/syncyomi/syncyomi/issues/137)) ([cb7b04a](https://github.com/syncyomi/syncyomi/commit/cb7b04a45ac3dfe9e4278dec50d30ce4210611e9))
+* bump eslint-plugin-vue from 9.33.0 to 10.9.2 in /web ([#138](https://github.com/syncyomi/syncyomi/issues/138)) ([ce07320](https://github.com/syncyomi/syncyomi/commit/ce07320befab1bfecb9eb1ccc7cc3599332b8b79))
+* bump github.com/gorilla/sessions from 1.2.1 to 1.4.0 ([#133](https://github.com/syncyomi/syncyomi/issues/133)) ([94b0ddb](https://github.com/syncyomi/syncyomi/commit/94b0ddb8fea48db18ea30c641357986e89e1721a))
+* bump github.com/rs/cors from 1.8.3 to 1.11.1 ([#131](https://github.com/syncyomi/syncyomi/issues/131)) ([334eff3](https://github.com/syncyomi/syncyomi/commit/334eff35776fb07e5d553144030aca977fcf46af))
+* bump github.com/spf13/pflag from 1.0.5 to 1.0.10 ([#134](https://github.com/syncyomi/syncyomi/issues/134)) ([6834857](https://github.com/syncyomi/syncyomi/commit/6834857d1157e0fbfaf180b59dec864f58b4d878))
+* bump github.com/spf13/viper from 1.15.0 to 1.21.0 ([#132](https://github.com/syncyomi/syncyomi/issues/132)) ([5b88958](https://github.com/syncyomi/syncyomi/commit/5b88958e093f8f5fdb6f2c2d83a4f57a2dabee15))
+* bump postcss from 8.5.6 to 8.5.18 in /web ([#135](https://github.com/syncyomi/syncyomi/issues/135)) ([fb9dc6f](https://github.com/syncyomi/syncyomi/commit/fb9dc6fbda9900d672372553166dbb1ab6b8686e))
+* bump vue-router from 4.6.4 to 5.1.0 in /web ([#136](https://github.com/syncyomi/syncyomi/issues/136)) ([d81b13b](https://github.com/syncyomi/syncyomi/commit/d81b13baa345cc74bcf378488e4bb48aed63a571))
+
 ## [1.1.11](https://github.com/syncyomi/syncyomi/compare/v1.1.10...v1.1.11) (2026-07-10)
 
 
