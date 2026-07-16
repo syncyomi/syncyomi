@@ -4,14 +4,15 @@
  * Bootstraps Vuetify and other plugins then mounts the App`
  */
 
+// Main styles
+// Must stay first: establishes CSS layer order before Vuetify's component styles are emitted
+import './index.css'
+
 // Components
 import App from './App.vue'
 
 // Composables
 import { createApp } from 'vue'
-
-// Main styles
-import './index.css'
 
 // Plugins
 import { registerPlugins } from '@/plugins'
