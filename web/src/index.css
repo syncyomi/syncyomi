@@ -1,1 +1,7 @@
+/* Interleaves Tailwind's layers with Vuetify's. Tailwind's `base` (preflight) must sit below
+   `vuetify-components` or it strips component styling, since Vuetify 4 dropped its own reset.
+   Tailwind's `utilities` sit above `vuetify-utilities` so they still win when used.
+   Must be the first @layer the browser sees — layer priority follows first-declaration order. */
+@layer vuetify-core, theme, base, vuetify-components, vuetify-overrides, components,
+  vuetify-utilities, utilities, vuetify-final;
 @import "tailwindcss";

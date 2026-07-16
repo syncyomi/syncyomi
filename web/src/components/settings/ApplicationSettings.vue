@@ -55,8 +55,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Version:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Version:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-chip
                   :color="data?.version == 'dev' ? 'warning' : ''"
                   class="mx-1"
@@ -89,8 +89,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Commit:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Commit:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-chip
                   :color="data?.version == 'dev' ? 'warning' : 'primary'"
                   variant="tonal"
@@ -108,8 +108,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Build date:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Build date:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-chip
                   :color="data?.version == 'dev' ? 'warning' : 'primary'"
                   variant="tonal"
@@ -130,9 +130,9 @@
           <v-col cols="12">
             <v-row class="align-center">
               <v-col>
-                <span class="text-h6 font-weight-bold">Updates</span>
+                <span class="text-title-large font-weight-bold">Updates</span>
                 <v-row>
-                  <v-col class="text-subtitle-2">
+                  <v-col class="text-title-small">
                     Get notified of new updates.
                   </v-col>
                 </v-row>
@@ -161,9 +161,9 @@
           <v-col cols="12">
             <v-row class="align-center">
               <v-col>
-                <span class="text-h6 font-weight-bold">Theme</span>
+                <span class="text-title-large font-weight-bold">Theme</span>
                 <v-row>
-                  <v-col class="text-subtitle-2">
+                  <v-col class="text-title-small">
                     Switch between dark and light theme.
                   </v-col>
                 </v-row>

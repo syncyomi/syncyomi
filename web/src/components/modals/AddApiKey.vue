@@ -1,6 +1,6 @@
 <template>
   <v-container>
-    <v-row justify="end">
+    <v-row class="justify-end">
       <v-dialog
         v-model="dialog"
         :fullscreen="!isDesktop"

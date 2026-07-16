@@ -1,6 +1,6 @@
 <template>
     <v-container>
-      <h1 class="text-h3 py-6">Logs</h1>
+      <h1 class="text-display-medium py-6">Logs</h1>
 
       <v-card class="mb-12" outlined>
         <v-card-text>
