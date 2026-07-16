@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 // Plugins
 import vue from "@vitejs/plugin-vue";
 import vuetify, { transformAssetUrls } from "vite-plugin-vuetify";
@@ -39,5 +40,9 @@ export default defineConfig({
   build: {
     sourcemap: true,
     manifest: true,
+  },
+  test: {
+    environment: "happy-dom",
+    globals: false,
   },
 });
