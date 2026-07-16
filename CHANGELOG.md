@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.13](https://github.com/syncyomi/syncyomi/compare/v1.1.12...v1.1.13) (2026-07-16)
+
+
+### Bug Fixes
+
+* login issue over non https ([#153](https://github.com/syncyomi/syncyomi/issues/153)) ([2c05671](https://github.com/syncyomi/syncyomi/commit/2c05671be77206a1ebb51de961595228c059725f))
+* vuetify and frontend ([#152](https://github.com/syncyomi/syncyomi/issues/152)) ([f38abc9](https://github.com/syncyomi/syncyomi/commit/f38abc9d5dc56b6c9782eb895213ce6977d3f00b))
+
+
+### Dependencies
+
+* bump @fortawesome/fontawesome-free from 6.7.2 to 7.3.0 in /web ([#145](https://github.com/syncyomi/syncyomi/issues/145)) ([01e9e75](https://github.com/syncyomi/syncyomi/commit/01e9e755fe1b24c72b509a9a794ee283a359fd98))
+* bump @fortawesome/free-regular-svg-icons in /web ([#146](https://github.com/syncyomi/syncyomi/issues/146)) ([153e74e](https://github.com/syncyomi/syncyomi/commit/153e74e3be9455c9982f9acf39aff18c6bf6e448))
+* bump @fortawesome/free-solid-svg-icons from 6.7.2 to 7.3.0 in /web ([#147](https://github.com/syncyomi/syncyomi/issues/147)) ([ed290d7](https://github.com/syncyomi/syncyomi/commit/ed290d70cccd2472cc73aa50b0bfc14cb355c956))
+* bump actions/setup-go from 6 to 7 ([#151](https://github.com/syncyomi/syncyomi/issues/151)) ([a0e5e3d](https://github.com/syncyomi/syncyomi/commit/a0e5e3d2291244983f5aaed841135bf3242348f8))
+* bump actions/setup-node from 6 to 7 ([#144](https://github.com/syncyomi/syncyomi/issues/144)) ([d12c5f1](https://github.com/syncyomi/syncyomi/commit/d12c5f1bb59d6b103e6420ca4b33c0ebca239fbc))
+* bump eslint-plugin-vue from 9.33.0 to 10.9.2 in /web ([#149](https://github.com/syncyomi/syncyomi/issues/149)) ([5e675bd](https://github.com/syncyomi/syncyomi/commit/5e675bd115fb19168d8f0a65fe08f7acdf5752a8))
+* bump vite from 8.1.3 to 8.1.4 in /web ([#148](https://github.com/syncyomi/syncyomi/issues/148)) ([eb538e7](https://github.com/syncyomi/syncyomi/commit/eb538e78b06bba0fb85ef336f03a91a7371c0efd))
+
 ## [1.1.12](https://github.com/syncyomi/syncyomi/compare/v1.1.11...v1.1.12) (2026-07-14)
 
 
