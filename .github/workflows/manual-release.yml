@@ -45,6 +45,14 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
+      - name: Lint web frontend
+        working-directory: web
+        run: pnpm lint
+
+      - name: Test web frontend
+        working-directory: web
+        run: pnpm test
+
       - name: Build web frontend
         working-directory: web
         run: CI= pnpm run build
@@ -76,6 +84,9 @@ jobs:
         with:
           go-version: "1.26.5"
           cache: true
+
+      - name: Vet
+        run: go vet ./...
 
       - name: Test
         run: go test -v ./...
