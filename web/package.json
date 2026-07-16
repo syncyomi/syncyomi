@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -17,7 +18,7 @@
     "portal-vue": "3.0.0",
     "qrcode.vue": "^3.10.0",
     "roboto-fontface": "^0.10.0",
-    "vue": "^3.5.29",
+    "vue": "^3.5.39",
     "vue-router": "^5.1.0",
     "vuetify": "^4.1.4",
     "webfontloader": "^1.6.28"
