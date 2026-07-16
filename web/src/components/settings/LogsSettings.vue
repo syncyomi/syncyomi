@@ -18,8 +18,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Path:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Path:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-chip
                   :color="data?.log_path ? 'primary' : ''"
                   class="mx-1"
@@ -38,8 +38,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Level:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Level:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-select
                   :model-value="data?.log_level"
                   :items="LogLevelOptions"
@@ -59,8 +59,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Max Size:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Max Size:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-chip :color="data?.log_max_size ? '' : ''" variant="tonal">
                   <span>{{ data?.log_max_size }} MB </span>
                 </v-chip>
@@ -75,8 +75,8 @@
         <v-row>
           <v-col cols="12">
             <v-row>
-              <v-col class="text-h6 font-weight-bold"> Max Backups:</v-col>
-              <v-col class="d-flex justify-end text-h6">
+              <v-col class="text-title-large font-weight-bold"> Max Backups:</v-col>
+              <v-col class="d-flex justify-end text-title-large">
                 <v-chip
                   :color="data?.log_max_backups ? '' : ''"
                   variant="tonal"

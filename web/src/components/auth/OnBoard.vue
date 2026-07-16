@@ -1,11 +1,11 @@
 <template>
-  <v-container class="d-flex fill-height">
+  <v-container class="fill-height d-flex align-center flex-wrap">
     <v-row class="align-center justify-center">
       <v-col md="8" sm="12">
         <h1 class="text-center text-uppercase">SyncYomi</h1>
         <v-sheet
           class="pa-4 mx-auto mt-5"
-          elevation="10"
+          elevation="5"
           max-width="600"
           rounded="lg"
           width="100%"
