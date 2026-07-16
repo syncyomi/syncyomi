@@ -63,7 +63,7 @@
           variant="outlined"
         >
           {{ message }}
-          <template v-slot:actions>
+          <template #actions>
             <v-btn color="orange" variant="text" @click="snackbar = false">
               Close
             </v-btn>

@@ -4,7 +4,7 @@
       <qrcode
         :value="key"
         level="Q"
-        renderAs="svg"
+        render-as="svg"
         background="#00000000"
         :foreground="foreground"
         :margin="2"

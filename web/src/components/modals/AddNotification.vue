@@ -7,11 +7,11 @@
         :scrim="false"
         transition="dialog-bottom-transition"
       >
-        <template v-slot:activator="{ props }">
+        <template #activator="{ props }">
           <v-btn color="primary" dark v-bind="props"> Add Notification</v-btn>
         </template>
         <v-card>
-          <v-form v-model="valid" ref="form" @submit.prevent="submit()">
+          <v-form ref="form" v-model="valid" @submit.prevent="submit()">
             <v-toolbar dark color="primary">
               <v-btn icon dark @click="dialog = false">
                 <v-icon>mdi-close</v-icon>
@@ -59,7 +59,7 @@
                   {{ event.subtitle }}
                 </v-list-item-subtitle>
 
-                <template v-slot:prepend>
+                <template #prepend>
                   <v-checkbox v-model="eventStates[event.value]"></v-checkbox>
                 </template>
               </v-list-item>

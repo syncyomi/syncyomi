@@ -29,8 +29,9 @@
                 height="60vh"
                 item-height="48"
               >
-              <template v-slot="{ item }">
-                <div :class="[
+              <template #default="{ item }">
+                <div
+:class="[
               'my-2 flex items-center',
               logsStore.indentLogLines ? 'pl-4' : '',
               logsStore.hideWrappedText ? 'truncate' : 'whitespace-normal'
@@ -120,7 +121,7 @@ watch([() => logsStore.logs, () => logsStore.searchFilter], () => {
     const pattern = new RegExp(logsStore.searchFilter, "i");
     logsStore.filteredLogs = logsStore.logs.filter(log => pattern.test(log.message));
     logsStore.isInvalidRegex = false;
-  } catch (error) {
+  } catch {
     // Handle regex errors by showing nothing when the regex pattern is invalid
     logsStore.filteredLogs = [];
     logsStore.isInvalidRegex = true;
