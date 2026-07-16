@@ -16,8 +16,8 @@
 import { ref } from "vue";
 
 const props = defineProps({
-  title: String,
-  message: String,
+  title: { type: String, required: true },
+  message: { type: String, required: true },
 });
 
 const emit = defineEmits(["confirmed", "canceled"]);

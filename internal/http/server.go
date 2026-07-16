@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/SyncYomi/SyncYomi/internal/config"
 	"github.com/SyncYomi/SyncYomi/internal/database"
+	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/SyncYomi/SyncYomi/web"
 	"github.com/go-chi/chi/v5"
@@ -36,6 +37,19 @@ type Server struct {
 	syncService syncService
 }
 
+// newCookieStore builds the session store with an explicit baseline.
+// gorilla/sessions v1.4.0 defaults to Secure+SameSite=None, which browsers drop
+// over plain HTTP on anything but localhost, so its defaults can't be relied on.
+// Handlers that don't set their own options inherit these.
+func newCookieStore(cfg *domain.Config) *sessions.CookieStore {
+	store := sessions.NewCookieStore([]byte(cfg.SessionSecret))
+	store.Options.Path = cfg.BaseURL
+	store.Options.HttpOnly = true
+	store.Options.Secure = cfg.SecureCookie
+	store.Options.SameSite = http.SameSiteLaxMode
+	return store
+}
+
 func NewServer(
 	log logger.Logger,
 	config *config.AppConfig,
@@ -59,7 +73,7 @@ func NewServer(
 		commit:  commit,
 		date:    date,
 
-		cookieStore: sessions.NewCookieStore([]byte(config.Config.SessionSecret)),
+		cookieStore: newCookieStore(config.Config),
 
 		apiService:          apiService,
 		authService:         authService,

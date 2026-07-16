@@ -6,7 +6,7 @@
       effect.
     </v-card-subtitle>
 
-    <template v-slot:loader>
+    <template #loader>
       <v-progress-linear
         :active="isLoading"
         color="primary"

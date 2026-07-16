@@ -2,9 +2,9 @@ import { defineStore } from "pinia";
 import { Ref, ref } from "vue";
 
 export const useAuthStore = defineStore("auth", () => {
-  const loadFromLocalStorage = (key: string, defaultValue: any) => {
+  const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
     const storedValue = localStorage.getItem(key);
-    return storedValue ? JSON.parse(storedValue) : defaultValue;
+    return storedValue ? (JSON.parse(storedValue) as T) : defaultValue;
   };
 
   const isAuthenticated: Ref<boolean> = ref(

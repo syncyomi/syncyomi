@@ -126,6 +126,17 @@ checkForUpdates = true
 # Session secret
 #
 sessionSecret = "{{ .sessionSecret }}"
+
+# Secure cookie
+#
+# Default: false
+#
+# Marks the session cookie as Secure. Browsers reject Secure cookies over plain
+# HTTP, so only enable this when SyncYomi is reached over HTTPS. It is detected
+# automatically from X-Forwarded-Proto; set this when your reverse proxy
+# terminates TLS but does not send that header.
+#
+#secureCookie = false
 `
 
 func writeConfig(configPath string, configFile string) error {
@@ -243,6 +254,7 @@ func (c *AppConfig) defaults() {
 		LogMaxBackups:    3,
 		BaseURL:          "/",
 		SessionSecret:    "secret-session-key",
+		SecureCookie:     false,
 		CheckForUpdates:  true,
 		DatabaseType:     "sqlite",
 		PostgresHost:     "localhost",

@@ -55,7 +55,7 @@
 
     <v-spacer></v-spacer>
 
-    <template v-if="showToolbarItems" v-slot:append>
+    <template v-if="showToolbarItems" #append>
       <v-btn icon="mdi-power" @click="mutation.mutate()"></v-btn>
     </template>
   </v-app-bar>
@@ -91,7 +91,7 @@
     variant="tonal"
   >
     {{ snackbarMessage }}
-    <template v-slot:actions>
+    <template #actions>
       <v-btn color="orange" variant="text" @click="snackbar = false">
         Close
       </v-btn>

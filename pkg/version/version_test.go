@@ -1,102 +1,55 @@
 package version
 
 import (
+	"fmt"
+	"runtime"
 	"testing"
 )
 
 func TestGitHubReleaseChecker_checkNewVersion(t *testing.T) {
-	type fields struct {
-		Repo string
-	}
-	type args struct {
-		version string
-		release *Release
-	}
 	tests := []struct {
 		name        string
-		fields      fields
-		args        args
+		repo        string
+		version     string
+		release     *Release
 		wantNew     bool
 		wantVersion string
 		wantErr     bool
 	}{
 		{
-			name:   "outdated new available",
-			fields: fields{},
-			args: args{
-				version: "v0.2.0",
-				release: &Release{
-					TagName:         "v0.3.0",
-					TargetCommitish: "",
-				},
-			},
+			name:        "outdated new available",
+			version:     "v0.2.0",
+			release:     &Release{TagName: "v0.3.0"},
 			wantNew:     true,
 			wantVersion: "0.3.0",
-			wantErr:     false,
 		},
 		{
-			name:   "same version",
-			fields: fields{},
-			args: args{
-				version: "v0.2.0",
-				release: &Release{
-					TagName:         "v0.2.0",
-					TargetCommitish: "",
-				},
-			},
-			wantNew:     false,
-			wantVersion: "",
-			wantErr:     false,
+			name:    "same version",
+			version: "v0.2.0",
+			release: &Release{TagName: "v0.2.0"},
 		},
 		{
-			name:   "no new version",
-			fields: fields{},
-			args: args{
-				version: "v0.3.0",
-				release: &Release{
-					TagName:         "v0.2.0",
-					TargetCommitish: "",
-				},
-			},
-			wantNew:     false,
-			wantVersion: "",
-			wantErr:     false,
+			name:    "no new version",
+			version: "v0.3.0",
+			release: &Release{TagName: "v0.2.0"},
 		},
 		{
-			name:   "new rc available",
-			fields: fields{},
-			args: args{
-				version: "v0.3.0",
-				release: &Release{
-					TagName:         "v0.3.0-rc1",
-					TargetCommitish: "",
-				},
-			},
-			wantNew:     false,
-			wantVersion: "",
-			wantErr:     false,
+			name:    "new rc available",
+			version: "v0.3.0",
+			release: &Release{TagName: "v0.3.0-rc1"},
 		},
 		{
-			name:   "new rc available",
-			fields: fields{},
-			args: args{
-				version: "v0.3.0-RC1",
-				release: &Release{
-					TagName:         "v0.3.0-RC2",
-					TargetCommitish: "",
-				},
-			},
+			name:        "new rc available",
+			version:     "v0.3.0-RC1",
+			release:     &Release{TagName: "v0.3.0-RC2"},
 			wantNew:     true,
 			wantVersion: "0.3.0-RC2",
-			wantErr:     false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := &Checker{
-				Repo: tt.fields.Repo,
-			}
-			got, gotVersion, err := g.checkNewVersion(tt.args.version, tt.args.release)
+			g := &Checker{Repo: tt.repo}
+			got, gotVersion, err := g.checkNewVersion(tt.version, tt.release)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("checkNewVersion() expected error, got nil")
@@ -111,6 +64,48 @@ func TestGitHubReleaseChecker_checkNewVersion(t *testing.T) {
 			}
 			if gotVersion != tt.wantVersion {
 				t.Errorf("checkNewVersion() gotVersion = %q, want %q", gotVersion, tt.wantVersion)
+			}
+		})
+	}
+}
+
+func TestRelease_IsPreOrDraft(t *testing.T) {
+	tests := []struct {
+		name       string
+		draft      bool
+		prerelease bool
+		want       bool
+	}{
+		{name: "stable release", draft: false, prerelease: false, want: false},
+		{name: "draft", draft: true, prerelease: false, want: true},
+		{name: "prerelease", draft: false, prerelease: true, want: true},
+		{name: "draft and prerelease", draft: true, prerelease: true, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Release{Draft: tt.draft, Prerelease: tt.prerelease}
+			if got := r.IsPreOrDraft(); got != tt.want {
+				t.Errorf("IsPreOrDraft() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChecker_buildUserAgent(t *testing.T) {
+	tests := []struct {
+		name           string
+		currentVersion string
+	}{
+		{name: "release version", currentVersion: "v1.2.3"},
+		{name: "develop", currentVersion: "dev"},
+		{name: "empty version", currentVersion: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Checker{CurrentVersion: tt.currentVersion}
+			want := fmt.Sprintf("SyncYomi/%s (%s %s)", tt.currentVersion, runtime.GOOS, runtime.GOARCH)
+			if got := c.buildUserAgent(); got != want {
+				t.Errorf("buildUserAgent() = %q, want %q", got, want)
 			}
 		})
 	}

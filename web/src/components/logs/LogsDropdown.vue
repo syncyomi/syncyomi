@@ -13,7 +13,7 @@ const menu = ref(false); // Controls the visibility of the menu
     location="end"
     :close-on-content-click=false
   >
-    <template  v-slot:activator="{ props }">
+    <template  #activator="{ props }">
       <v-btn
         v-bind="props"
         class="ml-2"

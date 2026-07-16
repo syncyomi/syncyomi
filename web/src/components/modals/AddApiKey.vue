@@ -7,13 +7,13 @@
         :scrim="false"
         transition="dialog-bottom-transition"
       >
-        <template v-slot:activator="{ props }">
+        <template #activator="{ props }">
           <v-btn color="primary" dark v-bind="props"> Add API Key</v-btn>
         </template>
         <v-card>
           <v-form
-            v-model="valid"
             ref="form"
+            v-model="valid"
             @submit.prevent="handleSubmit(apiKey)"
           >
             <v-toolbar dark color="primary">

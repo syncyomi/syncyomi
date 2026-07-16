@@ -11,6 +11,7 @@ type Config struct {
 	LogMaxBackups    int    `toml:"logMaxBackups"`
 	BaseURL          string `toml:"baseUrl"`
 	SessionSecret    string `toml:"sessionSecret"`
+	SecureCookie     bool   `toml:"secureCookie"`
 	CheckForUpdates  bool   `toml:"checkForUpdates"`
 	DatabaseType     string `toml:"databaseType"`
 	PostgresHost     string `toml:"postgresHost"`

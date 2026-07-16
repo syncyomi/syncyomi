@@ -3,7 +3,7 @@
     <v-card-title>Logs</v-card-title>
     <v-card-subtitle class="mb-3"> Set Log Level.</v-card-subtitle>
 
-    <template v-slot:loader>
+    <template #loader>
       <v-progress-linear
         :active="isLoading"
         color="primary"
@@ -43,10 +43,10 @@
                 <v-select
                   :model-value="data?.log_level"
                   :items="LogLevelOptions"
-                  @update:modelValue="setLogLevelUpdateMutation.mutate($event)"
                   color="primary"
                   label="Log Level"
                   variant="underlined"
+                  @update:model-value="setLogLevelUpdateMutation.mutate($event)"
                 ></v-select>
               </v-col>
             </v-row>

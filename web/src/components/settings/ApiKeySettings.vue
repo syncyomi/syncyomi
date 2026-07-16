@@ -7,7 +7,7 @@
     </v-card-title>
     <v-card-subtitle class="mb-3"> Manage API Keys.</v-card-subtitle>
 
-    <template v-slot:loader>
+    <template #loader>
       <v-progress-linear
         :active="isLoading"
         color="primary"
@@ -40,10 +40,10 @@
                 :type="showPassword[index] ? 'text' : 'password'"
               >
                 <template #append-inner>
-                  <v-icon @click="togglePasswordVisibility(index)" class="mr-2">
+                  <v-icon class="mr-2" @click="togglePasswordVisibility(index)">
                     mdi-eye{{ showPassword[index] ? "-off" : "" }}
                   </v-icon>
-                  <v-icon @click="showQrCode(item.key)" class="mr-2">
+                  <v-icon class="mr-2" @click="showQrCode(item.key)">
                     mdi-qrcode
                   </v-icon>
                   <v-icon @click="copyToClipboard(item.key)">
@@ -88,7 +88,6 @@ import { APIClient } from "@/api/APIClient";
 import { computed, reactive, Ref, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in template as <qr-code-modal>
 import QrCodeModal from "@/components/modals/ShowQRCode.vue";
 import AddApiKey from "@/components/modals/AddApiKey.vue";
 
@@ -99,8 +98,10 @@ interface ShowPassword {
 const snackbarVisible: Ref<boolean> = ref(false);
 const snackbarMessage: Ref<string> = ref("Config updated successfully!");
 const snackbarColor: Ref<string> = ref("success");
-const qrCodeModal: Ref<any> = ref(null);
-const deleteConfirmationModal: Ref<any> = ref(null);
+const qrCodeModal = ref<InstanceType<typeof QrCodeModal> | null>(null);
+const deleteConfirmationModal = ref<InstanceType<typeof ConfirmationModal> | null>(
+  null
+);
 const selectedApiKey: Ref<string> = ref("");
 const showPassword: ShowPassword = reactive({});
 
@@ -148,7 +149,7 @@ const togglePasswordVisibility = (index: number) => {
 
 const showDeleteConfirmation = (key: string) => {
   selectedApiKey.value = key;
-  deleteConfirmationModal.value.showModal();
+  deleteConfirmationModal.value?.showModal();
 };
 
 const confirmedDeleteNotification = () => {
@@ -160,7 +161,7 @@ const canceledDeleteNotification = () => {
 };
 
 const showQrCode = (key: string) => {
-  qrCodeModal.value.showModal(key);
+  qrCodeModal.value?.showModal(key);
 }
 
 const dataTableComputed = computed(() => {

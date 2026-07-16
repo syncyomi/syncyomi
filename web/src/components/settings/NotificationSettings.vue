@@ -9,7 +9,7 @@
       Send notifications on events.
     </v-card-subtitle>
 
-    <template v-slot:loader>
+    <template #loader>
       <v-progress-linear
         :active="isLoading"
         color="primary"
@@ -37,8 +37,8 @@
           <tr v-for="item in dataTableComputed" :key="item.id">
             <td>
               <v-switch
-                readonly
                 v-model="item.enabled"
+                readonly
                 color="primary"
               ></v-switch>
             </td>
@@ -85,7 +85,9 @@ import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
 const snackbarVisible: Ref<boolean> = ref(false);
 const snackbarMessage: Ref<string> = ref("Config updated successfully!");
 const snackbarColor: Ref<string> = ref("success");
-const deleteConfirmationModal: Ref<any> = ref(null);
+const deleteConfirmationModal = ref<InstanceType<typeof ConfirmationModal> | null>(
+  null
+);
 const selectedNotificationId: Ref<number> = ref(0);
 
 // Get QueryClient from context
@@ -129,7 +131,7 @@ const deleteNotification = useMutation({
 
 const showDeleteConfirmation = (id: number) => {
   selectedNotificationId.value = id;
-  deleteConfirmationModal.value.showModal();
+  deleteConfirmationModal.value?.showModal();
 };
 
 const confirmedDeleteNotification = () => {
