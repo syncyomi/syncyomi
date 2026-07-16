@@ -1,10 +1,19 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const USER = "e2euser";
 const PASS = "e2epassword123";
 
+async function login(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("Username").fill(USER);
+  await page.getByLabel("Password", { exact: true }).fill(PASS);
+  await page.getByRole("button", { name: /^login$/i }).click();
+  await expect(page).toHaveURL(/settings/);
+}
+
 // One shared backend + DB, so the single-user constraint forces an order:
-// onboard creates the account, then login exercises it from a clean client.
+// onboarding (test 1) creates the account, the rest log in as that user. Each
+// test gets a fresh browser context, so no cookie/localStorage leaks between them.
 test.describe.serial("auth", () => {
   test("onboarding creates the first account", async ({ page }) => {
     await page.goto("/");
@@ -25,17 +34,7 @@ test.describe.serial("auth", () => {
     page,
     context,
   }) => {
-    // Clean client: drop the cookie and localStorage so this is a real login.
-    await context.clearCookies();
-    await page.goto("/login");
-    await page.evaluate(() => localStorage.clear());
-
-    await page.goto("/login");
-    await page.getByLabel("Username").fill(USER);
-    await page.getByLabel("Password", { exact: true }).fill(PASS);
-    await page.getByRole("button", { name: /^login$/i }).click();
-
-    await expect(page).toHaveURL(/settings/);
+    await login(page);
 
     // Browser-level guard for the fix: gorilla/sessions 1.4.0 defaulted the
     // cookie to Secure, which browsers drop on plain http, breaking IP:PORT.
@@ -46,9 +45,32 @@ test.describe.serial("auth", () => {
     expect(session!.secure, "cookie must not be Secure over http").toBe(false);
     expect(session!.httpOnly, "cookie must be HttpOnly").toBe(true);
 
-    // Staying on /settings proves the API accepted the cookie: a rejected
+    // A visible authed tab proves the API accepted the cookie: a rejected
     // session would 401 and the client redirects to /login.
-    await expect(page).toHaveURL(/settings/);
     await expect(page.getByRole("tab", { name: "Application" })).toBeVisible();
+  });
+
+  test("wrong credentials are rejected", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Username").fill(USER);
+    await page.getByLabel("Password", { exact: true }).fill("wrong-password");
+    await page.getByRole("button", { name: /^login$/i }).click();
+
+    await expect(page.getByText(/login failed/i)).toBeVisible();
+    await expect(page).toHaveURL(/login/);
+  });
+
+  test("unauthenticated access to a protected route redirects to login", async ({
+    page,
+  }) => {
+    await page.goto("/settings");
+    await expect(page).toHaveURL(/login/);
+  });
+
+  test("logout ends the session", async ({ page }) => {
+    await login(page);
+
+    await page.getByRole("button", { name: /logout/i }).click();
+    await expect(page).toHaveURL(/login/);
   });
 });

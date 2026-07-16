@@ -56,7 +56,11 @@
     <v-spacer></v-spacer>
 
     <template v-if="showToolbarItems" #append>
-      <v-btn icon="mdi-power" @click="mutation.mutate()"></v-btn>
+      <v-btn
+        icon="mdi-power"
+        aria-label="Logout"
+        @click="mutation.mutate()"
+      ></v-btn>
     </template>
   </v-app-bar>
 
