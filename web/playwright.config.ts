@@ -24,9 +24,7 @@ export default defineConfig({
     // reset script has already wiped the data dir for this run.
     reuseExistingServer: false,
     timeout: 120_000, // first `go run` cold-compiles
-    // The server logs every request at trace to stderr; keep it out of the test
-    // output. Flip to "pipe" to debug a backend that won't boot.
-    stdout: "ignore",
-    stderr: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
   },
 });
