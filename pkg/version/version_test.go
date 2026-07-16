@@ -5,98 +5,49 @@ import (
 )
 
 func TestGitHubReleaseChecker_checkNewVersion(t *testing.T) {
-	type fields struct {
-		Repo string
-	}
-	type args struct {
-		version string
-		release *Release
-	}
 	tests := []struct {
 		name        string
-		fields      fields
-		args        args
+		repo        string
+		version     string
+		release     *Release
 		wantNew     bool
 		wantVersion string
 		wantErr     bool
 	}{
 		{
-			name:   "outdated new available",
-			fields: fields{},
-			args: args{
-				version: "v0.2.0",
-				release: &Release{
-					TagName:         "v0.3.0",
-					TargetCommitish: "",
-				},
-			},
+			name:        "outdated new available",
+			version:     "v0.2.0",
+			release:     &Release{TagName: "v0.3.0"},
 			wantNew:     true,
 			wantVersion: "0.3.0",
-			wantErr:     false,
 		},
 		{
-			name:   "same version",
-			fields: fields{},
-			args: args{
-				version: "v0.2.0",
-				release: &Release{
-					TagName:         "v0.2.0",
-					TargetCommitish: "",
-				},
-			},
-			wantNew:     false,
-			wantVersion: "",
-			wantErr:     false,
+			name:    "same version",
+			version: "v0.2.0",
+			release: &Release{TagName: "v0.2.0"},
 		},
 		{
-			name:   "no new version",
-			fields: fields{},
-			args: args{
-				version: "v0.3.0",
-				release: &Release{
-					TagName:         "v0.2.0",
-					TargetCommitish: "",
-				},
-			},
-			wantNew:     false,
-			wantVersion: "",
-			wantErr:     false,
+			name:    "no new version",
+			version: "v0.3.0",
+			release: &Release{TagName: "v0.2.0"},
 		},
 		{
-			name:   "new rc available",
-			fields: fields{},
-			args: args{
-				version: "v0.3.0",
-				release: &Release{
-					TagName:         "v0.3.0-rc1",
-					TargetCommitish: "",
-				},
-			},
-			wantNew:     false,
-			wantVersion: "",
-			wantErr:     false,
+			name:    "new rc available",
+			version: "v0.3.0",
+			release: &Release{TagName: "v0.3.0-rc1"},
 		},
 		{
-			name:   "new rc available",
-			fields: fields{},
-			args: args{
-				version: "v0.3.0-RC1",
-				release: &Release{
-					TagName:         "v0.3.0-RC2",
-					TargetCommitish: "",
-				},
-			},
+			name:        "new rc available",
+			version:     "v0.3.0-RC1",
+			release:     &Release{TagName: "v0.3.0-RC2"},
 			wantNew:     true,
 			wantVersion: "0.3.0-RC2",
-			wantErr:     false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := &Checker{
-				Repo: tt.fields.Repo,
-			}
-			got, gotVersion, err := g.checkNewVersion(tt.args.version, tt.args.release)
+			g := &Checker{Repo: tt.repo}
+			got, gotVersion, err := g.checkNewVersion(tt.version, tt.release)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("checkNewVersion() expected error, got nil")
