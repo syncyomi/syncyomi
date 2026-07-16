@@ -1,6 +1,8 @@
 package version
 
 import (
+	"fmt"
+	"runtime"
 	"testing"
 )
 
@@ -62,6 +64,48 @@ func TestGitHubReleaseChecker_checkNewVersion(t *testing.T) {
 			}
 			if gotVersion != tt.wantVersion {
 				t.Errorf("checkNewVersion() gotVersion = %q, want %q", gotVersion, tt.wantVersion)
+			}
+		})
+	}
+}
+
+func TestRelease_IsPreOrDraft(t *testing.T) {
+	tests := []struct {
+		name       string
+		draft      bool
+		prerelease bool
+		want       bool
+	}{
+		{name: "stable release", draft: false, prerelease: false, want: false},
+		{name: "draft", draft: true, prerelease: false, want: true},
+		{name: "prerelease", draft: false, prerelease: true, want: true},
+		{name: "draft and prerelease", draft: true, prerelease: true, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Release{Draft: tt.draft, Prerelease: tt.prerelease}
+			if got := r.IsPreOrDraft(); got != tt.want {
+				t.Errorf("IsPreOrDraft() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChecker_buildUserAgent(t *testing.T) {
+	tests := []struct {
+		name           string
+		currentVersion string
+	}{
+		{name: "release version", currentVersion: "v1.2.3"},
+		{name: "develop", currentVersion: "dev"},
+		{name: "empty version", currentVersion: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Checker{CurrentVersion: tt.currentVersion}
+			want := fmt.Sprintf("SyncYomi/%s (%s %s)", tt.currentVersion, runtime.GOOS, runtime.GOARCH)
+			if got := c.buildUserAgent(); got != want {
+				t.Errorf("buildUserAgent() = %q, want %q", got, want)
 			}
 		})
 	}
