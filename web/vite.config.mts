@@ -44,5 +44,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: false,
+    // Keep vitest to unit/component tests; Playwright owns e2e/**.
+    include: ["src/**/*.test.ts"],
   },
 });

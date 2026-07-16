@@ -3,6 +3,12 @@ node_modules
 /dist/*
 !dist/.gitkeep
 
+# Playwright E2E
+/e2e/.data/
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 
 # local env files
 .env.local
