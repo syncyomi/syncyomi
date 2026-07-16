@@ -50,6 +50,15 @@ func NewServer(
 	updateSvc updateService,
 	syncService syncService,
 ) Server {
+	// Set the baseline here rather than per-request: gorilla/sessions v1.4.0 defaults
+	// to Secure+SameSite=None, which browsers drop over plain HTTP on anything but
+	// localhost. Handlers that don't set their own options inherit these.
+	cookieStore := sessions.NewCookieStore([]byte(config.Config.SessionSecret))
+	cookieStore.Options.Path = config.Config.BaseURL
+	cookieStore.Options.HttpOnly = true
+	cookieStore.Options.Secure = config.Config.SecureCookie
+	cookieStore.Options.SameSite = http.SameSiteLaxMode
+
 	return Server{
 		log:     log.With().Str("module", "http").Logger(),
 		config:  config,
@@ -59,7 +68,7 @@ func NewServer(
 		commit:  commit,
 		date:    date,
 
-		cookieStore: sessions.NewCookieStore([]byte(config.Config.SessionSecret)),
+		cookieStore: cookieStore,
 
 		apiService:          apiService,
 		authService:         authService,

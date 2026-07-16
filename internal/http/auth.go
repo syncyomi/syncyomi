@@ -55,21 +55,28 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.cookieStore.Options.HttpOnly = true
-	h.cookieStore.Options.SameSite = http.SameSiteLaxMode
-	h.cookieStore.Options.Path = h.config.BaseURL
+	session, _ := h.cookieStore.Get(r, "user_session")
 
 	// syncyomi does not support serving on TLS / https, so this is only available behind reverse proxy
 	// if forwarded protocol is https then set cookie secure
 	// SameSite Strict can only be set with a secure cookie. So we overwrite it here if possible.
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite
-	fwdProto := r.Header.Get("X-Forwarded-Proto")
-	if fwdProto == "https" {
-		h.cookieStore.Options.Secure = true
-		h.cookieStore.Options.SameSite = http.SameSiteStrictMode
+	secure := h.config.SecureCookie || r.Header.Get("X-Forwarded-Proto") == "https"
+	sameSite := http.SameSiteLaxMode
+	if secure {
+		sameSite = http.SameSiteStrictMode
 	}
 
-	session, _ := h.cookieStore.Get(r, "user_session")
+	// Applied to the session, not h.cookieStore.Options: the store's options are shared
+	// by every request, so mutating them here would leak one client's scheme onto all
+	// the others and race with concurrent reads in IsAuthenticated.
+	session.Options = &sessions.Options{
+		Path:     h.config.BaseURL,
+		MaxAge:   86400 * 30,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: sameSite,
+	}
 
 	_, err := h.service.Login(ctx, data.Username, data.Password)
 	if err != nil {
