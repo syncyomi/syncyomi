@@ -91,8 +91,10 @@ func (l *DefaultLogger) SetLogLevel(level string) {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	case "ERROR":
 		l.level = zerolog.ErrorLevel
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 	case "WARN":
 		l.level = zerolog.WarnLevel
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	case "TRACE":
 		l.level = zerolog.TraceLevel
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)

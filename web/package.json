@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
+    "test:e2e": "pnpm build && node e2e/reset.mjs && playwright test",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -26,11 +27,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.2",
     "@types/node": "^26.1.1",
     "@types/webfontloader": "^1.6.38",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/eslint-config-typescript": "^14.9.0",
+    "@vue/test-utils": "^2.4.11",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.9.2",

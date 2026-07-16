@@ -108,7 +108,7 @@ const password = ref<string>("");
 const passwordConfirm = ref<string>("");
 const snackbar = ref<boolean>(false);
 const message = ref<string>(
-  "Failed to create account! currently only one account is allowed, make sure browser cookies are cleared."
+  "Failed to create account! currently only one account is allowed, make sure browser cookies are cleared.",
 );
 const authStore = useAuthStore();
 
@@ -122,10 +122,9 @@ const mutation = useMutation({
   mutationFn: async (values: InputValues) => {
     await APIClient.auth.onboard(values.username, values.password1);
   },
-  onSuccess: (_, variables: InputValues) => {
+  onSuccess: async (_, variables: InputValues) => {
     authStore.login(variables.username);
-    // Login to get session token
-    APIClient.auth.login(variables.username, variables.password1);
+    await APIClient.auth.login(variables.username, variables.password1);
     router.push("/");
   },
   onError: () => {

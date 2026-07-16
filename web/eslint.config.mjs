@@ -10,8 +10,8 @@ export default defineConfigWithVueTs(
   pluginVue.configs["flat/recommended"],
   vueTsConfigs.recommended,
   {
-    // postcss.config.js and friends are CommonJS
-    files: ["**/*.{js,cjs}"],
+    // Node scripts: postcss.config.js (CJS) and the e2e helpers (ESM .mjs).
+    files: ["**/*.{js,cjs,mjs}"],
     languageOptions: { globals: globals.node },
   },
   {
