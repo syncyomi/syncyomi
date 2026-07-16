@@ -46,5 +46,11 @@ export default defineConfig({
     globals: false,
     // Keep vitest to unit/component tests; Playwright owns e2e/**.
     include: ["src/**/*.test.ts"],
+    setupFiles: ["src/test/setup.ts"],
+    server: {
+      // Inline Vuetify so Vite transforms its per-component CSS imports; left
+      // externalized, Node tries to load the .css files raw and throws.
+      deps: { inline: ["vuetify"] },
+    },
   },
 });
