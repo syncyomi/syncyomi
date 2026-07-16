@@ -16,11 +16,9 @@ test.describe.serial("auth", () => {
     await page.getByLabel("Confirm Password").fill(PASS);
     await page.getByRole("button", { name: /create account/i }).click();
 
-    // Account created -> the form navigates away. We assert only that, not the
-    // final page: OnBoard.vue fires its login without awaiting before pushing
-    // (see the note in the plan), so whether it lands on /settings or bounces to
-    // /login is racy. The deterministic login below carries the session guarantee.
-    await expect(page).not.toHaveURL(/onboard/);
+    // Onboard awaits its login before navigating, so the session cookie is set
+    // and the app loads: catch-all lands on /settings without bouncing to login.
+    await expect(page).toHaveURL(/settings/);
   });
 
   test("login sets a working, non-Secure session cookie over http", async ({
