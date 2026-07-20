@@ -39,7 +39,7 @@
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.7.0",
     "happy-dom": "^20.10.6",
-    "postcss": "^8.5.18",
+    "postcss": "^8.5.19",
     "prettier": "3.9.5",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3",
