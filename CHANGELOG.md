@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.14](https://github.com/syncyomi/syncyomi/compare/v1.1.13...v1.1.14) (2026-07-22)
+
+
+### Other Changes
+
+* **deps:** configure dependency groups for go and npm minor/patch updates ([#168](https://github.com/syncyomi/syncyomi/issues/168)) ([7cfbc5d](https://github.com/syncyomi/syncyomi/commit/7cfbc5da0f431f476c89c7f8293d8daa55ba15c1))
+
+
+### Tests
+
+* add e2e frontend test ([#154](https://github.com/syncyomi/syncyomi/issues/154)) ([2ae1466](https://github.com/syncyomi/syncyomi/commit/2ae146628ba495242771132d8b554e5493b3509d))
+
+
+### Dependencies
+
+* bump @tanstack/vue-query from 5.92.9 to 5.101.2 in /web ([#161](https://github.com/syncyomi/syncyomi/issues/161)) ([9734c99](https://github.com/syncyomi/syncyomi/commit/9734c9945f7f6f0693f1487e941432ac0506e035))
+* bump @vitejs/plugin-vue from 6.0.7 to 6.0.8 in /web ([#160](https://github.com/syncyomi/syncyomi/issues/160)) ([ba45a30](https://github.com/syncyomi/syncyomi/commit/ba45a30b7331fd7f978c134d4b216866bc81c8b3))
+* bump actions/cache from 4 to 6 ([#156](https://github.com/syncyomi/syncyomi/issues/156)) ([08e6047](https://github.com/syncyomi/syncyomi/commit/08e60473091fb5ff9a51d0d713003588a25a25c0))
+* bump modernc.org/sqlite from 1.53.0 to 1.54.0 ([#162](https://github.com/syncyomi/syncyomi/issues/162)) ([a9e173c](https://github.com/syncyomi/syncyomi/commit/a9e173caf8a57b9c236bd3c5357cb2888efc8810))
+* bump pinia from 3.0.4 to 4.0.2 in /web ([#167](https://github.com/syncyomi/syncyomi/issues/167)) ([d75899a](https://github.com/syncyomi/syncyomi/commit/d75899a01f044cc629dd001aa918dc4eb35ca37c))
+* bump postcss from 8.5.18 to 8.5.19 in /web ([#165](https://github.com/syncyomi/syncyomi/issues/165)) ([a377cb8](https://github.com/syncyomi/syncyomi/commit/a377cb88c8c05aac9fd0afa8f0a1e3e731adb438))
+* bump prettier from 3.1.1 to 3.9.5 in /web ([#157](https://github.com/syncyomi/syncyomi/issues/157)) ([87ce066](https://github.com/syncyomi/syncyomi/commit/87ce066f333642892ea9198f758de18b4e2a4887))
+* bump tailwindcss from 4.3.2 to 4.3.3 in /web ([#164](https://github.com/syncyomi/syncyomi/issues/164)) ([59da3a0](https://github.com/syncyomi/syncyomi/commit/59da3a0e9277774f913f7a18758a72c4522fdce9))
+* bump the npm-minor-patch group in /web with 3 updates ([#169](https://github.com/syncyomi/syncyomi/issues/169)) ([dd14d84](https://github.com/syncyomi/syncyomi/commit/dd14d8441d54540752a9827fd4f353176920bc30))
+* bump vue from 3.5.39 to 3.5.40 in /web ([#166](https://github.com/syncyomi/syncyomi/issues/166)) ([9ad51bd](https://github.com/syncyomi/syncyomi/commit/9ad51bd0a0e62f1e077424402882641efd2a134d))
+* bump vue-router from 5.1.0 to 5.2.0 in /web ([#163](https://github.com/syncyomi/syncyomi/issues/163)) ([d2837ce](https://github.com/syncyomi/syncyomi/commit/d2837ce23402804ef2f94a726a166c438f747d1f))
+* bump vuetify from 4.1.4 to 4.1.5 in /web ([#159](https://github.com/syncyomi/syncyomi/issues/159)) ([83e54c8](https://github.com/syncyomi/syncyomi/commit/83e54c8ad2fae379e9d63edd902cd503e8ac072a))
+
 ## [1.1.13](https://github.com/syncyomi/syncyomi/compare/v1.1.12...v1.1.13) (2026-07-16)
 
 
