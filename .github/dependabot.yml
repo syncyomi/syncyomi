@@ -8,6 +8,12 @@ updates:
       prefix: "deps"
     cooldown:
       default-days: 2
+    groups:
+      gomod-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "npm"
     directory: "/web"
@@ -19,6 +25,12 @@ updates:
     # so --frozen-lockfile never rejects a fresh bump. See web/pnpm-workspace.yaml.
     cooldown:
       default-days: 2
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
