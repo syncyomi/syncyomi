@@ -42,7 +42,7 @@
     "postcss": "^8.5.19",
     "prettier": "3.9.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "8.1.5",
     "vite-plugin-vuetify": "^2.1.3",
     "vitest": "^4.1.10",
