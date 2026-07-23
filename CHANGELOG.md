@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.15](https://github.com/syncyomi/syncyomi/compare/v1.1.14...v1.1.15) (2026-07-23)
+
+
+### Dependencies
+
+* bump eslint-plugin-vue in /web in the npm-minor-patch group ([#171](https://github.com/syncyomi/syncyomi/issues/171)) ([3566d63](https://github.com/syncyomi/syncyomi/commit/3566d63da237f89e5eb4adc46647acbe941eb2c3))
+
 ## [1.1.14](https://github.com/syncyomi/syncyomi/compare/v1.1.13...v1.1.14) (2026-07-22)
 
 
