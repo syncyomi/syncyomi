@@ -37,7 +37,7 @@
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.10.0",
-    "globals": "^17.8.0",
+    "globals": "^17.9.0",
     "happy-dom": "^20.11.1",
     "postcss": "^8.5.25",
     "prettier": "3.9.6",
