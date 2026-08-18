@@ -2,6 +2,10 @@
 .github
 bin
 web/node_modules
-web/dist
+
+# NOT web/dist: CI downloads the web-dist artifact into it and ci.Dockerfile
+# picks it up via COPY . ./ for the go:embed in web/build.go. Excluding it
+# breaks the release build. The local Dockerfile overwrites it from its own
+# web-builder stage, so shipping it in the context is harmless.
 web/playwright-report
 web/test-results
