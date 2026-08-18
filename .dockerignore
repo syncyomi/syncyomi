@@ -1,0 +1,7 @@
+.git
+.github
+bin
+web/node_modules
+web/dist
+web/playwright-report
+web/test-results
