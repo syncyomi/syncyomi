@@ -29,7 +29,7 @@ build/web:
 	cd web && pnpm build
 
 build/docker:
-	docker build -t syncyomi:dev -f Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE)
+	docker build -t syncyomi:dev -f Dockerfile . --build-arg VERSION=$(GIT_TAG) --build-arg REVISION=$(GIT_COMMIT) --build-arg BUILDTIME=$(BUILD_DATE)
 
 clean:
 	$(RM) -rf bin
