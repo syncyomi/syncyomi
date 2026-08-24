@@ -14,7 +14,7 @@ COPY web/ ./
 RUN pnpm run build
 
 # build app
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.23 AS app-builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.23 AS app-builder
 
 ARG VERSION=dev
 ARG REVISION=dev
