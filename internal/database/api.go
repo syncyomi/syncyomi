@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
@@ -20,9 +22,8 @@ func NewAPIRepo(log logger.Logger, db *DB) domain.APIRepo {
 }
 
 type APIRepo struct {
-	log   zerolog.Logger
-	db    *DB
-	cache map[string]domain.APIKey
+	log zerolog.Logger
+	db  *DB
 }
 
 func (r *APIRepo) Get(ctx context.Context, key string) (*domain.APIKey, error) {
@@ -83,25 +84,53 @@ func (r *APIRepo) Store(ctx context.Context, key *domain.APIKey) error {
 	return nil
 }
 
+// SQLite runs with foreign keys off, so the ON DELETE CASCADE is done by hand.
 func (r *APIRepo) Delete(ctx context.Context, key string) error {
-	queryBuilder := r.db.squirrel.
-		Delete("api_key").
-		Where(sq.Eq{"key": key})
+	tx, err := r.db.handler.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.Wrap(err, "error starting transaction")
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !stderrors.Is(err, sql.ErrTxDone) {
+			r.log.Error().Err(err).Msg("error rolling back transaction")
+		}
+	}()
 
-	query, args, err := queryBuilder.ToSql()
+	for _, table := range apiKeyDependentTables {
+		query, args, err := r.db.squirrel.
+			Delete(table).
+			Where(sq.Eq{"user_api_key": key}).
+			ToSql()
+		if err != nil {
+			return errors.Wrap(err, "error building query")
+		}
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return errors.Wrap(err, "error deleting from %s", table)
+		}
+	}
+
+	query, args, err := r.db.squirrel.
+		Delete("api_key").
+		Where(sq.Eq{"key": key}).
+		ToSql()
 	if err != nil {
 		return errors.Wrap(err, "error building query")
 	}
 
-	_, err = r.db.handler.ExecContext(ctx, query, args...)
-	if err != nil {
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
 		return errors.Wrap(err, "error executing query")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "error committing transaction")
 	}
 
 	r.log.Debug().Msgf("successfully deleted: %v", key)
 
 	return nil
 }
+
+var apiKeyDependentTables = []string{"sync_data"}
 
 func (r *APIRepo) GetKeys(ctx context.Context) ([]domain.APIKey, error) {
 	queryBuilder := r.db.squirrel.

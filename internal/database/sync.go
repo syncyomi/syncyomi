@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	stderrors "errors"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -15,7 +16,7 @@ import (
 
 func NewSyncRepo(log logger.Logger, db *DB) domain.SyncRepo {
 	return &SyncRepo{
-		log: log.With().Str("module", "device").Logger(),
+		log: log.With().Str("repo", "sync").Logger(),
 		db:  db,
 	}
 }
@@ -25,8 +26,12 @@ type SyncRepo struct {
 	db  *DB
 }
 
-// Get etag of sync data.
-// For avoid memory usage, only the etag will be returned.
+// Wire format ("uuid=<uuid4>", unquoted) is part of the client contract:
+// TachiyomiSY and Suwayomi echo the header value verbatim. Do not change it.
+func newETag() string {
+	return "uuid=" + uuid.NewString()
+}
+
 func (r SyncRepo) GetSyncDataETag(ctx context.Context, apiKey string) (*string, error) {
 	var etag string
 
@@ -36,10 +41,11 @@ func (r SyncRepo) GetSyncDataETag(ctx context.Context, apiKey string) (*string, 
 		Where(sq.Eq{"user_api_key": apiKey}).
 		Limit(1).
 		RunWith(r.db.handler).
+		QueryRowContext(ctx).
 		Scan(&etag)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, errors.Wrap(err, "error executing query")
@@ -48,7 +54,6 @@ func (r SyncRepo) GetSyncDataETag(ctx context.Context, apiKey string) (*string, 
 	return &etag, nil
 }
 
-// Get sync data and etag
 func (r SyncRepo) GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte, *string, error) {
 	var etag string
 	var data []byte
@@ -59,10 +64,11 @@ func (r SyncRepo) GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte
 		Where(sq.Eq{"user_api_key": apiKey}).
 		Limit(1).
 		RunWith(r.db.handler).
+		QueryRowContext(ctx).
 		Scan(&data, &etag)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, nil, nil
 		}
 		return nil, nil, errors.Wrap(err, "error executing query")
@@ -71,66 +77,30 @@ func (r SyncRepo) GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte
 	return data, &etag, nil
 }
 
-// Create or replace sync data, returns the new etag.
 func (r SyncRepo) SetSyncData(ctx context.Context, apiKey string, data []byte) (*string, error) {
 	now := time.Now()
-	// the better way is use hash like sha1
-	// but uuid is faster than sha1
-	newEtag := "uuid=" + uuid.NewString()
+	etag := newETag()
 
-	updateResult, err := r.db.squirrel.
-		Update("sync_data").
-		Set("updated_at", now).
-		Set("data", data).
-		Set("data_etag", newEtag).
-		Where(sq.Eq{"user_api_key": apiKey}).
-		RunWith(r.db.handler).ExecContext(ctx)
+	_, err := r.db.squirrel.
+		Insert("sync_data").
+		Columns("user_api_key", "created_at", "updated_at", "data", "data_etag").
+		Values(apiKey, now, now, data, etag).
+		Suffix("ON CONFLICT (user_api_key) DO UPDATE SET data = EXCLUDED.data, data_etag = EXCLUDED.data_etag, updated_at = EXCLUDED.updated_at").
+		RunWith(r.db.handler).
+		ExecContext(ctx)
 
 	if err != nil {
-		r.log.Err(err).Msgf("Error when updating sync data")
+		r.log.Err(err).Msg("error upserting sync data")
 		return nil, errors.Wrap(err, "error executing query")
 	}
 
-	if rowsAffected, err := updateResult.RowsAffected(); err != nil {
-		return nil, errors.Wrap(err, "error executing query")
-	} else if rowsAffected == 0 {
-		// new item
-		insertResult, err := r.db.squirrel.
-			Insert("sync_data").
-			Columns(
-				"user_api_key",
-				"updated_at",
-				"data",
-				"data_etag",
-			).
-			Values(apiKey, now, data, newEtag).
-			RunWith(r.db.handler).ExecContext(ctx)
-
-		if err != nil {
-			r.log.Err(err).Msgf("Error when inserting sync data")
-			return nil, errors.Wrap(err, "error executing query")
-		}
-
-		if rowsAffected, err := insertResult.RowsAffected(); err != nil {
-			return nil, errors.Wrap(err, "error executing query")
-
-		} else if rowsAffected == 0 {
-			// multi devices race condition
-			return nil, errors.New("no rows affected")
-		}
-	}
-
-	r.log.Debug().Msgf("Sync data upsert: api_key=\"%v\"", "REDACTED")
-	return &newEtag, nil
+	return &etag, nil
 }
 
-// Replace sync data only if the etag matches,
-// returns the new etag if updated, or nil if not.
+// Returns (nil, nil) when the etag does not match, including when no data exists yet.
 func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag string, data []byte) (*string, error) {
 	now := time.Now()
-	// the better way is use hash like sha1
-	// but uuid is faster than sha1
-	newEtag := "uuid=" + uuid.NewString()
+	newEtag := newETag()
 
 	result, err := r.db.squirrel.
 		Update("sync_data").
@@ -139,23 +109,22 @@ func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag st
 		Set("data_etag", newEtag).
 		Where(sq.Eq{"user_api_key": apiKey}).
 		Where(sq.Eq{"data_etag": etag}).
-		RunWith(r.db.handler).ExecContext(ctx)
+		RunWith(r.db.handler).
+		ExecContext(ctx)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "error executing query")
 	}
 
-	if rowsAffected, err := result.RowsAffected(); err != nil {
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
 		return nil, errors.Wrap(err, "error executing query")
-
-	} else if rowsAffected == 0 {
-		r.log.Debug().Msgf(
-			"ETag mismatch detected for api_key=\"%v\". This indicates remote data has been modified since last fetched. Aborting update to avoid overwriting recent changes. Expected ETag=\"%v\", found different ETag on server.",
-			"REDACTED", etag)
-		return nil, nil
-
-	} else {
-		r.log.Debug().Msgf("Sync data replaced: api_key=\"%v\", etag=\"%v\"", "REDACTED", etag)
-		return &newEtag, nil
 	}
+
+	if rowsAffected == 0 {
+		r.log.Debug().Msgf("ETag mismatch, aborting update. Expected ETag=%q", etag)
+		return nil, nil
+	}
+
+	return &newEtag, nil
 }
