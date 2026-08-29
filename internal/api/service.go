@@ -3,7 +3,11 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
+	"sort"
+	"sync"
+
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/rs/zerolog"
@@ -22,14 +26,15 @@ type service struct {
 	log  zerolog.Logger
 	repo domain.APIRepo
 
-	keyCache []domain.APIKey
+	// Per-process cache, loaded lazily, maintained by Store/Delete.
+	mu   sync.RWMutex
+	keys map[string]domain.APIKey
 }
 
 func NewService(log logger.Logger, repo domain.APIRepo) Service {
 	return &service{
-		log:      log.With().Str("module", "api").Logger(),
-		repo:     repo,
-		keyCache: []domain.APIKey{},
+		log:  log.With().Str("module", "api").Logger(),
+		repo: repo,
 	}
 }
 
@@ -38,11 +43,26 @@ func (s *service) Get(ctx context.Context, key string) (*domain.APIKey, error) {
 }
 
 func (s *service) List(ctx context.Context) ([]domain.APIKey, error) {
-	if len(s.keyCache) > 0 {
-		return s.keyCache, nil
+	keys, err := s.loadKeys(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	return s.repo.GetKeys(ctx)
+	list := make([]domain.APIKey, 0, len(keys))
+	for _, k := range keys {
+		list = append(list, k)
+	}
+	sort.SliceStable(list, func(i, j int) bool {
+		if list[i].CreatedAt == nil || list[j].CreatedAt == nil {
+			return list[i].Key < list[j].Key
+		}
+		if list[i].CreatedAt.Equal(*list[j].CreatedAt) {
+			return list[i].Key < list[j].Key
+		}
+		return list[i].CreatedAt.Before(*list[j].CreatedAt)
+	})
+
+	return list, nil
 }
 
 func (s *service) Store(ctx context.Context, key *domain.APIKey) error {
@@ -52,10 +72,11 @@ func (s *service) Store(ctx context.Context, key *domain.APIKey) error {
 		return err
 	}
 
-	if len(s.keyCache) > 0 {
-		// set new key
-		s.keyCache = append(s.keyCache, *key)
+	s.mu.Lock()
+	if s.keys != nil {
+		s.keys[key.Key] = *key
 	}
+	s.mu.Unlock()
 
 	return nil
 }
@@ -65,24 +86,65 @@ func (s *service) Update(ctx context.Context, key *domain.APIKey) error {
 }
 
 func (s *service) Delete(ctx context.Context, key string) error {
-	// reset
-	s.keyCache = []domain.APIKey{}
+	if err := s.repo.Delete(ctx, key); err != nil {
+		return err
+	}
 
-	return s.repo.Delete(ctx, key)
+	s.mu.Lock()
+	if s.keys != nil {
+		delete(s.keys, key)
+	}
+	s.mu.Unlock()
+
+	return nil
 }
 
 func (s *service) ValidateAPIKey(ctx context.Context, key string) bool {
-	keys, err := s.repo.GetKeys(ctx)
-	if err != nil {
+	if key == "" {
 		return false
 	}
 
-	for _, k := range keys {
-		if k.Key == key {
-			return true
-		}
+	keys, err := s.loadKeys(ctx)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to load api keys")
+		return false
 	}
-	return false
+
+	k, ok := keys[key]
+	if !ok {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(k.Key), []byte(key)) == 1
+}
+
+func (s *service) loadKeys(ctx context.Context) (map[string]domain.APIKey, error) {
+	s.mu.RLock()
+	keys := s.keys
+	s.mu.RUnlock()
+	if keys != nil {
+		return keys, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.keys != nil {
+		return s.keys, nil
+	}
+
+	list, err := s.repo.GetKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	keys = make(map[string]domain.APIKey, len(list))
+	for _, k := range list {
+		keys[k.Key] = k
+	}
+	s.keys = keys
+
+	return keys, nil
 }
 
 func GenerateSecureToken(length int) string {

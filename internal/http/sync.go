@@ -4,24 +4,28 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/SyncYomi/SyncYomi/internal/sync"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 type syncService = sync.Service
 
 type syncHandler struct {
-	encoder     encoder
-	syncService syncService
+	encoder      encoder
+	log          zerolog.Logger
+	syncService  syncService
+	maxBodyBytes int64
 }
 
-func newSyncHandler(encoder encoder, syncService syncService) *syncHandler {
+func newSyncHandler(encoder encoder, log zerolog.Logger, syncService syncService, maxBodyBytes int64) *syncHandler {
 	return &syncHandler{
-		encoder:     encoder,
-		syncService: syncService,
+		encoder:      encoder,
+		log:          log.With().Str("handler", "sync").Logger(),
+		syncService:  syncService,
+		maxBodyBytes: maxBodyBytes,
 	}
 }
 
@@ -45,13 +49,12 @@ func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	if etag != "" {
 		etagInDb, err := h.syncService.GetSyncDataETag(r.Context(), apiKey)
 		if err != nil {
-			log.Println(err)
+			h.log.Error().Err(err).Msg("failed to read sync data etag")
 			h.encoder.StatusInternalError(w)
 			return
 		}
 
 		if etagInDb != nil && etag == *etagInDb {
-			// nothing changed after last request
 			// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match
 			w.WriteHeader(http.StatusNotModified)
 			return
@@ -59,8 +62,8 @@ func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	syncData, syncDataETag, err := h.syncService.GetSyncDataAndETag(r.Context(), apiKey)
-
 	if err != nil {
+		h.log.Error().Err(err).Msg("failed to read sync data")
 		h.encoder.StatusInternalError(w)
 		return
 	}
@@ -75,18 +78,28 @@ func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(syncData)
 	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(syncData); err != nil {
+		h.log.Debug().Err(err).Msg("failed to write sync data response")
+	}
 }
 
 func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get("X-API-Token")
 	etag := r.Header.Get("If-Match")
 
-	// Read data from request body
+	if h.maxBodyBytes > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
+	}
+
 	requestData, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.encoder.StatusResponse(r.Context(), w, err.Error(), http.StatusBadRequest)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "request body too large"}, http.StatusRequestEntityTooLarge)
+			return
+		}
+		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": err.Error()}, http.StatusBadRequest)
 		return
 	}
 
@@ -97,17 +110,19 @@ func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
 		newEtag, err = h.syncService.SetSyncData(r.Context(), apiKey, requestData)
 	}
 	if err != nil {
+		h.log.Error().Err(err).Msg("failed to store sync data")
 		h.encoder.StatusInternalError(w)
+		return
 	}
 
 	if newEtag == nil {
-		// syncdata was changed from other clients
 		// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
 		w.WriteHeader(http.StatusPreconditionFailed)
-	} else {
-		w.Header().Set("ETag", *newEtag)
-		w.WriteHeader(http.StatusOK)
+		return
 	}
+
+	w.Header().Set("ETag", *newEtag)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h syncHandler) reportEvent(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +150,7 @@ func (h syncHandler) reportEvent(w http.ResponseWriter, r *http.Request) {
 			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "invalid sync event"}, http.StatusBadRequest)
 			return
 		}
-		log.Println(err)
+		h.log.Error().Err(err).Msg("failed to report sync event")
 		h.encoder.StatusInternalError(w)
 		return
 	}

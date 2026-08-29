@@ -132,7 +132,7 @@ func (s Server) Handler() http.Handler {
 			r.Route("/logs", newLogsHandler(s.config).Routes)
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
-			r.Route("/sync", newSyncHandler(encoder, s.syncService).Routes)
+			r.Route("/sync", newSyncHandler(encoder, s.log, s.syncService, s.config.Config.SyncMaxBodyBytes()).Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 
