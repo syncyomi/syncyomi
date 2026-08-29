@@ -1,0 +1,51 @@
+# Operations
+
+## Configuration
+
+`config.toml` in the directory passed with `--config` (created with defaults on first start). Changes to `logLevel`, `logPath` and `checkForUpdates` are picked up live; everything else needs a restart.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `host` | `localhost` | listen address; use `0.0.0.0` when clients connect directly without a reverse proxy |
+| `port` | `8282` | listen port |
+| `baseUrl` | `/` | path prefix when served under a sub-directory of a reverse proxy |
+| `sessionSecret` | generated | secret for the web UI session cookie |
+| `secureCookie` | `false` | mark the session cookie `Secure`; enable only behind HTTPS |
+| `logLevel` | `DEBUG` | `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE` |
+| `logPath` | empty | log file path; empty logs to stdout only |
+| `logMaxSize`, `logMaxBackups` | `50`, `3` | log rotation (MB, files) |
+| `checkForUpdates` | `true` | periodic GitHub release check |
+| `databaseType` | `sqlite` | `sqlite` or `postgres` |
+| `postgresHost`, `postgresPort`, `postgresDatabase`, `postgresUser`, `postgresPass`, `postgresSslMode` | see template | PostgreSQL connection |
+| `syncMaxBodySizeMB` | `64` | largest sync upload accepted (`413` above it); `0` disables the limit |
+| `syncHistoryLimit` | `10` | previous sync payloads kept per API key for rollback; `0` disables history |
+
+Sizing note: with history enabled the database holds up to `syncHistoryLimit + 1` payloads per API key. A large library is a few MB per payload.
+
+## Databases
+
+- **SQLite** (default): `syncyomi.db` next to `config.toml`, WAL mode, no extra setup. Fine for personal use.
+- **PostgreSQL**: set `databaseType = "postgres"` and the `postgres*` keys. `docker-compose.yml` in the repository shows a working pairing. The database must be owned by the configured user (PostgreSQL 15+ no longer grants `CREATE` on `public` to everyone).
+
+Schema migrations run automatically at start-up, inside one transaction. SQLite tracks the version in `PRAGMA user_version`, PostgreSQL in `schema_migrations`. Downgrading the binary below the schema version is refused.
+
+## Backups
+
+Back up the config directory (SQLite) or take a PostgreSQL dump. Sync payloads are stored as opaque blobs; there is nothing else to preserve.
+
+## Rolling back sync data
+
+Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web UI, open *Settings → API Keys → Details* for the key and pick *Restore* on an older entry. The restored payload becomes current under a new ETag; each device downloads it on its next sync (a device that tries to upload with a stale `If-Match` gets `412` and re-syncs).
+
+The same view shows which devices have synced with the key, when they were last seen and the last status they reported. Devices appear once they report sync events or send the `X-Device-ID`/`X-Device-Name` headers.
+
+## Upgrade notes
+
+### 1.2.0
+
+- New tables `sync_data_history`, `sync_device`, `sync_status` (migration runs automatically).
+- New config keys `syncMaxBodySizeMB` (default 64) and `syncHistoryLimit` (default 10). Set `syncMaxBodySizeMB = 0` if you have unusually large libraries and see `413` responses.
+- Deleting an API key now also removes its sync data, history, devices and status (previously the payload row was left behind on SQLite).
+- `PUT /api/sync/content` accepts `Content-Encoding: gzip`; `GET` answers with gzip when the client accepts it.
+- The `/api/sync/admin/*` endpoints are only reachable with a web UI session, not with an API key.
+- `OpenAPI.yaml` now describes the endpoints that exist; the old `/device` and `/sync/{apiKey}` entries were never implemented and have been removed.
