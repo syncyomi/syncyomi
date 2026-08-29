@@ -86,6 +86,18 @@ export const APIClient = {
     create: (key: APIKey) => appClient.Post("api/keys", key),
     delete: (key: string) => appClient.Delete(`api/keys/${key}`),
   },
+  sync: {
+    status: (key: string) =>
+      appClient.Get<SyncStatus>(`api/sync/admin/${key}/status`),
+    devices: (key: string) =>
+      appClient.Get<SyncDevice[]>(`api/sync/admin/${key}/devices`),
+    history: (key: string) =>
+      appClient.Get<SyncHistoryEntry[]>(`api/sync/admin/${key}/history`),
+    restore: (key: string, id: number) =>
+      appClient.Post<{ etag: string }>(
+        `api/sync/admin/${key}/history/${id}/restore`,
+      ),
+  },
   config: {
     get: () => appClient.Get<Config>("api/config"),
     update: (config: ConfigUpdate) => appClient.Patch("api/config", config),
