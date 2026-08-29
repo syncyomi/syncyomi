@@ -9,9 +9,9 @@
 
 <!-- <img alt="syncyomi ui" src=".github/images/syncyomi-front.png"/><br/> -->
 
-<!-- ## Documentation -->
+## Documentation
 
-<!-- Installation guide and documentation can be found at https://syncyomi.com -->
+Architecture, API reference, operations and development notes live in [`docs/`](docs/README.md).
 
 ## Key features
 
