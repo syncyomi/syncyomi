@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.2.0](https://github.com/syncyomi/syncyomi/compare/v1.1.14...v1.2.0) (2026-08-29)
+
+
+### New Features
+
+* **sync:** keep sync history and track devices per api key ([#202](https://github.com/syncyomi/syncyomi/issues/202)) ([e8e82b1](https://github.com/syncyomi/syncyomi/commit/e8e82b13709f204ec569c2ef7390913d1f42d277))
+
+
+### Bug Fixes
+
+* **docker:** build web with devDependencies and pinned toolchain ([#190](https://github.com/syncyomi/syncyomi/issues/190)) ([7a96a74](https://github.com/syncyomi/syncyomi/commit/7a96a7483a43f4e0f60628659aabc92a08ad8224))
+* **sync:** harden sync data store and upload handling ([#201](https://github.com/syncyomi/syncyomi/issues/201)) ([708aaca](https://github.com/syncyomi/syncyomi/commit/708aacac2503756669b3618bbe07eac01bf131ff))
+
+
+### Other Changes
+
+* drop master from release workflow triggers ([#188](https://github.com/syncyomi/syncyomi/issues/188)) ([a834ac0](https://github.com/syncyomi/syncyomi/commit/a834ac0b5da5693d2830ee16dcfe78bd3e587def))
+
+
+### Documentation
+
+* add architecture, api, operations and development guides ([#203](https://github.com/syncyomi/syncyomi/issues/203)) ([2b0b55f](https://github.com/syncyomi/syncyomi/commit/2b0b55fd84d7a93ee14dff8b6fbcf80225fe679a))
+
+
+### Dependencies
+
+* bump @tanstack/vue-query in /web in the npm-minor-patch group ([#198](https://github.com/syncyomi/syncyomi/issues/198)) ([1e95a66](https://github.com/syncyomi/syncyomi/commit/1e95a66a644d94de26b1034dd845a379d642d8b2))
+* bump @tanstack/vue-query in /web in the npm-minor-patch group ([#199](https://github.com/syncyomi/syncyomi/issues/199)) ([21c6acd](https://github.com/syncyomi/syncyomi/commit/21c6acd905838d4416158fb56e160e7b03b401b1))
+* bump docker/login-action from 4 to 4.5.2 ([#178](https://github.com/syncyomi/syncyomi/issues/178)) ([155a436](https://github.com/syncyomi/syncyomi/commit/155a4367899d1cc7246e20d2bb54acd8378501db))
+* bump docker/login-action from 4.5.2 to 4.6.0 ([#179](https://github.com/syncyomi/syncyomi/issues/179)) ([dadd171](https://github.com/syncyomi/syncyomi/commit/dadd17196547e9aba68ec7cc61506967a6b1ba6b))
+* bump docker/setup-buildx-action from 4.2.0 to 4.3.0 ([#192](https://github.com/syncyomi/syncyomi/issues/192)) ([02faaf6](https://github.com/syncyomi/syncyomi/commit/02faaf6553c10be6a202087cf656267e8655c1e0))
+* bump eslint-plugin-vue in /web in the npm-minor-patch group ([#171](https://github.com/syncyomi/syncyomi/issues/171)) ([3566d63](https://github.com/syncyomi/syncyomi/commit/3566d63da237f89e5eb4adc46647acbe941eb2c3))
+* bump globals in /web in the npm-minor-patch group ([#182](https://github.com/syncyomi/syncyomi/issues/182)) ([7a9e387](https://github.com/syncyomi/syncyomi/commit/7a9e38758eb569a14185453b240b2645876bdd9a))
+* bump globals in /web in the npm-minor-patch group ([#186](https://github.com/syncyomi/syncyomi/issues/186)) ([b61cf32](https://github.com/syncyomi/syncyomi/commit/b61cf32eb033b40f3e4040b8955e3b012f379241))
+* bump golang from 1.26-alpine3.23 to 1.27-alpine3.23 ([#195](https://github.com/syncyomi/syncyomi/issues/195)) ([63866f8](https://github.com/syncyomi/syncyomi/commit/63866f8bd771eedafc8a8f47679c78d1769abd0c))
+* bump golang.org/x/crypto in the gomod-minor-patch group ([#185](https://github.com/syncyomi/syncyomi/issues/185)) ([52e85ab](https://github.com/syncyomi/syncyomi/commit/52e85ab1ae496841efad9cc47d8d4f1f0b33d870))
+* bump modernc.org/sqlite in the gomod-minor-patch group ([#176](https://github.com/syncyomi/syncyomi/issues/176)) ([de660ea](https://github.com/syncyomi/syncyomi/commit/de660eac8fde25a7da29fe624982f9c6351f4f05))
+* bump modernc.org/sqlite in the gomod-minor-patch group ([#183](https://github.com/syncyomi/syncyomi/issues/183)) ([e62214a](https://github.com/syncyomi/syncyomi/commit/e62214aa06c05ba4e79b7310b73eb7b8c40535d7))
+* bump node from 24-alpine to 26-alpine ([#191](https://github.com/syncyomi/syncyomi/issues/191)) ([0026301](https://github.com/syncyomi/syncyomi/commit/0026301c662d1674fc62b8716dcd83186f1410f7))
+* bump the gomod-minor-patch group with 2 updates ([#196](https://github.com/syncyomi/syncyomi/issues/196)) ([0143276](https://github.com/syncyomi/syncyomi/commit/014327637cb740fdbc5d5181f98b844a7f693e9c))
+* bump the npm-minor-patch group across 1 directory with 2 updates ([#194](https://github.com/syncyomi/syncyomi/issues/194)) ([12b3fa6](https://github.com/syncyomi/syncyomi/commit/12b3fa67ca57ac6cad0a98e41ac3d8fbb40b631d))
+* bump the npm-minor-patch group across 1 directory with 8 updates ([#177](https://github.com/syncyomi/syncyomi/issues/177)) ([278d4a7](https://github.com/syncyomi/syncyomi/commit/278d4a791fdb236b7394355607c63d9f586aee39))
+* bump the npm-minor-patch group in /web with 3 updates ([#173](https://github.com/syncyomi/syncyomi/issues/173)) ([ed06de2](https://github.com/syncyomi/syncyomi/commit/ed06de2368d85e3696c27967dd540a14aa40f56e))
+* bump the npm-minor-patch group in /web with 3 updates ([#187](https://github.com/syncyomi/syncyomi/issues/187)) ([89d20ee](https://github.com/syncyomi/syncyomi/commit/89d20ee72540f3a8fa66884e406ae2467428b1e4))
+* bump the npm-minor-patch group in /web with 3 updates ([#200](https://github.com/syncyomi/syncyomi/issues/200)) ([3dc4bf8](https://github.com/syncyomi/syncyomi/commit/3dc4bf89f15a3d41899b5374b45052b59212da4d))
+* bump the npm-minor-patch group in /web with 5 updates ([#180](https://github.com/syncyomi/syncyomi/issues/180)) ([835c83a](https://github.com/syncyomi/syncyomi/commit/835c83a7def8c1402fa12bb6642f15a9b3461992))
+* bump the npm-minor-patch group in /web with 5 updates ([#197](https://github.com/syncyomi/syncyomi/issues/197)) ([0adc3fe](https://github.com/syncyomi/syncyomi/commit/0adc3fe2423567c9adfe65673aed057a0b14a3f1))
+* bump the npm-minor-patch group in /web with 7 updates ([#184](https://github.com/syncyomi/syncyomi/issues/184)) ([65d4579](https://github.com/syncyomi/syncyomi/commit/65d45799a4099430653e4c2143a396136be055f1))
+* bump vue-tsc in /web in the npm-minor-patch group ([#189](https://github.com/syncyomi/syncyomi/issues/189)) ([f053771](https://github.com/syncyomi/syncyomi/commit/f053771f1d5b4e567afe53b4794fa1b822c98070))
+
 ## [1.1.14](https://github.com/syncyomi/syncyomi/compare/v1.1.13...v1.1.14) (2026-07-22)
 
 
