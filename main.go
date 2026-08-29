@@ -75,7 +75,7 @@ func main() {
 		apikeyRepo       = database.NewAPIRepo(log, db)
 		notificationRepo = database.NewNotificationRepo(log, db)
 		userRepo         = database.NewUserRepo(log, db)
-		syncRepo         = database.NewSyncRepo(log, db)
+		syncRepo         = database.NewSyncRepo(log, db, cfg.Config.SyncHistoryLimit)
 	)
 
 	// setup services

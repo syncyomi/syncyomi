@@ -56,6 +56,45 @@ CREATE TABLE sync_data
 	data_etag TEXT NOT NULL,
 
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+
+CREATE TABLE sync_data_history
+(
+	id           SERIAL PRIMARY KEY,
+	user_api_key TEXT NOT NULL,
+	data_etag    TEXT NOT NULL,
+	size         BIGINT NOT NULL,
+	created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	data         BYTEA NOT NULL,
+	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+CREATE INDEX idx_sync_data_history_key ON sync_data_history (user_api_key, id DESC);
+
+CREATE TABLE sync_device
+(
+	id           SERIAL PRIMARY KEY,
+	user_api_key TEXT NOT NULL,
+	device_id    TEXT NOT NULL,
+	device_name  TEXT NOT NULL DEFAULT '',
+	last_seen    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	last_event   TEXT NOT NULL DEFAULT '',
+	last_status  TEXT NOT NULL DEFAULT '',
+	last_message TEXT NOT NULL DEFAULT '',
+	created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE (user_api_key, device_id),
+	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+
+CREATE TABLE sync_status
+(
+	user_api_key   TEXT PRIMARY KEY,
+	last_synced_at TIMESTAMP,
+	last_event_at  TIMESTAMP,
+	last_event     TEXT NOT NULL DEFAULT '',
+	last_status    TEXT NOT NULL DEFAULT '',
+	last_device    TEXT NOT NULL DEFAULT '',
+	last_message   TEXT NOT NULL DEFAULT '',
+	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 )
 `
 
@@ -144,5 +183,45 @@ END $$;
 	DROP TABLE IF EXISTS manga_data;
 	DROP TABLE IF EXISTS manga_sync;
 	DROP TABLE IF EXISTS sync_lock;
+`,
+	`
+	CREATE TABLE sync_data_history
+	(
+		id           SERIAL PRIMARY KEY,
+		user_api_key TEXT NOT NULL,
+		data_etag    TEXT NOT NULL,
+		size         BIGINT NOT NULL,
+		created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		data         BYTEA NOT NULL,
+		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+	);
+	CREATE INDEX idx_sync_data_history_key ON sync_data_history (user_api_key, id DESC);
+
+	CREATE TABLE sync_device
+	(
+		id           SERIAL PRIMARY KEY,
+		user_api_key TEXT NOT NULL,
+		device_id    TEXT NOT NULL,
+		device_name  TEXT NOT NULL DEFAULT '',
+		last_seen    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_event   TEXT NOT NULL DEFAULT '',
+		last_status  TEXT NOT NULL DEFAULT '',
+		last_message TEXT NOT NULL DEFAULT '',
+		created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE (user_api_key, device_id),
+		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+	);
+
+	CREATE TABLE sync_status
+	(
+		user_api_key   TEXT PRIMARY KEY,
+		last_synced_at TIMESTAMP,
+		last_event_at  TIMESTAMP,
+		last_event     TEXT NOT NULL DEFAULT '',
+		last_status    TEXT NOT NULL DEFAULT '',
+		last_device    TEXT NOT NULL DEFAULT '',
+		last_message   TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+	);
 `,
 }

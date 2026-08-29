@@ -130,7 +130,7 @@ func (r *APIRepo) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-var apiKeyDependentTables = []string{"sync_data"}
+var apiKeyDependentTables = []string{"sync_data", "sync_data_history", "sync_device", "sync_status"}
 
 func (r *APIRepo) GetKeys(ctx context.Context) ([]domain.APIKey, error) {
 	queryBuilder := r.db.squirrel.
