@@ -119,10 +119,17 @@ func (s Server) Handler() http.Handler {
 	r.Use(c.Handler)
 
 	encoder := encoder{}
+	syncHandler := newSyncHandler(encoder, s.log, s.syncService, s.config.Config.SyncMaxBodyBytes())
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", newAuthHandler(encoder, s.log, s.config.Config, s.cookieStore, s.authService).Routes)
 		r.Route("/healthz", newHealthHandler(encoder, s.db).Routes)
+
+		r.Group(func(r chi.Router) {
+			r.Use(s.IsSessionAuthenticated)
+
+			r.Route("/sync/admin", syncHandler.AdminRoutes)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.IsAuthenticated)
@@ -132,7 +139,7 @@ func (s Server) Handler() http.Handler {
 			r.Route("/logs", newLogsHandler(s.config).Routes)
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
-			r.Route("/sync", newSyncHandler(encoder, s.log, s.syncService, s.config.Config.SyncMaxBodyBytes()).Routes)
+			r.Route("/sync", syncHandler.Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 

@@ -16,18 +16,22 @@ import (
 var ErrInvalidSyncEvent = errors.New("invalid sync event")
 
 type Service interface {
-	// Get etag of sync data.
-	// For avoid memory usage, only the etag will be returnedj
+	// Returns (nil, nil) when no data exists.
 	GetSyncDataETag(ctx context.Context, apiKey string) (*string, error)
-	// Get sync data and etag
 	GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte, *string, error)
 	// Create or replace sync data, returns the new etag.
 	SetSyncData(ctx context.Context, apiKey string, data []byte) (*string, error)
-	// Replace sync data only if the etag matches,
-	// returns the new etag if updated, or nil if not.
+	// Returns the new etag if the stored etag matched, or (nil, nil) if not.
 	SetSyncDataIfMatch(ctx context.Context, apiKey string, etag string, data []byte) (*string, error)
-	// ReportSyncEvent sends a device-reported sync event to the notification service.
-	ReportSyncEvent(ctx context.Context, apiKey string, event string, deviceName string, detailMessage string) error
+	// ReportSyncEvent persists a device-reported sync event and sends it to the notification service.
+	ReportSyncEvent(ctx context.Context, apiKey string, event string, dev domain.DeviceInfo, detailMessage string) error
+	// RecordContentAccess updates device/status bookkeeping after a successful GET or PUT of the content. Errors are logged, not returned.
+	RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool)
+
+	ListHistory(ctx context.Context, apiKey string) ([]domain.SyncHistoryEntry, error)
+	RestoreHistory(ctx context.Context, apiKey string, id int) (*string, error)
+	ListDevices(ctx context.Context, apiKey string) ([]domain.SyncDevice, error)
+	GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error)
 }
 
 func NewService(log logger.Logger, repo domain.SyncRepo, notificationSvc notification.Service, apiRepo domain.APIRepo) Service {
@@ -46,38 +50,79 @@ type service struct {
 	apiRepo             domain.APIRepo
 }
 
-// Get etag of sync data.
-// For avoid memory usage, only the etag will be returned.
 func (s service) GetSyncDataETag(ctx context.Context, apiKey string) (*string, error) {
 	return s.repo.GetSyncDataETag(ctx, apiKey)
 }
 
-// Get sync data and etag
 func (s service) GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte, *string, error) {
 	return s.repo.GetSyncDataAndETag(ctx, apiKey)
 }
 
-// Create or replace sync data, returns the new etag.
 func (s service) SetSyncData(ctx context.Context, apiKey string, data []byte) (*string, error) {
 	return s.repo.SetSyncData(ctx, apiKey, data)
 }
 
-// Replace sync data only if the etag matches,
-// returns the new etag if updated, or nil if not.
 func (s service) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag string, data []byte) (*string, error) {
 	return s.repo.SetSyncDataIfMatch(ctx, apiKey, etag, data)
 }
 
-func (s service) ReportSyncEvent(ctx context.Context, apiKey string, event string, deviceName string, detailMessage string) error {
+func (s service) ListHistory(ctx context.Context, apiKey string) ([]domain.SyncHistoryEntry, error) {
+	return s.repo.ListHistory(ctx, apiKey)
+}
+
+func (s service) RestoreHistory(ctx context.Context, apiKey string, id int) (*string, error) {
+	return s.repo.RestoreHistory(ctx, apiKey, id)
+}
+
+func (s service) ListDevices(ctx context.Context, apiKey string) ([]domain.SyncDevice, error) {
+	return s.repo.ListDevices(ctx, apiKey)
+}
+
+func (s service) GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error) {
+	return s.repo.GetStatus(ctx, apiKey)
+}
+
+func (s service) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool) {
+	if err := s.repo.TouchDevice(ctx, apiKey, dev, "", "", ""); err != nil {
+		s.log.Warn().Err(err).Msg("failed to record device")
+	}
+
+	if !write {
+		return
+	}
+
+	now := time.Now()
+	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastSyncedAt: &now, LastDevice: dev.Name}); err != nil {
+		s.log.Warn().Err(err).Msg("failed to record sync status")
+	}
+}
+
+func (s service) ReportSyncEvent(ctx context.Context, apiKey string, event string, dev domain.DeviceInfo, detailMessage string) error {
 	ev, err := parseSyncEvent(event)
 	if err != nil {
 		return err
 	}
+
+	now := time.Now()
+	status := statusFromEvent(ev)
+	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage); err != nil {
+		s.log.Warn().Err(err).Msg("failed to record device")
+	}
+	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{
+		LastEventAt: &now,
+		LastEvent:   event,
+		LastStatus:  status,
+		LastDevice:  dev.Name,
+		LastMessage: detailMessage,
+	}); err != nil {
+		s.log.Warn().Err(err).Msg("failed to record sync status")
+	}
+
 	keyName := "Unknown"
 	if key, err := s.apiRepo.Get(ctx, apiKey); err == nil && key != nil && key.Name != "" {
 		keyName = key.Name
 	}
-	payload := s.buildSyncPayload(ev, keyName, deviceName, detailMessage)
+	payload := s.buildSyncPayload(ev, keyName, dev.Name, detailMessage)
 	s.notificationService.Send(ev, payload)
 	return nil
 }
@@ -96,6 +141,21 @@ func parseSyncEvent(event string) (domain.NotificationEvent, error) {
 		return domain.NotificationEventSyncCancelled, nil
 	default:
 		return "", ErrInvalidSyncEvent
+	}
+}
+
+func statusFromEvent(ev domain.NotificationEvent) string {
+	switch ev {
+	case domain.NotificationEventSyncStarted:
+		return "running"
+	case domain.NotificationEventSyncSuccess:
+		return "success"
+	case domain.NotificationEventSyncFailed, domain.NotificationEventSyncError:
+		return "error"
+	case domain.NotificationEventSyncCancelled:
+		return "cancelled"
+	default:
+		return ""
 	}
 }
 

@@ -27,37 +27,59 @@
           <tr>
             <th class="text-left">Name</th>
             <th class="text-left">Key</th>
+            <th class="text-left">Sync</th>
           </tr>
         </thead>
         <tbody v-if="data && dataTableComputed.length > 0">
-          <tr v-for="(item, index) in dataTableComputed" :key="index">
-            <td>{{ item.name }}</td>
-            <td>
-              <v-text-field
-                variant="underlined"
-                :model-value="item.key"
-                :readonly="true"
-                :type="showPassword[index] ? 'text' : 'password'"
-              >
-                <template #append-inner>
-                  <v-icon class="mr-2" @click="togglePasswordVisibility(index)">
-                    mdi-eye{{ showPassword[index] ? "-off" : "" }}
-                  </v-icon>
-                  <v-icon class="mr-2" @click="showQrCode(item.key)">
-                    mdi-qrcode
-                  </v-icon>
-                  <v-icon @click="copyToClipboard(item.key)">
-                    mdi-content-copy
-                  </v-icon>
-                </template>
-                <template #append>
-                  <v-icon @click="showDeleteConfirmation(item.key)"
-                    >mdi-file-document-remove
-                  </v-icon>
-                </template>
-              </v-text-field>
-            </td>
-          </tr>
+          <template v-for="(item, index) in dataTableComputed" :key="index">
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>
+                <v-text-field
+                  variant="underlined"
+                  :model-value="item.key"
+                  :readonly="true"
+                  :type="showPassword[index] ? 'text' : 'password'"
+                >
+                  <template #append-inner>
+                    <v-icon class="mr-2" @click="togglePasswordVisibility(index)">
+                      mdi-eye{{ showPassword[index] ? "-off" : "" }}
+                    </v-icon>
+                    <v-icon class="mr-2" @click="showQrCode(item.key)">
+                      mdi-qrcode
+                    </v-icon>
+                    <v-icon @click="copyToClipboard(item.key)">
+                      mdi-content-copy
+                    </v-icon>
+                  </template>
+                  <template #append>
+                    <v-icon @click="showDeleteConfirmation(item.key)"
+                      >mdi-file-document-remove
+                    </v-icon>
+                  </template>
+                </v-text-field>
+              </td>
+              <td>
+                <v-btn
+                  size="small"
+                  variant="text"
+                  :append-icon="expandedKey === item.key ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                  @click="toggleDetails(item.key)"
+                >
+                  Details
+                </v-btn>
+              </td>
+            </tr>
+            <tr v-if="expandedKey === item.key">
+              <td colspan="3" class="pa-0">
+                <sync-key-details
+                  :api-key="item.key"
+                  @restored="onRestored"
+                  @error="onDetailsError"
+                />
+              </td>
+            </tr>
+          </template>
         </tbody>
       </v-table>
     </div>
@@ -90,10 +112,30 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
 import QrCodeModal from "@/components/modals/ShowQRCode.vue";
 import AddApiKey from "@/components/modals/AddApiKey.vue";
+import SyncKeyDetails from "@/components/settings/SyncKeyDetails.vue";
 
 interface ShowPassword {
   [index: number]: boolean;
 }
+
+const expandedKey: Ref<string | null> = ref(null);
+
+const toggleDetails = (key: string) => {
+  expandedKey.value = expandedKey.value === key ? null : key;
+};
+
+const onRestored = () => {
+  snackbarVisible.value = true;
+  snackbarMessage.value = "Sync data restored!";
+  snackbarColor.value = "success";
+};
+
+const onDetailsError = (message: string) => {
+  console.error("Sync details error:", message);
+  snackbarVisible.value = true;
+  snackbarMessage.value = "Error restoring sync data!";
+  snackbarColor.value = "error";
+};
 
 const snackbarVisible: Ref<boolean> = ref(false);
 const snackbarMessage: Ref<string> = ref("Config updated successfully!");

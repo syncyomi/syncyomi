@@ -125,61 +125,6 @@ paths:
           description: No Content
         default:
           description: Unexpected error
-  /device:
-    get:
-      summary: Get all devices
-      description: Gets all devices
-      operationId: listDevices
-      tags:
-      - Devices
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Device'
-        default:
-          description: Unexpected error
-    post:
-      tags:
-        - Devices
-      summary: Store a new device
-      description: Store a new device
-      operationId: storeDevice
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Device'
-      responses:
-        '201':
-          description: Device created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Device'
-        '500':
-          description: Internal server error
-  /device/{id}:
-    delete:
-      summary: Delete an Device
-      description: Delete an Device
-      operationId: deleteDevice
-      tags:
-        - Devices
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: Device deleted successfully
-        '500':
-          description: Internal server error
   /healthz/liveness:
     get:
       summary: Get server liveness status
@@ -420,50 +365,94 @@ paths:
           description: No Content
         default:
           description: Unexpected error
-  /sync:
-    post:
-      tags:
-        - Sync
-      summary: Store sync data
-      description: Store sync data
-      operationId: storeSync
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Sync'
-      responses:
-        '201':
-          description: Sync data stored successfully
-        '400':
-          description: Bad request
-        '500':
-          description: Internal server error
+  /sync/content:
     get:
       tags:
         - Sync
-      summary: List syncs
-      description: List syncs
-      operationId: listSyncs
+      summary: Download sync data
+      description: |
+        Returns the raw sync payload stored for the API key. The payload is opaque to the
+        server (clients send a Tachiyomi backup encoded as protobuf).
+
+        Send the `ETag` from a previous response as `If-None-Match` to get `304` when
+        nothing changed. The ETag value is opaque and must be echoed back verbatim.
+      operationId: getSyncContent
+      security:
+        - ApiKeyAuth: []
       parameters:
-        - in: query
-          name: apiKey
-          schema:
-            type: string
-          required: true
-          description: User's API key
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/DeviceName'
       responses:
         '200':
-          description: A list of syncs
-          content:
-            application/json:
+          description: Sync payload
+          headers:
+            ETag:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Sync'
+                type: string
+              description: Opaque version tag of the payload
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: Not modified since the `If-None-Match` ETag
+        '401':
+          description: Unauthorized
+        '404':
+          description: No sync data stored for this API key
+        '500':
+          description: Internal server error
+    put:
+      tags:
+        - Sync
+      summary: Upload sync data
+      description: |
+        Replaces the sync payload stored for the API key and returns the new `ETag`.
+
+        Send the last known `ETag` as `If-Match` to get `412` instead of overwriting data
+        another device uploaded in the meantime; the client should then download, merge and
+        upload again. Without `If-Match` the payload is replaced unconditionally.
+
+        The body may be gzip-compressed (`Content-Encoding: gzip`). Bodies larger than the
+        configured `syncMaxBodySizeMB` are rejected with `413`.
+      operationId: putSyncContent
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/DeviceName'
+        - name: Content-Encoding
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [gzip]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Stored
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: New opaque version tag of the payload
         '400':
-          description: Bad request
+          description: Unreadable body
+        '401':
+          description: Unauthorized
+        '412':
+          description: The `If-Match` ETag does not match the stored payload
+        '413':
+          description: Body larger than the configured limit
         '500':
           description: Internal server error
   /sync/event:
@@ -473,11 +462,15 @@ paths:
       summary: Report sync event
       description: |
         Report a device-reported sync status (e.g. started, success, failed, cancelled).
-        Used by the Android app to notify the server of sync progress. Triggers configured
-        notifications (Discord, Telegram, etc.) with optional device name.
+        Used by clients to notify the server of sync progress. Triggers configured
+        notifications (Discord, Telegram, etc.) and updates the device and status shown
+        in the web UI.
       operationId: reportSyncEvent
       security:
         - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/DeviceName'
       requestBody:
         required: true
         content:
@@ -493,80 +486,110 @@ paths:
           description: Unauthorized (missing or invalid API key)
         '500':
           description: Internal server error
-  /sync/{apiKey}:
+  /sync/admin/{apikey}/status:
     get:
       tags:
-        - Sync
-      summary: Get sync by API key
-      description: Get sync by API key
-      operationId: getSyncByApiKey
+        - Sync Admin
+      summary: Sync status of an API key
+      operationId: getSyncStatus
+      security:
+        - CookieAuth: []
       parameters:
-        - in: path
-          name: apiKey
-          schema:
-            type: string
-          required: true
-          description: User's API key
+        - $ref: '#/components/parameters/ApiKeyPath'
       responses:
         '200':
-          description: Sync data
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Sync'
-        '400':
-          description: Bad request
+                $ref: '#/components/schemas/SyncStatus'
+        '401':
+          description: Unauthorized
         '404':
-          description: Sync not found
+          description: Nothing known about this API key yet
         '500':
           description: Internal server error
-    delete:
-      tags:
-        - Sync
-      summary: Delete sync data
-      description: Delete sync data
-      operationId: deleteSync
-      parameters:
-        - in: path
-          name: apiKey
-          schema:
-            type: integer
-          required: true
-          description: Sync ID
-      responses:
-        '204':
-          description: Sync data deleted successfully
-        '400':
-          description: Bad request
-        '404':
-          description: Sync not found
-        '500':
-          description: Internal server error
-  /sync/device/{id}:
+  /sync/admin/{apikey}/devices:
     get:
       tags:
-        - Sync
-      summary: Get sync by device ID
-      description: Get sync by device ID
-      operationId: getSyncByDeviceID
+        - Sync Admin
+      summary: Devices that synced with an API key
+      operationId: listSyncDevices
+      security:
+        - CookieAuth: []
       parameters:
-        - in: path
-          name: id
-          schema:
-            type: integer
-          required: true
-          description: Device ID
+        - $ref: '#/components/parameters/ApiKeyPath'
       responses:
         '200':
-          description: Sync data
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Sync'
+                type: array
+                items:
+                  $ref: '#/components/schemas/SyncDevice'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+  /sync/admin/{apikey}/history:
+    get:
+      tags:
+        - Sync Admin
+      summary: Previous sync payloads kept for an API key
+      description: Newest first. The number of entries kept is `syncHistoryLimit`.
+      operationId: listSyncHistory
+      security:
+        - CookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SyncHistoryEntry'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+  /sync/admin/{apikey}/history/{id}/restore:
+    post:
+      tags:
+        - Sync Admin
+      summary: Roll back to a previous sync payload
+      description: |
+        Makes the history entry the current payload under a new ETag. Devices holding the
+        old ETag get `412` on their next `If-Match` upload and re-sync.
+      operationId: restoreSyncHistory
+      security:
+        - CookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ApiKeyPath'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  etag:
+                    type: string
         '400':
-          description: Bad request
+          description: Invalid id
+        '401':
+          description: Unauthorized
         '404':
-          description: Sync not found
+          description: Unknown history entry
         '500':
           description: Internal server error
   /updates/latest:
@@ -610,12 +633,56 @@ tags:
     description: Notification endpoints
   - name: Updates
     description: Update endpoints
-  - name: Devices
-    description: Device endpoints
   - name: Sync
-    description: Sync endpoints
+    description: Sync endpoints used by clients (API key)
+  - name: Sync Admin
+    description: Sync inspection endpoints used by the web UI (session)
 
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Token
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: user_session
+  parameters:
+    ApiKeyPath:
+      name: apikey
+      in: path
+      required: true
+      schema:
+        type: string
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      schema:
+        type: string
+      description: ETag from a previous response
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+      description: ETag the client last saw
+    DeviceId:
+      name: X-Device-ID
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Stable identifier of the client device (optional, used for the device list)
+    DeviceName:
+      name: X-Device-Name
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Human readable device name (optional)
   schemas:
     APIKey:
       type: object
@@ -636,21 +703,6 @@ components:
         - key
         - scopes
         - created_at
-    Device:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        user_api_key:
-          $ref: '#/components/schemas/APIKey'
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
     User:
       type: object
       properties:
@@ -814,25 +866,67 @@ components:
         browser_download_url:
           type: string
           description: The download URL for the asset
-    Sync:
+    SyncStatus:
+      type: object
+      properties:
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last successful upload
+        last_event_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_event:
+          type: string
+        last_status:
+          type: string
+          enum: ['', running, success, error, cancelled]
+        last_device:
+          type: string
+        last_message:
+          type: string
+        data_size:
+          type: integer
+          format: int64
+          description: Size of the stored payload in bytes
+        data_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    SyncDevice:
       type: object
       properties:
         id:
           type: integer
-        last_synced:
+        device_id:
+          type: string
+        device_name:
+          type: string
+        last_seen:
           type: string
           format: date-time
-        status:
+        last_event:
           type: string
-          enum: [ pending, syncing, success, error ]
-        device:
-          $ref: '#/components/schemas/Device'
-        user_api_key:
-          $ref: '#/components/schemas/APIKey'
+        last_status:
+          type: string
+        last_message:
+          type: string
         created_at:
           type: string
           format: date-time
-        updated_at:
+    SyncHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        etag:
+          type: string
+        size:
+          type: integer
+          format: int64
+        created_at:
           type: string
           format: date-time
     SyncEventRequest:
@@ -850,6 +944,9 @@ components:
             - SYNC_ERROR
             - SYNC_CANCELLED
           description: The sync event type reported by the device
+        device_id:
+          type: string
+          description: Optional stable identifier of the device (the `X-Device-ID` header takes precedence)
         device_name:
           type: string
           description: Optional name of the device that triggered the sync

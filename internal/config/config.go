@@ -133,6 +133,16 @@ checkForUpdates = true
 #
 #syncMaxBodySizeMB = 64
 
+# Sync history
+#
+# Default: 10
+#
+# Number of previous sync payloads kept per API key so a bad sync can be
+# rolled back from the web UI. Each entry stores a full payload.
+# Set to 0 to disable.
+#
+#syncHistoryLimit = 10
+
 # Session secret
 #
 sessionSecret = "{{ .sessionSecret }}"
@@ -275,6 +285,7 @@ func (c *AppConfig) defaults() {
 		PostgresSslMode:  "disable",
 
 		SyncMaxBodySizeMB: 64,
+		SyncHistoryLimit:  10,
 	}
 }
 

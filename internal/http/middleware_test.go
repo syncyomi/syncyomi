@@ -19,7 +19,7 @@ type mockAPIKeyService struct {
 func (m *mockAPIKeyService) Get(ctx context.Context, key string) (*domain.APIKey, error) {
 	return nil, nil
 }
-func (m *mockAPIKeyService) List(ctx context.Context) ([]domain.APIKey, error)  { return nil, nil }
+func (m *mockAPIKeyService) List(ctx context.Context) ([]domain.APIKey, error)   { return nil, nil }
 func (m *mockAPIKeyService) Store(ctx context.Context, key *domain.APIKey) error { return nil }
 func (m *mockAPIKeyService) Update(ctx context.Context, key *domain.APIKey) error {
 	return nil
@@ -143,6 +143,58 @@ func TestServer_IsAuthenticated(t *testing.T) {
 			}
 			if len(api.calls) != len(tt.wantCalls) {
 				t.Errorf("ValidateAPIKey calls = %v, want %v", api.calls, tt.wantCalls)
+			}
+		})
+	}
+}
+
+func TestServer_IsSessionAuthenticated(t *testing.T) {
+	const validKey = "valid-key"
+
+	tests := []struct {
+		name       string
+		header     string
+		session    string
+		wantStatus int
+	}{
+		{name: "valid api token is rejected", header: validKey, wantStatus: http.StatusUnauthorized},
+		{name: "no credentials is rejected", wantStatus: http.StatusUnauthorized},
+		{name: "authenticated session passes", session: "authed", wantStatus: http.StatusOK},
+		{name: "logged out session is rejected", session: "unauthed", wantStatus: http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &mockAPIKeyService{validKey: validKey}
+			cfg := &domain.Config{BaseURL: "/", SessionSecret: "test-secret"}
+			s := Server{apiService: api, cookieStore: newCookieStore(cfg)}
+
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.header != "" {
+				req.Header.Set("X-API-Token", tt.header)
+			}
+			if tt.session != "" {
+				sess, _ := s.cookieStore.Get(req, "user_session")
+				sess.Values["authenticated"] = tt.session == "authed"
+				w := httptest.NewRecorder()
+				if err := sess.Save(req, w); err != nil {
+					t.Fatalf("saving session: %v", err)
+				}
+				req.Header.Set("Cookie", w.Header().Get("Set-Cookie"))
+			}
+
+			rec := httptest.NewRecorder()
+			s.IsSessionAuthenticated(next).ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("IsSessionAuthenticated() status = %v, want %v", rec.Code, tt.wantStatus)
+			}
+			if len(api.calls) != 0 {
+				t.Errorf("ValidateAPIKey must not be consulted, calls = %v", api.calls)
 			}
 		})
 	}
