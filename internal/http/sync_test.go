@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/SyncYomi/SyncYomi/internal/sync"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 type mockSyncService struct {
@@ -102,7 +104,7 @@ func TestSyncHandler_getContent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := chi.NewRouter()
 			r.Route("/", func(r chi.Router) {
-				newSyncHandler(enc, tt.mock).Routes(r)
+				newSyncHandler(enc, zerolog.Nop(), tt.mock, 0).Routes(r)
 			})
 			req := httptest.NewRequest(http.MethodGet, "/content", nil)
 			req.Header.Set("X-API-Token", tt.apiKey)
@@ -160,12 +162,27 @@ func TestSyncHandler_putContent(t *testing.T) {
 			wantStatus: http.StatusOK,
 			wantETag:   "etag-after",
 		},
+		{
+			name:       "repo error returns 500 only",
+			apiKey:     "key1",
+			body:       []byte("new-sync-data"),
+			mock:       &mockSyncService{setDataErr: errors.New("db down")},
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "repo error with If-Match returns 500 not 412",
+			apiKey:     "key1",
+			ifMatch:    "old-etag",
+			body:       []byte("new-sync-data"),
+			mock:       &mockSyncService{setDataIfMatchErr: errors.New("db down")},
+			wantStatus: http.StatusInternalServerError,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := chi.NewRouter()
 			r.Route("/", func(r chi.Router) {
-				newSyncHandler(enc, tt.mock).Routes(r)
+				newSyncHandler(enc, zerolog.Nop(), tt.mock, 0).Routes(r)
 			})
 			req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(tt.body))
 			req.Header.Set("X-API-Token", tt.apiKey)
@@ -180,8 +197,40 @@ func TestSyncHandler_putContent(t *testing.T) {
 			if tt.wantETag != "" && rec.Header().Get("ETag") != tt.wantETag {
 				t.Errorf("ETag = %q, want %q", rec.Header().Get("ETag"), tt.wantETag)
 			}
+			if tt.wantStatus == http.StatusInternalServerError && rec.Header().Get("ETag") != "" {
+				t.Errorf("ETag set on error response: %q", rec.Header().Get("ETag"))
+			}
 		})
 	}
+}
+
+func TestSyncHandler_putContentBodyLimit(t *testing.T) {
+	enc := encoder{}
+	mock := &mockSyncService{setDataEtag: strPtr("etag-new")}
+	r := chi.NewRouter()
+	r.Route("/", func(r chi.Router) {
+		newSyncHandler(enc, zerolog.Nop(), mock, 16).Routes(r)
+	})
+
+	t.Run("under limit is accepted", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(make([]byte, 16)))
+		req.Header.Set("X-API-Token", "key1")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %v, want 200", rec.Code)
+		}
+	})
+
+	t.Run("over limit is rejected with 413", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(make([]byte, 17)))
+		req.Header.Set("X-API-Token", "key1")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("status = %v, want 413", rec.Code)
+		}
+	})
 }
 
 func TestSyncHandler_reportEvent(t *testing.T) {
@@ -264,7 +313,7 @@ func TestSyncHandler_reportEvent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := chi.NewRouter()
 			r.Route("/", func(r chi.Router) {
-				newSyncHandler(enc, tt.mock).Routes(r)
+				newSyncHandler(enc, zerolog.Nop(), tt.mock, 0).Routes(r)
 			})
 			var bodyBytes []byte
 			switch b := tt.body.(type) {

@@ -123,6 +123,16 @@ logLevel = "DEBUG"
 #
 checkForUpdates = true
 
+# Sync payload size limit
+#
+# Default: 64
+#
+# Largest sync payload (in megabytes) accepted from a client on
+# PUT /api/sync/content. Larger uploads are rejected with 413.
+# Set to 0 to disable the limit.
+#
+#syncMaxBodySizeMB = 64
+
 # Session secret
 #
 sessionSecret = "{{ .sessionSecret }}"
@@ -263,6 +273,8 @@ func (c *AppConfig) defaults() {
 		PostgresUser:     "SyncYomi",
 		PostgresPass:     "SyncYomi",
 		PostgresSslMode:  "disable",
+
+		SyncMaxBodySizeMB: 64,
 	}
 }
 
