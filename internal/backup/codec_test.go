@@ -266,5 +266,9 @@ func TestEmptyPreferencePayloadIsPreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("split+render", rendered)
-	check("scrub", Scrub(b))
+
+	// scrubbing rewrites string payloads, but must keep the element present
+	if Scrub(b).BackupPreferences[0].Value.Value == nil {
+		t.Error("scrub dropped the preference payload")
+	}
 }
