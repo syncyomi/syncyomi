@@ -34,3 +34,4 @@ package-lock.json
 # Real Tachiyomi backups (personal data) - never commit
 *.tachibk
 internal/backup/testdata/private/
+!internal/backup/testdata/backup_scrubbed.tachibk
