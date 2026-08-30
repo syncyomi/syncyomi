@@ -276,27 +276,14 @@ func TestSyncRepo_History(t *testing.T) {
 		}
 	}
 
-	// restore the oldest kept entry (payload 3)
-	newEtag, err := repo.RestoreHistory(ctx, "key1", history[2].ID)
-	if err != nil {
-		t.Fatal(err)
+	data, err := repo.GetHistoryData(ctx, "key1", history[2].ID)
+	if err != nil || !bytes.Equal(data, []byte{3}) {
+		t.Errorf("GetHistoryData = %v, %v", data, err)
 	}
-	data, etag, err := repo.GetSyncDataAndETag(ctx, "key1")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := repo.GetHistoryData(ctx, "key1", 99999); !stderrors.Is(err, domain.ErrNotFound) {
+		t.Errorf("unknown id err = %v, want ErrNotFound", err)
 	}
-	if !bytes.Equal(data, []byte{3}) || *etag != *newEtag {
-		t.Errorf("after restore data=%v etag=%q, want [3]/%q", data, *etag, *newEtag)
-	}
-
-	history, _ = repo.ListHistory(ctx, "key1")
-	if len(history) != 3 || history[0].ETag != *newEtag {
-		t.Errorf("history after restore = %+v", history)
-	}
-
-	if _, err := repo.RestoreHistory(ctx, "key1", 99999); !stderrors.Is(err, domain.ErrNotFound) {
-		t.Errorf("restore unknown id err = %v, want ErrNotFound", err)
-	}
+	newEtag := &history[0].ETag
 
 	// IfMatch writes are recorded too
 	if _, err := repo.SetSyncDataIfMatch(ctx, "key1", *newEtag, []byte{9}); err != nil {
@@ -433,7 +420,9 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	// rewind to the previous version by dropping what the last migration added
 	previous := len(sqliteMigrations) - 1
 	for _, stmt := range []string{
-		"DROP TABLE sync_data_history", "DROP TABLE sync_device", "DROP TABLE sync_status",
+		"DROP TABLE sync_item", "DROP TABLE sync_state",
+		"ALTER TABLE sync_device DROP COLUMN last_cursor", "ALTER TABLE sync_device DROP COLUMN protocol",
+		"ALTER TABLE sync_data DROP COLUMN rendered_seq",
 		fmt.Sprintf("PRAGMA user_version = %d", previous),
 	} {
 		if _, err := db.handler.Exec(stmt); err != nil {

@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/SyncYomi/SyncYomi/internal/backup"
+	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/sync"
 	"github.com/go-chi/chi/v5"
@@ -17,17 +19,19 @@ import (
 )
 
 type mockSyncService struct {
-	getETagErr         error
-	getETag            *string
-	getDataAndETagErr  error
-	getData            []byte
-	getDataETag        *string
-	setDataErr         error
-	setDataEtag        *string
-	onSetData          func(data []byte)
-	setDataIfMatchErr  error
-	setDataIfMatchEtag *string
-	reportEventErr     error
+	// v1
+	snapshot    *sync.Snapshot
+	snapshotErr error
+	putEtag     string
+	putErr      error
+	putData     []byte
+	putIfMatch  string
+	putDevice   domain.DeviceInfo
+	// v2
+	mergeResp      *sync.MergeResponse
+	mergeErr       error
+	mergeReq       *sync.MergeRequest
+	reportEventErr error
 
 	reportedDevice domain.DeviceInfo
 	accessDevice   domain.DeviceInfo
@@ -41,35 +45,31 @@ type mockSyncService struct {
 	restoreEtag *string
 }
 
-func (m *mockSyncService) GetSyncDataETag(ctx context.Context, apiKey string) (*string, error) {
-	if m.getETagErr != nil {
-		return nil, m.getETagErr
+func (m *mockSyncService) Merge(ctx context.Context, req sync.MergeRequest) (*sync.MergeResponse, error) {
+	m.mergeReq = &req
+	if m.mergeErr != nil {
+		return nil, m.mergeErr
 	}
-	return m.getETag, nil
+	return m.mergeResp, nil
 }
 
-func (m *mockSyncService) GetSyncDataAndETag(ctx context.Context, apiKey string) ([]byte, *string, error) {
-	if m.getDataAndETagErr != nil {
-		return nil, nil, m.getDataAndETagErr
+func (m *mockSyncService) Snapshot(ctx context.Context, apiKey string, cursor int64) (*sync.Snapshot, error) {
+	if m.snapshotErr != nil {
+		return nil, m.snapshotErr
 	}
-	return m.getData, m.getDataETag, nil
+	return m.snapshot, nil
 }
 
-func (m *mockSyncService) SetSyncData(ctx context.Context, apiKey string, data []byte) (*string, error) {
-	if m.setDataErr != nil {
-		return nil, m.setDataErr
-	}
-	if m.onSetData != nil {
-		m.onSetData(data)
-	}
-	return m.setDataEtag, nil
+func (m *mockSyncService) GetContent(ctx context.Context, apiKey string) (*sync.Snapshot, error) {
+	return m.Snapshot(ctx, apiKey, 0)
 }
 
-func (m *mockSyncService) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag string, data []byte) (*string, error) {
-	if m.setDataIfMatchErr != nil {
-		return nil, m.setDataIfMatchErr
+func (m *mockSyncService) PutContent(ctx context.Context, apiKey string, dev domain.DeviceInfo, ifMatch string, data []byte) (string, error) {
+	m.putData, m.putIfMatch, m.putDevice = data, ifMatch, dev
+	if m.putErr != nil {
+		return "", m.putErr
 	}
-	return m.setDataIfMatchEtag, nil
+	return m.putEtag, nil
 }
 
 func (m *mockSyncService) ReportSyncEvent(ctx context.Context, apiKey string, event string, dev domain.DeviceInfo, detailMessage string) error {
@@ -105,222 +105,145 @@ func (m *mockSyncService) GetStatus(ctx context.Context, apiKey string) (*domain
 	return m.status, m.adminErr
 }
 
+func newRouter(mock *mockSyncService, maxBody int64) *chi.Mux {
+	r := chi.NewRouter()
+	r.Route("/", func(r chi.Router) {
+		newSyncHandler(encoder{}, zerolog.Nop(), mock, maxBody).Routes(r)
+	})
+	return r
+}
+
+func encodedBackup(t *testing.T, urls ...string) []byte {
+	t.Helper()
+	b := &pb.Backup{}
+	for _, u := range urls {
+		b.BackupManga = append(b.BackupManga, &pb.BackupManga{Source: 1, Url: u})
+	}
+	data, err := backup.Encode(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func TestSyncHandler_getContent(t *testing.T) {
-	enc := encoder{}
 	tests := []struct {
-		name           string
-		apiKey         string
-		ifNoneMatch    string
-		mock           *mockSyncService
-		wantStatus     int
-		wantETag       string
-		wantBodyPrefix string
+		name        string
+		ifNoneMatch string
+		mock        *mockSyncService
+		wantStatus  int
+		wantETag    string
+		wantBody    string
 	}{
-		{
-			name:       "no data returns 404",
-			apiKey:     "key1",
-			mock:       &mockSyncService{getData: nil, getDataETag: nil},
-			wantStatus: http.StatusNotFound,
-		},
-		{
-			name:           "returns data and etag",
-			apiKey:         "key1",
-			mock:           &mockSyncService{getData: []byte("sync-payload"), getDataETag: strPtr("etag-1")},
-			wantStatus:     http.StatusOK,
-			wantETag:       "etag-1",
-			wantBodyPrefix: "sync-payload",
-		},
-		{
-			name:        "304 when If-None-Match matches",
-			apiKey:      "key1",
-			ifNoneMatch: "etag-1",
-			mock:        &mockSyncService{getETag: strPtr("etag-1")},
-			wantStatus:  http.StatusNotModified,
-		},
-		{
-			name:        "200 when If-None-Match does not match",
-			apiKey:      "key1",
-			ifNoneMatch: "old-etag",
-			mock:        &mockSyncService{getETag: strPtr("etag-1"), getData: []byte("data"), getDataETag: strPtr("etag-1")},
-			wantStatus:  http.StatusOK,
-			wantETag:    "etag-1",
-		},
+		{name: "no data returns 404", mock: &mockSyncService{snapshotErr: sync.ErrNoData}, wantStatus: http.StatusNotFound},
+		{name: "returns data and etag", mock: &mockSyncService{snapshot: &sync.Snapshot{Data: []byte("sync-payload"), ETag: "seq=1"}}, wantStatus: http.StatusOK, wantETag: "seq=1", wantBody: "sync-payload"},
+		{name: "304 when If-None-Match matches", ifNoneMatch: "seq=1", mock: &mockSyncService{snapshot: &sync.Snapshot{Data: []byte("x"), ETag: "seq=1"}}, wantStatus: http.StatusNotModified},
+		{name: "200 when If-None-Match differs", ifNoneMatch: "uuid=old", mock: &mockSyncService{snapshot: &sync.Snapshot{Data: []byte("x"), ETag: "seq=1"}}, wantStatus: http.StatusOK, wantETag: "seq=1"},
+		{name: "500 on error", mock: &mockSyncService{snapshotErr: errors.New("db")}, wantStatus: http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := chi.NewRouter()
-			r.Route("/", func(r chi.Router) {
-				newSyncHandler(enc, zerolog.Nop(), tt.mock, 0).Routes(r)
-			})
 			req := httptest.NewRequest(http.MethodGet, "/content", nil)
-			req.Header.Set("X-API-Token", tt.apiKey)
+			req.Header.Set("X-API-Token", "key1")
 			if tt.ifNoneMatch != "" {
 				req.Header.Set("If-None-Match", tt.ifNoneMatch)
 			}
 			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
+			newRouter(tt.mock, 0).ServeHTTP(rec, req)
 			if rec.Code != tt.wantStatus {
-				t.Errorf("getContent() status = %v, want %v", rec.Code, tt.wantStatus)
+				t.Errorf("status = %v, want %v", rec.Code, tt.wantStatus)
 			}
 			if tt.wantETag != "" && rec.Header().Get("ETag") != tt.wantETag {
 				t.Errorf("ETag = %q, want %q", rec.Header().Get("ETag"), tt.wantETag)
 			}
-			if tt.wantBodyPrefix != "" && !bytes.HasPrefix(rec.Body.Bytes(), []byte(tt.wantBodyPrefix)) {
-				t.Errorf("body = %q, want prefix %q", rec.Body.String(), tt.wantBodyPrefix)
+			if tt.wantBody != "" && rec.Body.String() != tt.wantBody {
+				t.Errorf("body = %q, want %q", rec.Body.String(), tt.wantBody)
+			}
+			if rec.Header().Get("Deprecation") != "true" {
+				t.Error("v1 response lacks Deprecation header")
 			}
 		})
 	}
 }
 
 func TestSyncHandler_putContent(t *testing.T) {
-	enc := encoder{}
 	tests := []struct {
 		name       string
-		apiKey     string
 		ifMatch    string
-		body       []byte
 		mock       *mockSyncService
 		wantStatus int
 		wantETag   string
 	}{
-		{
-			name:       "put without etag returns 200 and new etag",
-			apiKey:     "key1",
-			body:       []byte("new-sync-data"),
-			mock:       &mockSyncService{setDataEtag: strPtr("etag-new")},
-			wantStatus: http.StatusOK,
-			wantETag:   "etag-new",
-		},
-		{
-			name:       "put with If-Match returns 412 when etag mismatch",
-			apiKey:     "key1",
-			ifMatch:    "old-etag",
-			body:       []byte("new-sync-data"),
-			mock:       &mockSyncService{setDataIfMatchEtag: nil},
-			wantStatus: http.StatusPreconditionFailed,
-		},
-		{
-			name:       "put with If-Match returns 200 when match",
-			apiKey:     "key1",
-			ifMatch:    "old-etag",
-			body:       []byte("new-sync-data"),
-			mock:       &mockSyncService{setDataIfMatchEtag: strPtr("etag-after")},
-			wantStatus: http.StatusOK,
-			wantETag:   "etag-after",
-		},
-		{
-			name:       "repo error returns 500 only",
-			apiKey:     "key1",
-			body:       []byte("new-sync-data"),
-			mock:       &mockSyncService{setDataErr: errors.New("db down")},
-			wantStatus: http.StatusInternalServerError,
-		},
-		{
-			name:       "repo error with If-Match returns 500 not 412",
-			apiKey:     "key1",
-			ifMatch:    "old-etag",
-			body:       []byte("new-sync-data"),
-			mock:       &mockSyncService{setDataIfMatchErr: errors.New("db down")},
-			wantStatus: http.StatusInternalServerError,
-		},
+		{name: "put returns new etag", mock: &mockSyncService{putEtag: "seq=2"}, wantStatus: http.StatusOK, wantETag: "seq=2"},
+		{name: "412 on etag mismatch", ifMatch: "seq=1", mock: &mockSyncService{putErr: sync.ErrPreconditionFailed}, wantStatus: http.StatusPreconditionFailed},
+		{name: "400 on undecodable payload", mock: &mockSyncService{putErr: sync.ErrBadPayload}, wantStatus: http.StatusBadRequest},
+		{name: "500 on error", mock: &mockSyncService{putErr: errors.New("db")}, wantStatus: http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := chi.NewRouter()
-			r.Route("/", func(r chi.Router) {
-				newSyncHandler(enc, zerolog.Nop(), tt.mock, 0).Routes(r)
-			})
-			req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(tt.body))
-			req.Header.Set("X-API-Token", tt.apiKey)
+			req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader([]byte("payload")))
+			req.Header.Set("X-API-Token", "key1")
 			if tt.ifMatch != "" {
 				req.Header.Set("If-Match", tt.ifMatch)
 			}
 			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
+			newRouter(tt.mock, 0).ServeHTTP(rec, req)
 			if rec.Code != tt.wantStatus {
-				t.Errorf("putContent() status = %v, want %v", rec.Code, tt.wantStatus)
+				t.Errorf("status = %v, want %v", rec.Code, tt.wantStatus)
 			}
-			if tt.wantETag != "" && rec.Header().Get("ETag") != tt.wantETag {
+			if rec.Header().Get("ETag") != tt.wantETag {
 				t.Errorf("ETag = %q, want %q", rec.Header().Get("ETag"), tt.wantETag)
 			}
-			if tt.wantStatus == http.StatusInternalServerError && rec.Header().Get("ETag") != "" {
-				t.Errorf("ETag set on error response: %q", rec.Header().Get("ETag"))
+			if tt.ifMatch != "" && tt.mock.putIfMatch != tt.ifMatch {
+				t.Errorf("If-Match passed = %q", tt.mock.putIfMatch)
 			}
 		})
 	}
 }
 
 func TestSyncHandler_putContentBodyLimit(t *testing.T) {
-	enc := encoder{}
-	mock := &mockSyncService{setDataEtag: strPtr("etag-new")}
-	r := chi.NewRouter()
-	r.Route("/", func(r chi.Router) {
-		newSyncHandler(enc, zerolog.Nop(), mock, 16).Routes(r)
-	})
+	r := newRouter(&mockSyncService{putEtag: "seq=1"}, 16)
 
-	t.Run("under limit is accepted", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(make([]byte, 16)))
+	send := func(body []byte, gzipped bool) int {
+		req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(body))
 		req.Header.Set("X-API-Token", "key1")
+		if gzipped {
+			req.Header.Set("Content-Encoding", "gzip")
+		}
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("status = %v, want 200", rec.Code)
-		}
-	})
-
-	t.Run("over limit is rejected with 413", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(make([]byte, 17)))
-		req.Header.Set("X-API-Token", "key1")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		if rec.Code != http.StatusRequestEntityTooLarge {
-			t.Errorf("status = %v, want 413", rec.Code)
-		}
-	})
-
-	t.Run("gzip body over limit after inflation is rejected with 413", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(gzipBytes(t, make([]byte, 1024))))
-		req.Header.Set("X-API-Token", "key1")
-		req.Header.Set("Content-Encoding", "gzip")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		if rec.Code != http.StatusRequestEntityTooLarge {
-			t.Errorf("status = %v, want 413", rec.Code)
-		}
-	})
+		return rec.Code
+	}
+	if got := send(make([]byte, 16), false); got != http.StatusOK {
+		t.Errorf("under limit = %d", got)
+	}
+	if got := send(make([]byte, 17), false); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("over limit = %d", got)
+	}
+	if got := send(gzipBytes(t, make([]byte, 1024)), true); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("inflated over limit = %d", got)
+	}
 }
 
 func TestSyncHandler_putContentGzip(t *testing.T) {
-	enc := encoder{}
-	var stored []byte
-	mock := &mockSyncService{setDataEtag: strPtr("etag-new")}
-	mock.onSetData = func(data []byte) { stored = data }
-	r := chi.NewRouter()
-	r.Route("/", func(r chi.Router) {
-		newSyncHandler(enc, zerolog.Nop(), mock, 0).Routes(r)
-	})
-
+	mock := &mockSyncService{putEtag: "seq=1"}
 	req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader(gzipBytes(t, []byte("plain-payload"))))
 	req.Header.Set("X-API-Token", "key1")
 	req.Header.Set("Content-Encoding", "gzip")
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	newRouter(mock, 0).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %v, want 200", rec.Code)
+		t.Fatalf("status = %v", rec.Code)
 	}
-	if !bytes.Equal(stored, []byte("plain-payload")) {
-		t.Errorf("stored = %q, want inflated payload", stored)
+	if !bytes.Equal(mock.putData, []byte("plain-payload")) {
+		t.Errorf("stored = %q", mock.putData)
 	}
 }
 
 func TestSyncHandler_deviceHeaders(t *testing.T) {
-	enc := encoder{}
-	mock := &mockSyncService{setDataEtag: strPtr("etag-new")}
-	r := chi.NewRouter()
-	r.Route("/", func(r chi.Router) {
-		newSyncHandler(enc, zerolog.Nop(), mock, 0).Routes(r)
-	})
+	mock := &mockSyncService{putEtag: "seq=1"}
+	r := newRouter(mock, 0)
 
 	req := httptest.NewRequest(http.MethodPut, "/content", bytes.NewReader([]byte("x")))
 	req.Header.Set("X-API-Token", "key1")
@@ -328,99 +251,126 @@ func TestSyncHandler_deviceHeaders(t *testing.T) {
 	req.Header.Set("X-Device-Name", "Phone")
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
-
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %v, want 200", rec.Code)
+		t.Fatalf("status = %v", rec.Code)
 	}
-	if mock.accessCalls != 1 || !mock.accessWrite {
-		t.Errorf("RecordContentAccess calls=%d write=%v, want 1/true", mock.accessCalls, mock.accessWrite)
-	}
-	if mock.accessDevice != (domain.DeviceInfo{ID: "dev-1", Name: "Phone"}) {
-		t.Errorf("device = %+v", mock.accessDevice)
+	want := domain.DeviceInfo{ID: "dev-1", Name: "Phone"}
+	if mock.putDevice != want || mock.accessDevice != want || !mock.accessWrite {
+		t.Errorf("device put=%+v access=%+v write=%v", mock.putDevice, mock.accessDevice, mock.accessWrite)
 	}
 
-	// event: body fields are used when headers are absent
 	body, _ := json.Marshal(map[string]string{"event": "SYNC_SUCCESS", "device_id": "dev-2", "device_name": "Tablet"})
 	req = httptest.NewRequest(http.MethodPost, "/event", bytes.NewReader(body))
 	req.Header.Set("X-API-Token", "key1")
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
-		t.Fatalf("event status = %v, want 204", rec.Code)
+		t.Fatalf("event status = %v", rec.Code)
 	}
 	if mock.reportedDevice != (domain.DeviceInfo{ID: "dev-2", Name: "Tablet"}) {
 		t.Errorf("event device = %+v", mock.reportedDevice)
 	}
 }
 
+func TestSyncHandler_reportEvent(t *testing.T) {
+	tests := []struct {
+		name       string
+		apiKeyIn   string
+		body       any
+		mock       *mockSyncService
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "401 when no API key", body: map[string]string{"event": "SYNC_STARTED"}, mock: &mockSyncService{}, wantStatus: http.StatusUnauthorized},
+		{name: "400 when invalid JSON", apiKeyIn: "header", body: "not json", mock: &mockSyncService{}, wantStatus: http.StatusBadRequest},
+		{name: "400 when event missing", apiKeyIn: "header", body: map[string]string{}, mock: &mockSyncService{}, wantStatus: http.StatusBadRequest, wantBody: "event is required"},
+		{name: "400 when invalid event", apiKeyIn: "header", body: map[string]string{"event": "INVALID_EVENT"}, mock: &mockSyncService{reportEventErr: sync.ErrInvalidSyncEvent}, wantStatus: http.StatusBadRequest, wantBody: "invalid sync event"},
+		{name: "204 with header API key", apiKeyIn: "header", body: map[string]string{"event": "SYNC_STARTED"}, mock: &mockSyncService{}, wantStatus: http.StatusNoContent},
+		{name: "204 with query API key", apiKeyIn: "query", body: map[string]string{"event": "SYNC_SUCCESS", "device_name": "My Phone"}, mock: &mockSyncService{}, wantStatus: http.StatusNoContent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var bodyBytes []byte
+			switch b := tt.body.(type) {
+			case string:
+				bodyBytes = []byte(b)
+			default:
+				bodyBytes, _ = json.Marshal(b)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/event", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			switch tt.apiKeyIn {
+			case "header":
+				req.Header.Set("X-API-Token", "key1")
+			case "query":
+				req.URL.RawQuery = "apikey=key1"
+			}
+			rec := httptest.NewRecorder()
+			newRouter(tt.mock, 0).ServeHTTP(rec, req)
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %v, want %v", rec.Code, tt.wantStatus)
+			}
+			if tt.wantBody != "" && !bytes.Contains(rec.Body.Bytes(), []byte(tt.wantBody)) {
+				t.Errorf("body %q does not contain %q", rec.Body.String(), tt.wantBody)
+			}
+		})
+	}
+}
+
 func TestSyncHandler_adminRoutes(t *testing.T) {
-	enc := encoder{}
-	newRouter := func(mock *mockSyncService) *chi.Mux {
+	newAdmin := func(mock *mockSyncService) *chi.Mux {
 		r := chi.NewRouter()
 		r.Route("/", func(r chi.Router) {
-			newSyncHandler(enc, zerolog.Nop(), mock, 0).AdminRoutes(r)
+			newSyncHandler(encoder{}, zerolog.Nop(), mock, 0).AdminRoutes(r)
 		})
 		return r
 	}
 
 	t.Run("status 404 when unknown", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		newRouter(&mockSyncService{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/key1/status", nil))
+		newAdmin(&mockSyncService{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/key1/status", nil))
 		if rec.Code != http.StatusNotFound {
-			t.Errorf("status = %v, want 404", rec.Code)
+			t.Errorf("status = %v", rec.Code)
 		}
 	})
 
 	t.Run("status returns json", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		newRouter(&mockSyncService{status: &domain.SyncStatus{LastStatus: "success", DataSize: 42}}).
+		newAdmin(&mockSyncService{status: &domain.SyncStatus{LastStatus: "success", DataSize: 42}}).
 			ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/key1/status", nil))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %v, want 200", rec.Code)
-		}
 		var got domain.SyncStatus
-		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-			t.Fatal(err)
-		}
-		if got.LastStatus != "success" || got.DataSize != 42 {
-			t.Errorf("body = %+v", got)
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.LastStatus != "success" || got.DataSize != 42 {
+			t.Errorf("status = %v body = %+v err = %v", rec.Code, got, err)
 		}
 	})
 
 	t.Run("devices and history return arrays", func(t *testing.T) {
-		mock := &mockSyncService{
-			devices: []domain.SyncDevice{{DeviceID: "d1"}},
-			history: []domain.SyncHistoryEntry{{ID: 7, ETag: "e"}},
-		}
+		mock := &mockSyncService{devices: []domain.SyncDevice{{DeviceID: "d1"}}, history: []domain.SyncHistoryEntry{{ID: 7}}}
 		for _, path := range []string{"/key1/devices", "/key1/history"} {
 			rec := httptest.NewRecorder()
-			newRouter(mock).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-			if rec.Code != http.StatusOK {
-				t.Errorf("%s status = %v, want 200", path, rec.Code)
-			}
-			if !bytes.HasPrefix(bytes.TrimSpace(rec.Body.Bytes()), []byte("[")) {
-				t.Errorf("%s body = %q, want array", path, rec.Body.String())
+			newAdmin(mock).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			if rec.Code != http.StatusOK || !bytes.HasPrefix(bytes.TrimSpace(rec.Body.Bytes()), []byte("[")) {
+				t.Errorf("%s = %v %q", path, rec.Code, rec.Body.String())
 			}
 		}
 	})
 
 	t.Run("restore", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		newRouter(&mockSyncService{}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/key1/history/1/restore", nil))
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("unknown id status = %v, want 404", rec.Code)
-		}
-
-		rec = httptest.NewRecorder()
-		newRouter(&mockSyncService{}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/key1/history/abc/restore", nil))
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("bad id status = %v, want 400", rec.Code)
-		}
-
-		rec = httptest.NewRecorder()
-		newRouter(&mockSyncService{restoreEtag: strPtr("etag-r")}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/key1/history/1/restore", nil))
-		if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("etag-r")) {
-			t.Errorf("restore = %v %q, want 200 with etag", rec.Code, rec.Body.String())
+		for _, tc := range []struct {
+			path string
+			mock *mockSyncService
+			want int
+		}{
+			{"/key1/history/1/restore", &mockSyncService{}, http.StatusNotFound},
+			{"/key1/history/abc/restore", &mockSyncService{}, http.StatusBadRequest},
+			{"/key1/history/1/restore", &mockSyncService{restoreEtag: strPtr("seq=9")}, http.StatusOK},
+			{"/key1/history/1/restore", &mockSyncService{adminErr: sync.ErrBadPayload}, http.StatusUnprocessableEntity},
+		} {
+			rec := httptest.NewRecorder()
+			newAdmin(tc.mock).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Errorf("%s = %v, want %v", tc.path, rec.Code, tc.want)
+			}
 		}
 	})
 }
@@ -436,119 +386,6 @@ func gzipBytes(t *testing.T, data []byte) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
-}
-
-func TestSyncHandler_reportEvent(t *testing.T) {
-	enc := encoder{}
-	tests := []struct {
-		name       string
-		method     string
-		apiKey     string
-		apiKeyIn   string
-		body       interface{}
-		mock       *mockSyncService
-		wantStatus int
-		wantBody   string
-	}{
-		{
-			name:       "401 when no API key",
-			method:     http.MethodPost,
-			body:       map[string]string{"event": "SYNC_STARTED"},
-			mock:       &mockSyncService{},
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			name:       "400 when invalid JSON",
-			method:     http.MethodPost,
-			apiKey:     "key1",
-			apiKeyIn:   "header",
-			body:       "not json",
-			mock:       &mockSyncService{},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "400 when event missing",
-			method:     http.MethodPost,
-			apiKey:     "key1",
-			apiKeyIn:   "header",
-			body:       map[string]string{},
-			mock:       &mockSyncService{},
-			wantStatus: http.StatusBadRequest,
-			wantBody:   "event is required",
-		},
-		{
-			name:       "400 when invalid event",
-			method:     http.MethodPost,
-			apiKey:     "key1",
-			apiKeyIn:   "header",
-			body:       map[string]string{"event": "INVALID_EVENT"},
-			mock:       &mockSyncService{reportEventErr: sync.ErrInvalidSyncEvent},
-			wantStatus: http.StatusBadRequest,
-			wantBody:   "invalid sync event",
-		},
-		{
-			name:       "204 success with header API key",
-			method:     http.MethodPost,
-			apiKey:     "key1",
-			apiKeyIn:   "header",
-			body:       map[string]string{"event": "SYNC_STARTED"},
-			mock:       &mockSyncService{},
-			wantStatus: http.StatusNoContent,
-		},
-		{
-			name:       "204 success with query API key",
-			method:     http.MethodPost,
-			apiKey:     "key1",
-			apiKeyIn:   "query",
-			body:       map[string]string{"event": "SYNC_SUCCESS", "device_name": "My Phone", "message": "done"},
-			mock:       &mockSyncService{},
-			wantStatus: http.StatusNoContent,
-		},
-		{
-			name:       "204 for SYNC_CANCELLED",
-			method:     http.MethodPost,
-			apiKey:     "key1",
-			apiKeyIn:   "header",
-			body:       map[string]string{"event": "SYNC_CANCELLED", "device_name": "Tablet", "message": "User cancelled"},
-			mock:       &mockSyncService{},
-			wantStatus: http.StatusNoContent,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := chi.NewRouter()
-			r.Route("/", func(r chi.Router) {
-				newSyncHandler(enc, zerolog.Nop(), tt.mock, 0).Routes(r)
-			})
-			var bodyBytes []byte
-			switch b := tt.body.(type) {
-			case string:
-				bodyBytes = []byte(b)
-			default:
-				var err error
-				bodyBytes, err = json.Marshal(b)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			req := httptest.NewRequest(tt.method, "/event", bytes.NewReader(bodyBytes))
-			req.Header.Set("Content-Type", "application/json")
-			switch tt.apiKeyIn {
-			case "header":
-				req.Header.Set("X-API-Token", tt.apiKey)
-			case "query":
-				req.URL.RawQuery = "apikey=" + tt.apiKey
-			}
-			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
-			if rec.Code != tt.wantStatus {
-				t.Errorf("reportEvent() status = %v, want %v", rec.Code, tt.wantStatus)
-			}
-			if tt.wantBody != "" && !bytes.Contains(rec.Body.Bytes(), []byte(tt.wantBody)) {
-				t.Errorf("body %q does not contain %q", rec.Body.String(), tt.wantBody)
-			}
-		})
-	}
 }
 
 func strPtr(s string) *string { return &s }

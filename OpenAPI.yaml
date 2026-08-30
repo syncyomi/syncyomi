@@ -369,10 +369,12 @@ paths:
     get:
       tags:
         - Sync
-      summary: Download sync data
+      summary: Download sync data (protocol v1)
+      deprecated: true
       description: |
-        Returns the raw sync payload stored for the API key. The payload is opaque to the
-        server (clients send a Tachiyomi backup encoded as protobuf).
+        Returns the library rendered from the server's item store as a Tachiyomi backup.
+        Kept for clients that have not adopted protocol v2; responses carry a `Deprecation`
+        header. New clients should use `/sync/v2/merge`.
 
         Send the `ETag` from a previous response as `If-None-Match` to get `304` when
         nothing changed. The ETag value is opaque and must be echoed back verbatim.
@@ -407,9 +409,11 @@ paths:
     put:
       tags:
         - Sync
-      summary: Upload sync data
+      summary: Upload sync data (protocol v1)
+      deprecated: true
       description: |
-        Replaces the sync payload stored for the API key and returns the new `ETag`.
+        Merges the uploaded backup into the server's item store (items present are merged,
+        absent items are kept) and returns the new `ETag`.
 
         Send the last known `ETag` as `If-Match` to get `412` instead of overwriting data
         another device uploaded in the meantime; the client should then download, merge and
@@ -446,7 +450,7 @@ paths:
                 type: string
               description: New opaque version tag of the payload
         '400':
-          description: Unreadable body
+          description: Body is not a valid backup
         '401':
           description: Unauthorized
         '412':
@@ -486,6 +490,163 @@ paths:
           description: Unauthorized (missing or invalid API key)
         '500':
           description: Internal server error
+  /sync/v2/capabilities:
+    get:
+      tags:
+        - Sync v2
+      summary: Discover protocol v2
+      description: Returns 200 on servers that implement protocol v2; older servers answer 404 and clients fall back to v1.
+      operationId: syncV2Capabilities
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
+                    example: 2
+                  merge:
+                    type: string
+                    example: /api/sync/v2/merge
+                  snapshot:
+                    type: string
+                    example: /api/sync/v2/snapshot
+  /sync/v2/merge:
+    post:
+      tags:
+        - Sync v2
+      summary: Merge the client's library and receive what it lacks
+      description: |
+        The body is a Tachiyomi backup (protobuf, optionally gzip-compressed) holding the
+        client's full library or only what changed since its last successful upload. Items
+        present are merged item by item (higher `version` wins, ties keep the server copy);
+        items absent are left untouched. Only explicit tombstones delete: category uids listed
+        in `X-Sync-Deleted-Categories`.
+
+        The response is a backup with everything the client is missing: all live categories
+        plus manga, chapters and settings changed since `X-Sync-Cursor` by other devices and
+        any item where the server copy won. `X-Sync-Cursor: 0` or `X-Sync-Full: true` returns
+        the whole library.
+      operationId: syncV2Merge
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: X-Device-ID
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+          description: Stable identifier of the device
+        - $ref: '#/components/parameters/DeviceName'
+        - name: X-Sync-Cursor
+          in: header
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Cursor from the previous response (0 or absent for the first sync)
+        - name: X-Sync-Full
+          in: header
+          required: false
+          schema:
+            type: boolean
+          description: The body is the complete library; the response is the complete merged library
+        - name: X-Sync-Deleted-Categories
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Comma-separated category uids the client deleted since its last sync
+        - name: Content-Encoding
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [gzip]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Merged; body is the backup the client must apply
+          headers:
+            X-Sync-Cursor:
+              schema:
+                type: integer
+                format: int64
+              description: Cursor to send on the next request
+            X-Sync-Changed:
+              schema:
+                type: boolean
+              description: false when the body carries nothing the client does not already have
+            X-Sync-Full-Requested:
+              schema:
+                type: boolean
+              description: Present when the server wants a full library on the next request
+            ETag:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing device id, invalid cursor or category list, or body is not a backup
+        '401':
+          description: Unauthorized
+        '413':
+          description: Body larger than the configured limit
+        '500':
+          description: Internal server error
+  /sync/v2/snapshot:
+    get:
+      tags:
+        - Sync v2
+      summary: Download the whole merged library
+      operationId: syncV2Snapshot
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: X-Sync-Cursor
+          in: header
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: When equal to the server cursor the answer is 304
+      responses:
+        '200':
+          description: Full library
+          headers:
+            X-Sync-Cursor:
+              schema:
+                type: integer
+                format: int64
+            ETag:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: Nothing changed since the cursor
+        '401':
+          description: Unauthorized
+        '404':
+          description: Nothing stored for this API key yet
   /sync/admin/{apikey}/status:
     get:
       tags:
@@ -634,7 +795,9 @@ tags:
   - name: Updates
     description: Update endpoints
   - name: Sync
-    description: Sync endpoints used by clients (API key)
+    description: Protocol v1 sync endpoints (deprecated, still supported)
+  - name: Sync v2
+    description: Protocol v2 sync endpoints (server-side merge, delta sync)
   - name: Sync Admin
     description: Sync inspection endpoints used by the web UI (session)
 

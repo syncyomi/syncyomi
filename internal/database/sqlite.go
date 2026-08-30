@@ -14,8 +14,9 @@ func (db *DB) openSQLite() error {
 
 	var err error
 
-	// open database connection
-	if db.handler, err = sql.Open("sqlite", db.DSN+"?_pragma=busy_timeout%3d1000"); err != nil {
+	// _txlock=immediate takes the write lock at BEGIN so concurrent merges queue instead of
+	// failing with SQLITE_BUSY after having read.
+	if db.handler, err = sql.Open("sqlite", db.DSN+"?_pragma=busy_timeout%3d5000&_txlock=immediate"); err != nil {
 		db.log.Fatal().Err(err).Msg("could not open db connection")
 		return err
 	}

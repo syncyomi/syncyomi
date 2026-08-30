@@ -20,7 +20,7 @@
 | `syncMaxBodySizeMB` | `64` | largest sync upload accepted (`413` above it); `0` disables the limit |
 | `syncHistoryLimit` | `10` | previous sync payloads kept per API key for rollback; `0` disables history |
 
-Sizing note: with history enabled the database holds up to `syncHistoryLimit + 1` payloads per API key. A large library is a few MB per payload.
+Sizing note: with history enabled the database holds up to `syncHistoryLimit + 1` rendered payloads per API key plus one row per manga/chapter/category in `sync_item`. A large library is a few MB per payload and a similar amount of item rows.
 
 ## Databases
 
@@ -40,6 +40,15 @@ Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web U
 The same view shows which devices have synced with the key, when they were last seen and the last status they reported. Devices appear once they report sync events or send the `X-Device-ID`/`X-Device-Name` headers.
 
 ## Upgrade notes
+
+### 1.3.0
+
+- New tables `sync_state` and `sync_item`; `sync_device` gains `last_cursor` and `protocol`, `sync_data` gains `rendered_seq`. The migration runs automatically.
+- Existing sync payloads are imported into the item store the first time their API key syncs; the log shows `imported legacy sync payload`. A payload that cannot be decoded keeps being served to v1 clients unchanged and is logged as an error.
+- ETags change from `uuid=…` to `seq=…`; clients simply re-download once.
+- Protocol v1 is deprecated (`Deprecation` header, a daily warning per device in the log, *legacy* badge in the web UI) but fully supported. See [clients.md](clients.md) for the compatibility matrix.
+- *Restore* in the web UI now rebuilds the item store from the chosen version; all devices receive the restored library on their next sync.
+- Large libraries: an upload of a full library with tens of thousands of chapters takes well under a second on SQLite; the first sync after the upgrade may take a little longer while the payload is imported.
 
 ### 1.2.0
 

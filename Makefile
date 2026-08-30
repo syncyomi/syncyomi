@@ -38,3 +38,9 @@ install: all
 	echo $(DESTDIR)$(PREFIX)/$(BINDIR)
 	mkdir -p $(DESTDIR)$(PREFIX)/$(BINDIR)
 	cp -f bin/$(SERVICE) $(DESTDIR)$(PREFIX)/$(BINDIR)
+
+proto:
+	PATH="$(HOME)/go/bin:$$PATH" protoc --proto_path=proto --go_out=. --go_opt=module=github.com/SyncYomi/SyncYomi proto/syncyomi/backup/v1/backup.proto
+
+proto-check: proto
+	git diff --exit-code internal/backup/pb

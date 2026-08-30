@@ -218,19 +218,13 @@ func (r SyncRepo) ListHistory(ctx context.Context, apiKey string) ([]domain.Sync
 	return entries, rows.Err()
 }
 
-func (r SyncRepo) RestoreHistory(ctx context.Context, apiKey string, id int) (*string, error) {
-	tx, err := r.db.handler.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "error starting transaction")
-	}
-	defer r.rollback(tx)
-
+func (r SyncRepo) GetHistoryData(ctx context.Context, apiKey string, id int) ([]byte, error) {
 	var data []byte
-	err = r.db.squirrel.
+	err := r.db.squirrel.
 		Select("data").
 		From("sync_data_history").
 		Where(sq.Eq{"user_api_key": apiKey, "id": id}).
-		RunWith(tx).
+		RunWith(r.db.handler).
 		QueryRowContext(ctx).
 		Scan(&data)
 	if err != nil {
@@ -239,17 +233,7 @@ func (r SyncRepo) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		}
 		return nil, errors.Wrap(err, "error executing query")
 	}
-
-	etag, err := r.upsertSyncData(ctx, tx, apiKey, data)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "error committing transaction")
-	}
-
-	return etag, nil
+	return data, nil
 }
 
 func (r SyncRepo) TouchDevice(ctx context.Context, apiKey string, dev domain.DeviceInfo, event, status, message string) error {
@@ -278,7 +262,7 @@ func (r SyncRepo) TouchDevice(ctx context.Context, apiKey string, dev domain.Dev
 
 func (r SyncRepo) ListDevices(ctx context.Context, apiKey string) ([]domain.SyncDevice, error) {
 	rows, err := r.db.squirrel.
-		Select("id", "device_id", "device_name", "last_seen", "last_event", "last_status", "last_message", "created_at").
+		Select("id", "device_id", "device_name", "last_seen", "last_event", "last_status", "last_message", "protocol", "last_cursor", "created_at").
 		From("sync_device").
 		Where(sq.Eq{"user_api_key": apiKey}).
 		OrderBy("last_seen DESC", "id DESC").
@@ -292,7 +276,7 @@ func (r SyncRepo) ListDevices(ctx context.Context, apiKey string) ([]domain.Sync
 	devices := make([]domain.SyncDevice, 0)
 	for rows.Next() {
 		var d domain.SyncDevice
-		if err := rows.Scan(&d.ID, &d.DeviceID, &d.DeviceName, &d.LastSeen, &d.LastEvent, &d.LastStatus, &d.LastMessage, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.DeviceID, &d.DeviceName, &d.LastSeen, &d.LastEvent, &d.LastStatus, &d.LastMessage, &d.Protocol, &d.Cursor, &d.CreatedAt); err != nil {
 			return nil, errors.Wrap(err, "error scanning row")
 		}
 		devices = append(devices, d)

@@ -15,6 +15,15 @@ go build -o bin/syncyomi .
 
 `make build` does the same. `web/dist` must exist (even just the `.gitkeep`) before any `go build`/`go test`, because `web/build.go` embeds it.
 
+## Protobuf
+
+The Tachiyomi backup schema lives in `proto/syncyomi/backup/v1/backup.proto`; the generated
+Go code in `internal/backup/pb` is checked in. After editing the schema run `make proto`
+(needs `protoc` and `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest`);
+`make proto-check` fails when the generated code is stale. Field numbers must match the
+Kotlin `@ProtoNumber` annotations in TachiyomiSY exactly; other forks' fields survive as
+unknown fields.
+
 ## Test
 
 ```bash
@@ -22,7 +31,7 @@ go vet ./... && go test ./...      # Go; the database tests use a temporary SQLi
 cd web && pnpm lint && pnpm typecheck && pnpm test
 ```
 
-Repository-layer tests live in `internal/database/*_test.go` and open a real SQLite database in `t.TempDir()`; handler tests in `internal/http/*_test.go` use `httptest` with a mocked service.
+Repository-layer tests live in `internal/database/*_test.go` and open a real SQLite database in `t.TempDir()`; handler tests in `internal/http/*_test.go` use `httptest` with a mocked service. The two-device scenarios (the #1635 race, read state, categories, legacy import, v1 on a v2 server) are in `internal/sync/merge_test.go` against a real SQLite store; the pure merge rules are table-tested in `internal/merge`.
 
 ## Trying it end to end
 
@@ -34,7 +43,17 @@ For PostgreSQL, `docker compose up postgres` starts a matching instance on port 
 
 ## Fixtures
 
-Real Tachiyomi backups (`*.tachibk`) contain personal data and are git-ignored; keep any under `internal/backup/testdata/private/`. Checked-in fixtures must be scrubbed copies.
+Real Tachiyomi backups (`*.tachibk`) contain personal data and are git-ignored; keep any under
+`internal/backup/testdata/private/` (tests that find one there run extra round-trip checks).
+The checked-in fixture `internal/backup/testdata/backup_scrubbed.tachibk` is produced from a
+real backup by
+
+```bash
+go run ./internal/backup/cmd/scrub -in internal/backup/testdata/private/<file>.tachibk -max-manga 80
+```
+
+which replaces every string with a placeholder and keeps all numbers (versions, timestamps,
+flags), so merge tests still see realistic data.
 
 ## Conventions
 

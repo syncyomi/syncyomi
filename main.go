@@ -76,6 +76,7 @@ func main() {
 		notificationRepo = database.NewNotificationRepo(log, db)
 		userRepo         = database.NewUserRepo(log, db)
 		syncRepo         = database.NewSyncRepo(log, db, cfg.Config.SyncHistoryLimit)
+		syncStore        = database.NewSyncStore(log, db, cfg.Config.SyncHistoryLimit)
 	)
 
 	// setup services
@@ -86,7 +87,7 @@ func main() {
 		schedulingService   = scheduler.NewService(log, cfg.Config, notificationService, updateService)
 		userService         = user.NewService(userRepo)
 		authService         = auth.NewService(log, userService)
-		syncService         = sync.NewService(log, syncRepo, notificationService, apikeyRepo)
+		syncService         = sync.NewService(log, syncRepo, syncStore, notificationService, apikeyRepo)
 	)
 
 	// register event subscribers

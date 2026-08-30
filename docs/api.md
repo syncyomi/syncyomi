@@ -11,7 +11,22 @@ Base path: `/api`. The machine-readable version of this document is [`OpenAPI.ya
 
 Most endpoints accept either. `/sync/admin/*` accepts the session only: an API key must not be able to inspect another key's data.
 
-## Sync (clients)
+## Sync v2 (clients)
+
+See [sync-protocol-v2.md](sync-protocol-v2.md) for the protocol.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"snapshot":…}`; old servers answer `404` |
+| `POST /sync/v2/merge` | merge the uploaded backup, receive what the client lacks (`X-Device-ID` required; `X-Sync-Cursor`, `X-Sync-Full`, `X-Sync-Deleted-Categories`; responds with `X-Sync-Cursor`, `X-Sync-Changed`, `X-Sync-Full-Requested`) |
+| `GET /sync/v2/snapshot` | the whole merged library; `304` when `X-Sync-Cursor` is current |
+
+Errors: `400` missing device id / invalid cursor / body not a backup, `401`, `413`, `404` (snapshot, nothing stored).
+
+## Sync v1 (clients, deprecated)
+
+Still supported; every response carries `Deprecation: true`. The payload is now rendered from
+the server's item store and uploads are merged rather than stored as-is.
 
 ### `GET /sync/content`
 
@@ -36,7 +51,7 @@ Replace the payload and get a new `ETag`.
 | `Content-Encoding: gzip` | body is gzip-compressed |
 | `X-Device-ID`, `X-Device-Name` | optional device identification |
 
-Responses: `200` + `ETag`, `400` unreadable body, `401`, `412`, `413` body larger than `syncMaxBodySizeMB`.
+Responses: `200` + `ETag`, `400` body is not a valid backup, `401`, `412`, `413` body larger than `syncMaxBodySizeMB`.
 
 ### `POST /sync/event`
 
@@ -50,7 +65,7 @@ Report sync progress; drives notifications and the status shown in the web UI.
 
 ### ETag semantics
 
-- Opaque string, currently `uuid=<uuid4>`, regenerated on every write. Do not parse or compare for ordering.
+- Opaque string, currently `seq=<n>` (`uuid=<uuid4>` before 1.3). Do not parse or compare for ordering.
 - Sent and echoed **unquoted**; the value is the whole header.
 - A restore from history (see below) produces a new ETag, so devices holding the old one get `412` on their next `If-Match` upload and re-sync.
 
@@ -61,7 +76,7 @@ Report sync progress; drives notifications and the status shown in the web UI.
 | `GET /sync/admin/{apikey}/status` | last upload, last event/status/device/message, stored payload size — `404` if nothing is known yet |
 | `GET /sync/admin/{apikey}/devices` | devices seen for the key, newest first |
 | `GET /sync/admin/{apikey}/history` | kept payload versions, newest first (`id`, `etag`, `size`, `created_at`) |
-| `POST /sync/admin/{apikey}/history/{id}/restore` | makes that version current; returns `{"etag": "…"}`, `404` for an unknown id |
+| `POST /sync/admin/{apikey}/history/{id}/restore` | rebuilds the item store from that version; returns `{"etag": "…"}`, `404` for an unknown id, `422` if the entry cannot be decoded |
 
 ## Other endpoints
 
