@@ -1,0 +1,191 @@
+// Wire-compatible mirror of the Tachiyomi/TachiyomiSY backup models
+// (app/src/main/java/eu/kanade/tachiyomi/data/backup/models/*.kt).
+// Field numbers must match the Kotlin @ProtoNumber annotations exactly.
+// Fields other forks add (J2K 800+, Suwayomi 9000+) survive as unknown fields.
+syntax = "proto3";
+
+package syncyomi.backup.v1;
+
+option go_package = "github.com/SyncYomi/SyncYomi/internal/backup/pb;pb";
+
+message Backup {
+  repeated BackupManga backup_manga = 1;
+  repeated BackupCategory backup_categories = 2;
+  repeated BackupSource backup_sources = 101;
+  repeated BackupPreference backup_preferences = 104;
+  repeated BackupSourcePreferences backup_source_preferences = 105;
+  repeated BackupExtensionStore backup_extension_stores = 106;
+  repeated BackupSavedSearch backup_saved_searches = 600;
+}
+
+enum UpdateStrategy {
+  ALWAYS_UPDATE = 0;
+  ONLY_FETCH_ONCE = 1;
+}
+
+message BackupManga {
+  int64 source = 1;
+  string url = 2;
+  string title = 3;
+  optional string artist = 4;
+  optional string author = 5;
+  optional string description = 6;
+  repeated string genre = 7;
+  int32 status = 8;
+  optional string thumbnail_url = 9;
+  int64 date_added = 13;
+  int32 viewer = 14;
+  repeated BackupChapter chapters = 16;
+  // kotlinx writes lists of scalars unpacked
+  repeated int64 categories = 17 [packed = false];
+  repeated BackupTracking tracking = 18;
+  // Kotlin default is true and defaults are not encoded: absent means favorite
+  optional bool favorite = 100;
+  int32 chapter_flags = 101;
+  optional int32 viewer_flags = 103;
+  repeated BackupHistory history = 104;
+  UpdateStrategy update_strategy = 105;
+  int64 last_modified_at = 106;
+  optional int64 favorite_modified_at = 107;
+  repeated string excluded_scanlators = 108;
+  int64 version = 109;
+  string notes = 110;
+  bool initialized = 111;
+  bytes memo = 112;
+
+  // TachiyomiSY
+  repeated BackupMergedMangaReference merged_manga_references = 600;
+  optional BackupFlatMetadata flat_metadata = 601;
+  int32 custom_status = 602;
+  optional string custom_thumbnail_url = 603;
+
+  // J2K
+  optional string custom_title = 800;
+  optional string custom_artist = 801;
+  optional string custom_author = 802;
+  optional string custom_description = 804;
+  repeated string custom_genre = 805;
+}
+
+message BackupChapter {
+  string url = 1;
+  string name = 2;
+  optional string scanlator = 3;
+  bool read = 4;
+  bool bookmark = 5;
+  int64 last_page_read = 6;
+  int64 date_fetch = 7;
+  int64 date_upload = 8;
+  float chapter_number = 9;
+  int64 source_order = 10;
+  int64 last_modified_at = 11;
+  int64 version = 12;
+  bytes memo = 13;
+}
+
+message BackupCategory {
+  string name = 1;
+  int64 order = 2;
+  int64 id = 3;
+  int64 flags = 100;
+  int64 version = 601;
+  int64 uid = 602;
+  int64 last_modified_at = 603;
+}
+
+message BackupSource {
+  string name = 1;
+  int64 source_id = 2;
+}
+
+message BackupHistory {
+  string url = 1;
+  int64 last_read = 2;
+  int64 read_duration = 3;
+}
+
+message BackupTracking {
+  int32 sync_id = 1;
+  int64 library_id = 2;
+  int32 media_id_int = 3;
+  string tracking_url = 4;
+  string title = 5;
+  float last_chapter_read = 6;
+  int32 total_chapters = 7;
+  float score = 8;
+  int32 status = 9;
+  int64 started_reading_date = 10;
+  int64 finished_reading_date = 11;
+  bool private = 12;
+  int64 media_id = 100;
+}
+
+message BackupSavedSearch {
+  string name = 1;
+  string query = 2;
+  string filter_list = 3;
+  int64 source = 4;
+}
+
+// kotlinx polymorphic encoding of the sealed PreferenceValue: {1: serial name, 2: value message}.
+// The value is kept opaque; the server never interprets preferences.
+message PreferenceValue {
+  string type = 1;
+  bytes value = 2;
+}
+
+message BackupPreference {
+  string key = 1;
+  PreferenceValue value = 2;
+}
+
+message BackupSourcePreferences {
+  string source_key = 1;
+  repeated BackupPreference prefs = 2;
+}
+
+message BackupExtensionStore {
+  string index_url = 1;
+  string name = 2;
+  optional string badge_label = 3;
+  string contact_website = 4;
+  string signing_key = 5;
+  optional string contact_discord = 6;
+  optional bool is_legacy = 7;
+  optional string extension_list_url = 8;
+}
+
+message BackupMergedMangaReference {
+  bool is_info_manga = 1;
+  bool get_chapter_updates = 2;
+  int32 chapter_sort_mode = 3;
+  int32 chapter_priority = 4;
+  bool download_chapters = 5;
+  string merge_url = 6;
+  string manga_url = 7;
+  int64 manga_source_id = 8;
+}
+
+message BackupFlatMetadata {
+  BackupSearchMetadata search_metadata = 1;
+  repeated BackupSearchTag search_tags = 2;
+  repeated BackupSearchTitle search_titles = 3;
+}
+
+message BackupSearchMetadata {
+  optional string uploader = 1;
+  string extra = 2;
+  optional string indexed_extra = 3;
+  int32 extra_version = 4;
+}
+
+message BackupSearchTag {
+  optional string namespace = 1;
+  string name = 2;
+  int32 type = 3;
+}
+
+message BackupSearchTitle {
+  string title = 1;
+  int32 type = 2;
+}
