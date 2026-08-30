@@ -44,9 +44,16 @@ type syncEventRequest struct {
 
 // Routes are the client-facing sync endpoints (API key auth).
 func (h syncHandler) Routes(r chi.Router) {
-	r.With(middleware.Compress(5, "application/octet-stream")).Get("/content", h.getContent)
+	compress := middleware.Compress(5, "application/octet-stream")
+	r.With(compress).Get("/content", h.getContent)
 	r.Put("/content", h.putContent)
 	r.Post("/event", h.reportEvent)
+
+	r.Route("/v2", func(r chi.Router) {
+		r.Get("/capabilities", h.capabilities)
+		r.With(compress).Post("/merge", h.merge)
+		r.With(compress).Get("/snapshot", h.snapshot)
+	})
 }
 
 // AdminRoutes expose per-key status for the web UI and must be mounted behind session auth only.
@@ -64,93 +71,77 @@ func deviceFromRequest(r *http.Request) domain.DeviceInfo {
 	}
 }
 
+func deprecated(w http.ResponseWriter) {
+	w.Header().Set("Deprecation", "true")
+	w.Header().Set("Link", `<https://github.com/SyncYomi/SyncYomi/blob/develop/docs/sync-protocol-v2.md>; rel="deprecation"`)
+}
+
 func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get("X-API-Token")
-	etag := r.Header.Get("If-None-Match")
+	deprecated(w)
 
-	if etag != "" {
-		etagInDb, err := h.syncService.GetSyncDataETag(r.Context(), apiKey)
-		if err != nil {
-			h.log.Error().Err(err).Msg("failed to read sync data etag")
-			h.encoder.StatusInternalError(w)
-			return
-		}
-
-		if etagInDb != nil && etag == *etagInDb {
-			// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match
-			h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), false)
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-	}
-
-	syncData, syncDataETag, err := h.syncService.GetSyncDataAndETag(r.Context(), apiKey)
+	snap, err := h.syncService.GetContent(r.Context(), apiKey)
 	if err != nil {
+		if errors.Is(err, sync.ErrNoData) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		h.log.Error().Err(err).Msg("failed to read sync data")
 		h.encoder.StatusInternalError(w)
 		return
 	}
 
-	if syncData == nil {
-		w.WriteHeader(http.StatusNotFound)
+	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), false)
+
+	if etag := r.Header.Get("If-None-Match"); etag != "" && etag == snap.ETag {
+		// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 
-	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), false)
-
-	if syncDataETag != nil {
-		w.Header().Set("ETag", *syncDataETag)
-	}
-
+	w.Header().Set("ETag", snap.ETag)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(syncData); err != nil {
+	if _, err := w.Write(snap.Data); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write sync data response")
 	}
 }
 
 func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
 	apiKey := r.Header.Get("X-API-Token")
-	etag := r.Header.Get("If-Match")
+	deprecated(w)
 
-	requestData, err := h.readBody(w, r)
+	requestData, ok := h.readBody(w, r)
+	if !ok {
+		return
+	}
+
+	etag, err := h.syncService.PutContent(r.Context(), apiKey, deviceFromRequest(r), r.Header.Get("If-Match"), requestData)
 	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) || errors.Is(err, errBodyTooLarge) {
-			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "request body too large"}, http.StatusRequestEntityTooLarge)
-			return
+		switch {
+		case errors.Is(err, sync.ErrPreconditionFailed):
+			// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
+			w.WriteHeader(http.StatusPreconditionFailed)
+		case errors.Is(err, sync.ErrBadPayload):
+			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "body is not a valid backup"}, http.StatusBadRequest)
+		default:
+			h.log.Error().Err(err).Msg("failed to store sync data")
+			h.encoder.StatusInternalError(w)
 		}
-		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	var newEtag *string
-	if etag != "" {
-		newEtag, err = h.syncService.SetSyncDataIfMatch(r.Context(), apiKey, etag, requestData)
-	} else {
-		newEtag, err = h.syncService.SetSyncData(r.Context(), apiKey, requestData)
-	}
-	if err != nil {
-		h.log.Error().Err(err).Msg("failed to store sync data")
-		h.encoder.StatusInternalError(w)
-		return
-	}
-
-	if newEtag == nil {
-		// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
-		w.WriteHeader(http.StatusPreconditionFailed)
 		return
 	}
 
 	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), true)
 
-	w.Header().Set("ETag", *newEtag)
+	w.Header().Set("ETag", etag)
 	w.WriteHeader(http.StatusOK)
 }
 
 var errBodyTooLarge = errors.New("request body too large")
 
-func (h syncHandler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+// readBody reads the (optionally gzipped) request body within the size limit and writes
+// the error response itself when it fails.
+func (h syncHandler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	var body io.Reader = r.Body
 	if h.maxBodyBytes > 0 {
 		r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
@@ -160,7 +151,8 @@ func (h syncHandler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, e
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		gz, err := gzip.NewReader(body)
 		if err != nil {
-			return nil, err
+			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": err.Error()}, http.StatusBadRequest)
+			return nil, false
 		}
 		defer gz.Close()
 		body = gz
@@ -170,14 +162,19 @@ func (h syncHandler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, e
 	}
 
 	data, err := io.ReadAll(body)
+	if err == nil && h.maxBodyBytes > 0 && int64(len(data)) > h.maxBodyBytes {
+		err = errBodyTooLarge
+	}
 	if err != nil {
-		return nil, err
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || errors.Is(err, errBodyTooLarge) {
+			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "request body too large"}, http.StatusRequestEntityTooLarge)
+			return nil, false
+		}
+		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": err.Error()}, http.StatusBadRequest)
+		return nil, false
 	}
-	if h.maxBodyBytes > 0 && int64(len(data)) > h.maxBodyBytes {
-		return nil, errBodyTooLarge
-	}
-
-	return data, nil
+	return data, true
 }
 
 func (h syncHandler) reportEvent(w http.ResponseWriter, r *http.Request) {
@@ -267,12 +264,15 @@ func (h syncHandler) restoreHistory(w http.ResponseWriter, r *http.Request) {
 
 	etag, err := h.syncService.RestoreHistory(r.Context(), chi.URLParam(r, "apikey"), id)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
 			h.encoder.StatusNotFound(r.Context(), w)
-			return
+		case errors.Is(err, sync.ErrBadPayload):
+			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "history entry is not a valid backup"}, http.StatusUnprocessableEntity)
+		default:
+			h.log.Error().Err(err).Msg("failed to restore sync history")
+			h.encoder.StatusInternalError(w)
 		}
-		h.log.Error().Err(err).Msg("failed to restore sync history")
-		h.encoder.StatusInternalError(w)
 		return
 	}
 

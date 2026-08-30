@@ -54,6 +54,7 @@ CREATE TABLE sync_data
 
 	data BYTEA NOT NULL,
 	data_etag TEXT NOT NULL,
+	rendered_seq BIGINT,
 
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
@@ -80,6 +81,8 @@ CREATE TABLE sync_device
 	last_event   TEXT NOT NULL DEFAULT '',
 	last_status  TEXT NOT NULL DEFAULT '',
 	last_message TEXT NOT NULL DEFAULT '',
+	last_cursor  BIGINT NOT NULL DEFAULT 0,
+	protocol     TEXT NOT NULL DEFAULT '',
 	created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	UNIQUE (user_api_key, device_id),
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
@@ -95,7 +98,35 @@ CREATE TABLE sync_status
 	last_device    TEXT NOT NULL DEFAULT '',
 	last_message   TEXT NOT NULL DEFAULT '',
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
-)
+);
+
+CREATE TABLE sync_state
+(
+    user_api_key TEXT PRIMARY KEY,
+    seq          BIGINT NOT NULL DEFAULT 0,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+
+CREATE TABLE sync_item
+(
+    user_api_key  TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    parent_key    TEXT NOT NULL DEFAULT '',
+    name          TEXT NOT NULL DEFAULT '',
+    version       BIGINT NOT NULL DEFAULT 0,
+    deleted       BOOLEAN NOT NULL DEFAULT FALSE,
+    refs          TEXT NOT NULL DEFAULT '',
+    payload       BYTEA NOT NULL,
+    seq           BIGINT NOT NULL,
+    origin_device TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_api_key, kind, key),
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+CREATE INDEX idx_sync_item_seq ON sync_item (user_api_key, seq);
+CREATE INDEX idx_sync_item_parent ON sync_item (user_api_key, kind, parent_key);
 `
 
 var postgresMigrations = []string{
@@ -223,5 +254,38 @@ END $$;
 		last_message   TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 	);
+`,
+	`
+CREATE TABLE sync_state
+(
+    user_api_key TEXT PRIMARY KEY,
+    seq          BIGINT NOT NULL DEFAULT 0,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+
+CREATE TABLE sync_item
+(
+    user_api_key  TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    parent_key    TEXT NOT NULL DEFAULT '',
+    name          TEXT NOT NULL DEFAULT '',
+    version       BIGINT NOT NULL DEFAULT 0,
+    deleted       BOOLEAN NOT NULL DEFAULT FALSE,
+    refs          TEXT NOT NULL DEFAULT '',
+    payload       BYTEA NOT NULL,
+    seq           BIGINT NOT NULL,
+    origin_device TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_api_key, kind, key),
+    FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
+);
+CREATE INDEX idx_sync_item_seq ON sync_item (user_api_key, seq);
+CREATE INDEX idx_sync_item_parent ON sync_item (user_api_key, kind, parent_key);
+
+ALTER TABLE sync_device ADD COLUMN last_cursor BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE sync_device ADD COLUMN protocol TEXT NOT NULL DEFAULT '';
+ALTER TABLE sync_data ADD COLUMN rendered_seq BIGINT;
 `,
 }
