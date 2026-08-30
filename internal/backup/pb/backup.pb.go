@@ -1041,7 +1041,7 @@ func (x *BackupSavedSearch) GetSource() int64 {
 type PreferenceValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
-	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3,oneof" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1756,10 +1756,11 @@ const file_syncyomi_backup_v1_backup_proto_rawDesc = "" +
 	"\x05query\x18\x02 \x01(\tR\x05query\x12\x1f\n" +
 	"\vfilter_list\x18\x03 \x01(\tR\n" +
 	"filterList\x12\x16\n" +
-	"\x06source\x18\x04 \x01(\x03R\x06source\";\n" +
+	"\x06source\x18\x04 \x01(\x03R\x06source\"J\n" +
 	"\x0fPreferenceValue\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"_\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x19\n" +
+	"\x05value\x18\x02 \x01(\fH\x00R\x05value\x88\x01\x01B\b\n" +
+	"\x06_value\"_\n" +
 	"\x10BackupPreference\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x129\n" +
 	"\x05value\x18\x02 \x01(\v2#.syncyomi.backup.v1.PreferenceValueR\x05value\"t\n" +
@@ -1884,6 +1885,7 @@ func file_syncyomi_backup_v1_backup_proto_init() {
 	}
 	file_syncyomi_backup_v1_backup_proto_msgTypes[1].OneofWrappers = []any{}
 	file_syncyomi_backup_v1_backup_proto_msgTypes[2].OneofWrappers = []any{}
+	file_syncyomi_backup_v1_backup_proto_msgTypes[8].OneofWrappers = []any{}
 	file_syncyomi_backup_v1_backup_proto_msgTypes[11].OneofWrappers = []any{}
 	file_syncyomi_backup_v1_backup_proto_msgTypes[14].OneofWrappers = []any{}
 	file_syncyomi_backup_v1_backup_proto_msgTypes[15].OneofWrappers = []any{}

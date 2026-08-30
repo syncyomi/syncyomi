@@ -131,7 +131,7 @@ message BackupSavedSearch {
 // The value is kept opaque; the server never interprets preferences.
 message PreferenceValue {
   string type = 1;
-  bytes value = 2;
+  optional bytes value = 2;
 }
 
 message BackupPreference {

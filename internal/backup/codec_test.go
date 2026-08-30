@@ -218,3 +218,53 @@ func TestScrubRemovesText(t *testing.T) {
 		t.Error("Scrub must not modify its input")
 	}
 }
+
+// kotlinx always writes the polymorphic preference payload, even when empty; a client
+// cannot decode a preference whose payload went missing on the server.
+func TestEmptyPreferencePayloadIsPreserved(t *testing.T) {
+	var value []byte
+	value = protowire.AppendTag(value, 1, protowire.BytesType)
+	value = protowire.AppendString(value, "eu.kanade.tachiyomi.data.backup.models.StringPreferenceValue")
+	value = protowire.AppendTag(value, 2, protowire.BytesType)
+	value = protowire.AppendBytes(value, nil) // 12 00
+
+	var pref []byte
+	pref = protowire.AppendTag(pref, 1, protowire.BytesType)
+	pref = protowire.AppendString(pref, "theme")
+	pref = protowire.AppendTag(pref, 2, protowire.BytesType)
+	pref = protowire.AppendBytes(pref, value)
+
+	var raw []byte
+	raw = protowire.AppendTag(raw, 104, protowire.BytesType)
+	raw = protowire.AppendBytes(raw, pref)
+
+	b, err := Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.BackupPreferences[0].Value.Value == nil {
+		t.Fatal("empty payload decoded as absent")
+	}
+
+	check := func(name string, out *pb.Backup) {
+		enc, err := Encode(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(enc, []byte{0x12, 0x00}) {
+			t.Errorf("%s: empty preference payload dropped: %x", name, enc)
+		}
+	}
+	check("encode", b)
+
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := Render(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("split+render", rendered)
+	check("scrub", Scrub(b))
+}
