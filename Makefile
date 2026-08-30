@@ -1,4 +1,4 @@
-.PHONY: test
+.PHONY: test proto proto-check
 .POSIX:
 .SUFFIXES:
 

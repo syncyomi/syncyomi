@@ -256,6 +256,8 @@ func (t *syncStoreTx) writeItems(ctx context.Context, items []*merge.Item, seq i
 		return nil
 	}
 
+	// Postgres refuses to touch a row twice in one statement
+	items = uniqueItems(items)
 	const batch = 100
 	for start := 0; start < len(items); start += batch {
 		end := min(start+batch, len(items))
@@ -270,6 +272,25 @@ func (t *syncStoreTx) writeItems(ctx context.Context, items []*merge.Item, seq i
 		}
 	}
 	return nil
+}
+
+func uniqueItems(items []*merge.Item) []*merge.Item {
+	type id struct {
+		kind merge.Kind
+		key  string
+	}
+	seen := make(map[id]int, len(items))
+	out := make([]*merge.Item, 0, len(items))
+	for _, it := range items {
+		k := id{it.Kind, it.Key}
+		if i, ok := seen[k]; ok {
+			out[i] = it
+			continue
+		}
+		seen[k] = len(out)
+		out = append(out, it)
+	}
+	return out
 }
 
 func (t *syncStoreTx) ensureState(ctx context.Context) error {

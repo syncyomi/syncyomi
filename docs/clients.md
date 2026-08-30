@@ -5,10 +5,10 @@ the combinations behave.
 
 ## Compatibility
 
-| Client | Server < 1.3 | Server ≥ 1.3 |
-|---|---|---|
-| v1 client (`GET`/`PUT /sync/content`) | works, client-side merge | works, server-side merge, deprecated |
-| v2 client | falls back to v1 (capabilities returns 404) | v2 |
+| Client                                | Server < 1.3                                | Server ≥ 1.3                         |
+| ------------------------------------- | ------------------------------------------- | ------------------------------------ |
+| v1 client (`GET`/`PUT /sync/content`) | works, client-side merge                    | works, server-side merge, deprecated |
+| v2 client                             | falls back to v1 (capabilities returns 404) | v2                                   |
 
 A library can be shared by v1 and v2 clients at the same time.
 
@@ -28,6 +28,7 @@ A library can be shared by v1 and v2 clients at the same time.
    Send the whole library with `X-Sync-Full: true` on the first sync, when your cursor is 0,
    when the last response carried `X-Sync-Full-Requested`, and occasionally (once a day) as a
    safety net.
+
 4. **Track deletions**: when the user deletes a category, remember its `uid` and send the
    pending uids in `X-Sync-Deleted-Categories`; clear them after a 200.
 5. **`POST /api/sync/v2/merge`** with `X-Sync-Cursor` = the cursor from the last response.
@@ -38,6 +39,10 @@ A library can be shared by v1 and v2 clients at the same time.
 7. **Report** `POST /api/sync/event` as before.
 
 Keep the v1 code path for old servers; it is unchanged.
+
+Give every scalar field of our backup models a default (`0`, `""`, `false`): protobuf
+omits zero values, and other clients (Suwayomi) never send them, so a model that requires
+them fails to decode a library that originated elsewhere.
 
 ### TachiyomiSY specifics
 
