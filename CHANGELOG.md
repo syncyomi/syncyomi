@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/syncyomi/syncyomi/compare/v1.2.0...v1.3.0) (2026-08-30)
+
+
+### New Features
+
+* **sync:** merge uploads server-side and add protocol v2 ([#207](https://github.com/syncyomi/syncyomi/issues/207)) ([e00f61f](https://github.com/syncyomi/syncyomi/commit/e00f61f2aff427f7cf3d7ac154f4a9032e4d2271))
+
+
+### Bug Fixes
+
+* **docker:** corepack is dropped from node:26-alpine ([#205](https://github.com/syncyomi/syncyomi/issues/205)) ([3e500c9](https://github.com/syncyomi/syncyomi/commit/3e500c938d0fdb17e032ef3ada359681670ca1a5))
+* **sync:** dedupe repeated keys before writing a merge ([#209](https://github.com/syncyomi/syncyomi/issues/209)) ([044b43d](https://github.com/syncyomi/syncyomi/commit/044b43dccf6d07e3c6e6ec46e19aaaf86244419c))
+
 ## [1.2.0](https://github.com/syncyomi/syncyomi/compare/v1.1.14...v1.2.0) (2026-08-29)
 
 
