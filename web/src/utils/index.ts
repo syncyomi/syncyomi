@@ -1,4 +1,4 @@
-import { formatISO9075 } from "date-fns";
+import { formatDistanceToNow, formatISO9075 } from "date-fns";
 
 // get baseUrl sent from server rendered index template
 export function baseUrl() {
@@ -21,12 +21,18 @@ export function sseBaseUrl() {
 }
 
 // simplify date
-export function simplifyDate(date: string) {
-  if (date === "") {
+export function simplifyDate(date: string | null | undefined) {
+  if (!date || date === "0001-01-01T00:00:00Z") {
     return "n/a";
-  } else if (date !== "0001-01-01T00:00:00Z") {
-    return formatISO9075(new Date(date));
   }
 
-  return "n/a";
+  return formatISO9075(new Date(date));
+}
+
+export function relativeDate(date: string | null | undefined) {
+  if (!date || date === "0001-01-01T00:00:00Z") {
+    return "";
+  }
+
+  return formatDistanceToNow(new Date(date), { addSuffix: true });
 }
