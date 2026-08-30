@@ -41,9 +41,24 @@ flowchart LR
 | `internal/config` | TOML config loading (viper), defaults, hot reload |
 | `web/` | the SPA |
 
-## How a sync works today (protocol v1)
+## How a sync works (protocol v2)
 
-The server stores one opaque payload per API key. It never parses it: the payload is a Tachiyomi backup (protobuf) and all merging happens **in the client**.
+The server keeps every library as merged items (manga, chapters, categories, settings) in
+`sync_item` and merges each upload item by item; clients send what changed and receive what
+they lack. See [sync-protocol-v2.md](sync-protocol-v2.md) and [data-model.md](data-model.md).
+
+| Package | Role |
+|---|---|
+| `internal/backup` | protobuf schema of the Tachiyomi backup (`pb/`), decode/encode, `Split` (backup → items) and `Render` (items → backup) |
+| `internal/merge` | the merge rules on a generic item model; no I/O, no payload parsing |
+| `internal/sync` | orchestration: legacy import, merge, delta/full responses, render cache, per-key locking |
+| `internal/database/syncstore.go` | the item store transaction (`sync_state`, `sync_item`, render cache, device cursors) |
+
+## Protocol v1 (deprecated)
+
+Older clients download the whole library, merge it locally and upload the result. The server
+now serves them the backup rendered from the item store and merges their uploads, so v1 and
+v2 devices can share a library.
 
 ```mermaid
 sequenceDiagram
@@ -74,11 +89,12 @@ The `ETag` is an opaque token regenerated on every write. `If-Match` on `PUT` is
 
 | Table | Content |
 |---|---|
-| `sync_data` | the current payload and its ETag |
+| `sync_state`, `sync_item` | the merged library: one row per manga/chapter/category/setting with its version and the `seq` of its last change |
+| `sync_data` | the last full backup rendered from the items (served to v1 clients) and its ETag |
 | `sync_data_history` | the last *N* payloads (`syncHistoryLimit`) so a bad sync can be rolled back from the web UI |
 | `sync_device` | devices seen for the key (from `X-Device-ID`/`X-Device-Name` headers or the `device_id`/`device_name` fields of sync events), last seen time and last reported status |
 | `sync_status` | last successful upload, last reported event and message |
 
-### Known limitation of client-side merging
+### Why the merge moved to the server
 
-Each client decides that an item missing on the other side was "deleted elsewhere" by comparing the item's modification time with the client's own last-sync time. With two or more devices that inference is wrong when device B syncs between device A adding an item and device A uploading it: B drops the new item as deleted, and then A does too. Only the server can know when an item first arrived, which is why server-side merging (protocol v2) is the next step on the roadmap. See jobobby04/TachiyomiSY#1635.
+With client-side merging each client decided that an item missing on the other side was "deleted elsewhere" by comparing the item's modification time with the client's own last-sync time. With two or more devices that inference is wrong when device B syncs between device A adding an item and device A uploading it: B drops the new item as deleted, and then A does too (jobobby04/TachiyomiSY#1635). Only the server knows when an item first arrived; in v2 nothing is ever deleted by absence.
