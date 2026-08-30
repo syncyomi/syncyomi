@@ -24,6 +24,8 @@ interface SyncDevice {
   last_event: string;
   last_status: string;
   last_message: string;
+  protocol: "" | "v1" | "v2";
+  cursor: number;
   created_at: string;
 }
 

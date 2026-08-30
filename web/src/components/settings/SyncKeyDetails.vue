@@ -58,6 +58,15 @@
               >
                 {{ device.last_status }}
               </v-chip>
+              <v-chip
+                v-if="device.protocol === 'v1'"
+                color="warning"
+                size="x-small"
+                class="ml-1"
+                title="This device uses the legacy sync protocol. Update the app to sync faster and more reliably."
+              >
+                legacy
+              </v-chip>
             </v-list-item-title>
             <v-list-item-subtitle>
               Last seen {{ fmt(device.last_seen) }}
