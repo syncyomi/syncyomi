@@ -149,3 +149,33 @@ func mustEncode(t *testing.T, m proto.Message) []byte {
 	}
 	return data
 }
+
+func TestSplitDedupesRepeatedKeys(t *testing.T) {
+	b := &pb.Backup{
+		BackupCategories: []*pb.BackupCategory{{Name: "A", Uid: 1, Version: 1}, {Name: "A renamed", Uid: 1, Version: 2}},
+		BackupManga: []*pb.BackupManga{
+			{Source: 1, Url: "/m", Version: 3, Chapters: []*pb.BackupChapter{{Url: "/c", Version: 1}, {Url: "/c", Version: 5, Read: true}, {Url: "/c", Version: 2}}},
+			{Source: 1, Url: "/m", Version: 1},
+		},
+		BackupPreferences: []*pb.BackupPreference{{Key: "k", Value: &pb.PreferenceValue{Type: "x"}}, {Key: "k", Value: &pb.PreferenceValue{Type: "y"}}},
+	}
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]*merge.Item{}
+	for _, it := range items {
+		id := string(it.Kind) + "|" + it.Key
+		if seen[id] != nil {
+			t.Errorf("duplicate item %s", id)
+		}
+		seen[id] = it
+	}
+	if seen["category|uid:1"].Version != 2 || seen["manga|1|/m"].Version != 3 || seen["chapter|"+ChapterKey("1|/m", "/c")].Version != 5 {
+		t.Errorf("highest version not kept: %+v", seen)
+	}
+	p := &pb.BackupPreference{}
+	if err := proto.Unmarshal(seen["app_pref|k"].Payload, p); err != nil || p.Value.Type != "y" {
+		t.Errorf("later occurrence not kept for ties: %v %v", p, err)
+	}
+}
