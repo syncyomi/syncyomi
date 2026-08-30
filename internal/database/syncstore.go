@@ -219,7 +219,7 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 	_, err := t.repo.db.squirrel.
 		Update("sync_state").
 		Set("seq", newSeq).
-		Set("updated_at", time.Now()).
+		Set("updated_at", time.Now().UTC()).
 		Where(sq.Eq{"user_api_key": t.apiKey}).
 		RunWith(t.tx).
 		ExecContext(ctx)
@@ -297,7 +297,7 @@ func (t *syncStoreTx) ensureState(ctx context.Context) error {
 	if t.exists {
 		return nil
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	_, err := t.repo.db.squirrel.
 		Insert("sync_state").
 		Columns("user_api_key", "seq", "created_at", "updated_at").
@@ -337,7 +337,7 @@ func (t *syncStoreTx) RenderCache(ctx context.Context) (*domain.RenderCache, err
 }
 
 func (t *syncStoreTx) SetRenderCache(ctx context.Context, data []byte, etag string, seq int64) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	_, err := t.repo.db.squirrel.
 		Insert("sync_data").
 		Columns("user_api_key", "created_at", "updated_at", "data", "data_etag", "rendered_seq").
@@ -381,7 +381,7 @@ func (t *syncStoreTx) SetDeviceCursor(ctx context.Context, dc domain.DeviceCurso
 	if deviceKey == "" {
 		return nil
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	_, err := t.tx.ExecContext(ctx, `
 		INSERT INTO sync_device (user_api_key, device_id, device_name, last_seen, last_cursor, protocol, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)

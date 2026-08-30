@@ -75,7 +75,7 @@ func (s *service) RecordContentAccess(ctx context.Context, apiKey string, dev do
 		return
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastSyncedAt: &now, LastDevice: dev.Name}); err != nil {
 		s.log.Warn().Err(err).Msg("failed to record sync status")
 	}
@@ -87,7 +87,7 @@ func (s *service) ReportSyncEvent(ctx context.Context, apiKey string, event stri
 		return err
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	status := statusFromEvent(ev)
 	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage); err != nil {
 		s.log.Warn().Err(err).Msg("failed to record device")

@@ -459,3 +459,51 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 		t.Errorf("history write after migration: %v", err)
 	}
 }
+
+// Timestamp columns have no time zone on Postgres, so anything written with a local
+// offset comes back shifted; every persisted time must be UTC regardless of the host TZ.
+func TestSyncRepo_TimestampsAreUTC(t *testing.T) {
+	origLocal := time.Local
+	time.Local = time.FixedZone("test", 10*3600)
+	t.Cleanup(func() { time.Local = origLocal })
+
+	db := newTestDB(t)
+	insertTestAPIKey(t, db, "key1")
+	repo := SyncRepo{log: zerolog.Nop(), db: db, historyLimit: 3}
+	ctx := context.Background()
+
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "dev", Name: "Phone"}, "SYNC_SUCCESS", "success", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.SetSyncData(ctx, "key1", []byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+
+	check := func(name string, ts time.Time) {
+		t.Helper()
+		if _, off := ts.Zone(); off != 0 {
+			t.Errorf("%s stored with offset %d: %v", name, off, ts)
+		}
+		if d := time.Since(ts); d < 0 || d > 5*time.Second {
+			t.Errorf("%s = %v, want about now", name, ts)
+		}
+	}
+
+	devices, err := repo.ListDevices(ctx, "key1")
+	if err != nil || len(devices) != 1 {
+		t.Fatalf("devices = %v, %v", devices, err)
+	}
+	check("device.last_seen", devices[0].LastSeen)
+
+	history, err := repo.ListHistory(ctx, "key1")
+	if err != nil || len(history) != 1 {
+		t.Fatalf("history = %v, %v", history, err)
+	}
+	check("history.created_at", history[0].CreatedAt)
+
+	st, err := repo.GetStatus(ctx, "key1")
+	if err != nil || st == nil || st.DataUpdatedAt == nil {
+		t.Fatalf("status = %v, %v", st, err)
+	}
+	check("data.updated_at", *st.DataUpdatedAt)
+}
