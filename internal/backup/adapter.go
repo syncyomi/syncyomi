@@ -122,7 +122,31 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		items = append(items, &merge.Item{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Payload: append([]byte(nil), extra...)})
 	}
 
-	return items, nil
+	return dedupe(items), nil
+}
+
+// dedupe keeps one item per (kind, key): backups can repeat a chapter url or a category,
+// and a single write must not touch the same row twice. The highest version wins, ties go
+// to the later occurrence.
+func dedupe(items []*merge.Item) []*merge.Item {
+	type id struct {
+		kind merge.Kind
+		key  string
+	}
+	index := make(map[id]int, len(items))
+	out := items[:0]
+	for _, it := range items {
+		k := id{it.Kind, it.Key}
+		if i, ok := index[k]; ok {
+			if it.Version >= out[i].Version {
+				out[i] = it
+			}
+			continue
+		}
+		index[k] = len(out)
+		out = append(out, it)
+	}
+	return out
 }
 
 // Render assembles a Backup from items. Tombstoned categories are skipped and manga
