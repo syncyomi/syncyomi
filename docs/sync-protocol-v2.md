@@ -67,7 +67,8 @@ Body: a backup with everything the client is missing:
 
 - all live categories (so the client can map category numbers and delete categories that
   vanished),
-- manga/chapters/settings changed since the cursor by other devices, and any item where the
+- manga changed since the cursor by other devices (each with its complete chapter list, also
+  when only one chapter changed), settings changed since the cursor, and any item where the
   server copy won over the client's,
 - with `X-Sync-Cursor: 0` or `X-Sync-Full: true`: the complete library.
 

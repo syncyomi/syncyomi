@@ -136,6 +136,22 @@ func (t *syncStoreTx) ItemsByKeys(ctx context.Context, keys map[merge.Kind][]str
 	return out, nil
 }
 
+func (t *syncStoreTx) ChaptersOf(ctx context.Context, mangaKeys []string) ([]*merge.Item, error) {
+	var out []*merge.Item
+	for start := 0; start < len(mangaKeys); start += sqlBatchSize {
+		end := min(start+sqlBatchSize, len(mangaKeys))
+		items, err := t.queryItems(ctx, sq.And{
+			sq.Eq{"user_api_key": t.apiKey, "kind": string(merge.KindChapter)},
+			sq.Eq{"parent_key": mangaKeys[start:end]},
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, items...)
+	}
+	return out, nil
+}
+
 func (t *syncStoreTx) queryItems(ctx context.Context, where sq.Sqlizer) ([]*merge.Item, error) {
 	rows, err := t.repo.db.squirrel.
 		Select(strings.Split(itemColumns, ", ")...).

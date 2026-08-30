@@ -106,6 +106,8 @@ type SyncStoreTx interface {
 	// ItemsSince returns items changed after seq. Categories are always returned in full.
 	ItemsSince(ctx context.Context, seq int64) ([]*merge.Item, error)
 	ItemsByKeys(ctx context.Context, keys map[merge.Kind][]string) ([]*merge.Item, error)
+	// ChaptersOf returns every chapter of the given manga keys.
+	ChaptersOf(ctx context.Context, mangaKeys []string) ([]*merge.Item, error)
 	RenderCache(ctx context.Context) (*RenderCache, error)
 	SetRenderCache(ctx context.Context, data []byte, etag string, seq int64) error
 	// MarkRendered stamps the existing cache as matching seq without rewriting it.

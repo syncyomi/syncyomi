@@ -403,13 +403,13 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		}
 	}
 
-	// a chapter can only be rendered under its manga
+	// a changed chapter is delivered as its manga with the manga's complete chapter list, so
+	// clients can restore it exactly like a full backup
 	var parents []string
-	for key, ch := range want[merge.KindChapter] {
+	for _, ch := range want[merge.KindChapter] {
 		if want[merge.KindManga][ch.ParentKey] == nil {
 			parents = append(parents, ch.ParentKey)
 		}
-		_ = key
 	}
 	if len(parents) > 0 {
 		mangas, err := tx.GetItems(ctx, merge.KindManga, parents)
@@ -418,6 +418,19 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		}
 		for _, m := range mangas {
 			add(m)
+		}
+	}
+	if len(want[merge.KindManga]) > 0 {
+		keys := make([]string, 0, len(want[merge.KindManga]))
+		for key := range want[merge.KindManga] {
+			keys = append(keys, key)
+		}
+		chapters, err := tx.ChaptersOf(ctx, keys)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, ch := range chapters {
+			add(ch)
 		}
 	}
 

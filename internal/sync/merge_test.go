@@ -135,11 +135,18 @@ func TestMerge_ReadStateAndUnfavoriteFlow(t *testing.T) {
 		t.Errorf("B own read reported changed")
 	}
 
-	// A's delta: gets /m with only c1
+	// A's delta: gets /m with its complete chapter list, c1 now read
 	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
 	m := urls(a.Backup)["/m"]
-	if !a.Changed || m == nil || len(m.Chapters) != 1 || m.Chapters[0].Url != "/c1" || !m.Chapters[0].Read {
+	if !a.Changed || m == nil || len(m.Chapters) != 2 {
 		t.Fatalf("A delta = changed=%v %v", a.Changed, a.Backup.BackupManga)
+	}
+	read := map[string]bool{}
+	for _, ch := range m.Chapters {
+		read[ch.Url] = ch.Read
+	}
+	if !read["/c1"] || read["/c2"] {
+		t.Errorf("chapter read state = %v", read)
 	}
 
 	// A unfavorites (manga version bump), B receives favorite=false
