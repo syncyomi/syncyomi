@@ -1,0 +1,18 @@
+# Marks all chapters of one manga read via library selection mode.
+# Pass TITLE via -e TITLE=... The bottom-menu button needs a confirm tap.
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp
+- tapOn: "Library"
+- longPressOn: ${TITLE}
+- tapOn: "Mark as read"
+- runFlow:
+    when:
+      visible: "Mark as read"
+    commands:
+      - tapOn: "Mark as read"

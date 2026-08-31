@@ -1,0 +1,15 @@
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp
+- tapOn: "More"
+- tapOn: "Settings"
+- tapOn: "Data and storage"
+- scrollUntilVisible:
+    element:
+      text: "Sync now"
+- tapOn: "Sync now"
