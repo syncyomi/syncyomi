@@ -41,6 +41,10 @@ The same view shows which devices have synced with the key, when they were last 
 
 ## Upgrade notes
 
+### 1.3.1
+
+- Sync timestamps are now stored in UTC. On Postgres, servers running with a non-UTC `TZ` used to store the local wall clock in the timezone-less `TIMESTAMP` columns, so the web UI showed times shifted by the host offset. Device and status rows correct themselves on the next sync event; older history entries keep the skewed time until they roll off `syncHistoryLimit`.
+
 ### 1.3.0
 
 - New tables `sync_state` and `sync_item`; `sync_device` gains `last_cursor` and `protocol`, `sync_data` gains `rendered_seq`. The migration runs automatically.

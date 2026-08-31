@@ -110,7 +110,7 @@ func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag st
 
 	result, err := r.db.squirrel.
 		Update("sync_data").
-		Set("updated_at", time.Now()).
+		Set("updated_at", time.Now().UTC()).
 		Set("data", data).
 		Set("data_etag", newEtag).
 		Where(sq.Eq{"user_api_key": apiKey}).
@@ -144,7 +144,7 @@ func (r SyncRepo) SetSyncDataIfMatch(ctx context.Context, apiKey string, etag st
 }
 
 func (r SyncRepo) upsertSyncData(ctx context.Context, tx *sql.Tx, apiKey string, data []byte) (*string, error) {
-	now := time.Now()
+	now := time.Now().UTC()
 	etag := newETag()
 
 	_, err := r.db.squirrel.
@@ -174,7 +174,7 @@ func (r SyncRepo) recordHistory(ctx context.Context, tx *sql.Tx, apiKey, etag st
 	_, err := r.db.squirrel.
 		Insert("sync_data_history").
 		Columns("user_api_key", "data_etag", "size", "created_at", "data").
-		Values(apiKey, etag, len(data), time.Now(), data).
+		Values(apiKey, etag, len(data), time.Now().UTC(), data).
 		RunWith(tx).
 		ExecContext(ctx)
 	if err != nil {
@@ -242,7 +242,7 @@ func (r SyncRepo) TouchDevice(ctx context.Context, apiKey string, dev domain.Dev
 		return nil
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	_, err := r.db.handler.ExecContext(ctx, `
 		INSERT INTO sync_device (user_api_key, device_id, device_name, last_seen, last_event, last_status, last_message, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
