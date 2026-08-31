@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/syncyomi/syncyomi/compare/v1.3.0...v1.4.0) (2026-08-31)
+
+
+### New Features
+
+* **e2e:** add end-to-end sync test suite ([#214](https://github.com/syncyomi/syncyomi/issues/214)) ([c887ac3](https://github.com/syncyomi/syncyomi/commit/c887ac355f7a81c225de0e6241ffc18ba5d47170))
+
+
+### Bug Fixes
+
+* **db:** store sync timestamps in UTC ([#211](https://github.com/syncyomi/syncyomi/issues/211)) ([7cd9f18](https://github.com/syncyomi/syncyomi/commit/7cd9f181124b285d51188bf8925e55d2f004a3e6))
+* **web:** show sync key details as tables ([#210](https://github.com/syncyomi/syncyomi/issues/210)) ([68e39db](https://github.com/syncyomi/syncyomi/commit/68e39db51d9e5ca2140707332bacac7822176793))
+
+
+### Dependencies
+
+* bump the npm-minor-patch group in /web with 7 updates ([#213](https://github.com/syncyomi/syncyomi/issues/213)) ([3638a7b](https://github.com/syncyomi/syncyomi/commit/3638a7b166ce0c148bff12fc56127ccaa23b2074))
+
 ## [1.3.0](https://github.com/syncyomi/syncyomi/compare/v1.2.0...v1.3.0) (2026-08-30)
 
 
