@@ -1,0 +1,12 @@
+# Assumes the restore screen is already open (VIEW intent on a .tachibk fired via adb).
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- extendedWaitUntil:
+    visible: "Restore"
+    timeout: 20000
+- tapOn: "Restore"
