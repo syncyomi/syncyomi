@@ -56,6 +56,7 @@ One row per merged item. `kind` is one of `manga`, `chapter`, `category`, `sourc
 | `payload` | the item's protobuf message (a manga payload carries neither chapters nor category numbers) |
 | `seq` | the key's `sync_state.seq` at the last change of this row |
 | `origin_device` | device that made the last change (`legacy`, `migration`, `restore` for server-side writes) |
+| `modified_at` | the payload's `last_modified_at`, the tiebreaker for equal-version conflicts |
 
 The server never parses the payload beyond what the merge keys need, which is what will let
 end-to-end encryption reuse the same store.
@@ -67,14 +68,23 @@ by that request carry the new `seq`. A client's cursor is the `seq` it last saw;
 receives is `seq > cursor` (plus all categories). `sync_device.last_cursor` records it per
 device for the web UI.
 
-## Render cache and history
+## Raw blob, render cache and history
 
-`sync_data` holds the last full backup rendered from the item store together with the `seq`
-it was rendered at (`rendered_seq`). It is refreshed after every write and serves v1 clients
-and the v2 snapshot endpoint. Each refresh also lands in `sync_data_history`
-(`syncHistoryLimit` entries), which is what *Restore* in the web UI rebuilds the store from.
+`sync_data` carries two payloads per key. `raw_data`/`raw_etag`/`raw_seq` hold the last v1
+client upload byte-for-byte: while `raw_seq` still equals `sync_state.seq` (no other device
+has written since), a v1 `GET` echoes exactly those bytes under their `uuid=` etag, so v1
+fleets keep the pre-1.3 semantics where the client-side merge is authoritative.
+`data`/`data_etag`/`rendered_seq` hold the last full backup rendered from the item store; it
+serves the v2 snapshot endpoint, and v1 clients only when the raw blob is stale. Renders
+refresh lazily on the first read after a change.
 
-A `sync_data` row with `rendered_seq = NULL` is a blob written by a pre-v2 server. On the
-first request for that key after the upgrade it is decoded and imported into `sync_item`
-(device `migration`); if it cannot be decoded the raw blob keeps being served to v1 clients
-and the item store starts empty.
+Both v1 uploads and render refreshes land in `sync_data_history` (`syncHistoryLimit`
+entries): `uuid=` entries are device uploads, `seq=` entries are server renders. *Restore*
+in the web UI rebuilds the item store from an entry and installs its bytes as the raw blob,
+so v1 devices receive it verbatim.
+
+A `sync_data` row with `rendered_seq = NULL` and no raw blob is a payload written by a
+pre-1.3 server. On the first request for that key after the upgrade it is promoted to the
+raw blob (keeping its original `uuid=` etag) and imported into `sync_item` (device
+`migration`); if it cannot be decoded it keeps being served to v1 clients verbatim, is never
+overwritten by renders, and the item store starts empty.

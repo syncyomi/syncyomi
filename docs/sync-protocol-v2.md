@@ -119,14 +119,19 @@ flowchart TD
 
 ## Protocol v1 on a v2 server
 
-`GET /api/sync/content` serves the library rendered from the item store (cached until the
-next change); `PUT` merges the uploaded backup like a full v2 request from a device called
-`legacy`. `If-Match`/`If-None-Match` keep working with the new `seq=` ETags.
+`PUT /api/sync/content` stores the uploaded bytes verbatim as the key's raw blob and imports
+them into the item store on a best-effort basis (as a full request from a device called
+`legacy`; a payload that does not decode is stored and served anyway). `GET` echoes the raw
+blob byte-for-byte under its `uuid=` etag while no other device has written since, and only
+then falls back to a render of the item store (`seq=` etag). `If-Match`/`If-None-Match`
+keep working across both etag forms.
 
 Consequences for v1 clients:
 
-- Items a v1 client dropped through its absence rule come back from the server. This is the
-  correct outcome for the bug above.
-- Category deletions made on a v1 client do not propagate (there is no tombstone); deleting
-  the category on a v2 client does.
+- Two v1 devices exchange exactly the bytes they upload, like on a pre-1.3 server: their
+  client-side merge stays authoritative between them.
+- Once a v2 device writes on the same key, the next v1 `GET` receives a server render
+  containing both sides; the following v1 upload resumes the echo.
+- Category deletions made on a v1 client propagate to other v1 clients through the blob but
+  not into the item store (no tombstone); deleting the category on a v2 client does.
 - Every v1 response carries `Deprecation: true`; the web UI marks such devices as *legacy*.
