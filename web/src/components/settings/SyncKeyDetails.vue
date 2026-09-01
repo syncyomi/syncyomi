@@ -106,35 +106,35 @@
               </v-chip>
             </template>
             <template #[`item.protocol`]="{ item }">
-              <v-chip
-                v-if="item.protocol === 'v1'"
-                color="warning"
-                size="x-small"
-                title="This device uses the legacy sync protocol. Update the app to sync faster and more reliably."
-              >
-                legacy
-              </v-chip>
-              <span v-else-if="item.protocol">{{ item.protocol }}</span>
-              <span v-else>—</span>
-              <v-chip
-                v-if="deviceLag(item) === 0"
-                size="x-small"
-                variant="tonal"
-                color="success"
-                class="ml-1"
-              >
-                up to date
-              </v-chip>
-              <v-chip
-                v-else-if="deviceLag(item) !== null"
-                size="x-small"
-                variant="tonal"
-                color="warning"
-                class="ml-1"
-                title="Merges on the server this device has not pulled yet."
-              >
-                {{ deviceLag(item) }} behind
-              </v-chip>
+              <div class="d-flex align-center ga-1 text-no-wrap">
+                <v-chip
+                  v-if="item.protocol === 'v1'"
+                  color="warning"
+                  size="x-small"
+                  title="This device uses the legacy sync protocol. Update the app to sync faster and more reliably."
+                >
+                  legacy
+                </v-chip>
+                <span v-else-if="item.protocol">{{ item.protocol }}</span>
+                <span v-else>—</span>
+                <v-icon
+                  v-if="deviceLag(item) === 0"
+                  icon="mdi-check-circle-outline"
+                  size="x-small"
+                  color="success"
+                  title="Up to date"
+                  aria-label="Up to date"
+                />
+                <v-chip
+                  v-else-if="deviceLag(item) !== null"
+                  size="x-small"
+                  variant="tonal"
+                  color="warning"
+                  title="Merges on the server this device has not pulled yet."
+                >
+                  {{ deviceLag(item) }} behind
+                </v-chip>
+              </div>
             </template>
             <template #[`item.last_event`]="{ item }">
               {{ item.last_event || "—" }}

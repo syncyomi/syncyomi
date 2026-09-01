@@ -93,7 +93,7 @@ describe("SyncKeyDetails", () => {
     expect(deviceRows[1].text()).toContain("dev-b");
     expect(deviceRows[1].text()).toContain("legacy");
     // seq unknown: lag cannot be computed
-    expect(deviceRows[0].text()).not.toContain("up to date");
+    expect(deviceRows[0].find('[aria-label="Up to date"]').exists()).toBe(false);
 
     const historyRows = tables[2].findAll("tbody tr");
     expect(historyRows).toHaveLength(2);
@@ -163,7 +163,7 @@ describe("SyncKeyDetails", () => {
 
     const deviceRows = tables[1].findAll("tbody tr");
     expect(deviceRows[0].text()).toContain("Legacy device");
-    expect(deviceRows[0].text()).toContain("up to date");
+    expect(deviceRows[0].find('[aria-label="Up to date"]').exists()).toBe(true);
     expect(deviceRows[1].text()).toContain("3 behind");
 
     const historyRows = tables[2].findAll("tbody tr");
