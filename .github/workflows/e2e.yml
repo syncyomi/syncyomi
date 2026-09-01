@@ -120,7 +120,9 @@ jobs:
           CI= pnpm run build
 
       - name: Point ANDROID_SDK_ROOT at the preinstalled SDK
-        run: echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$HOME/.android/avd" >> "$GITHUB_ENV"
 
       - name: Cache emulator, system image and Maestro
         uses: actions/cache@v6

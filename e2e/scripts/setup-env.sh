@@ -35,7 +35,11 @@ else
     log "system image already installed"
 fi
 
-AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+# Pin the AVD location so avdmanager and the emulator agree everywhere (CI
+# runners otherwise place AVDs in surprising directories).
+export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+AVD_HOME="$ANDROID_AVD_HOME"
+mkdir -p "$AVD_HOME"
 
 create_avd() {
     local name="$1" ini="$AVD_HOME/$1.ini"
