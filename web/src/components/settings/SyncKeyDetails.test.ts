@@ -97,7 +97,7 @@ describe("SyncKeyDetails", () => {
 
     const historyRows = tables[2].findAll("tbody tr");
     expect(historyRows).toHaveLength(2);
-    expect(historyRows[0].text()).toContain("current");
+    expect(historyRows[0].text()).toContain("Current");
     expect(historyRows[0].text()).toContain("server merge");
     expect(historyRows[0].text()).not.toContain("Restore");
     expect(historyRows[1].text()).toContain("4.8 MB");

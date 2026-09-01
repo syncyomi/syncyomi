@@ -195,23 +195,27 @@
               </v-chip>
             </template>
             <template #[`item.actions`]="{ item, index }">
-              <v-btn
-                icon="mdi-download-outline"
-                size="x-small"
-                variant="text"
-                title="Download this payload as a backup file."
-                :href="APIClient.sync.downloadHistoryUrl(props.apiKey, item.id)"
-              />
-              <v-chip v-if="index === 0" size="x-small">current</v-chip>
-              <v-btn
-                v-else
-                size="small"
-                variant="text"
-                :loading="restore.isPending.value && restoringId === item.id"
-                @click="askRestore(item.id)"
-              >
-                Restore
-              </v-btn>
+              <div class="d-flex align-center justify-end">
+                <v-btn
+                  icon="mdi-download-outline"
+                  size="x-small"
+                  variant="text"
+                  title="Download this payload as a backup file."
+                  :href="APIClient.sync.downloadHistoryUrl(props.apiKey, item.id)"
+                />
+                <v-btn v-if="index === 0" size="small" variant="text" disabled>
+                  Current
+                </v-btn>
+                <v-btn
+                  v-else
+                  size="small"
+                  variant="text"
+                  :loading="restore.isPending.value && restoringId === item.id"
+                  @click="askRestore(item.id)"
+                >
+                  Restore
+                </v-btn>
+              </div>
             </template>
           </v-data-table>
         </v-card>
