@@ -12,8 +12,15 @@ interface SyncStatus {
   last_status: "" | "running" | "success" | "error" | "cancelled";
   last_device: string;
   last_message: string;
+  // fields below are absent on servers predating them; render fallbacks
+  last_protocol?: "" | "v1" | "v2";
   data_size: number;
   data_updated_at: string | null;
+  seq?: number;
+  manga_count?: number;
+  chapter_count?: number;
+  category_count?: number;
+  history_limit?: number;
 }
 
 interface SyncDevice {

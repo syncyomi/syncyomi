@@ -1,5 +1,14 @@
 <template>
   <div class="pa-4">
+    <v-alert
+      v-if="hasLegacyDevice"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mb-4"
+      title="Legacy sync protocol in use"
+      text="A device on this key syncs with the deprecated v1 protocol. It keeps working, but update the app once it supports v2 for faster, finer-grained sync."
+    />
     <v-row>
       <v-col cols="12" md="4">
         <v-card variant="outlined" title="Status">
@@ -32,6 +41,30 @@
                 <th class="text-left text-no-wrap">Message</th>
                 <td>{{ status.last_message }}</td>
               </tr>
+              <tr v-if="status.last_protocol">
+                <th class="text-left text-no-wrap">Protocol</th>
+                <td>
+                  <v-chip
+                    v-if="status.last_protocol === 'v1'"
+                    color="warning"
+                    size="x-small"
+                    title="This key was last synced with the deprecated v1 protocol."
+                  >
+                    v1 · legacy
+                  </v-chip>
+                  <v-chip v-else size="x-small" variant="tonal">
+                    {{ status.last_protocol }}
+                  </v-chip>
+                </td>
+              </tr>
+              <tr v-if="hasLibraryStats">
+                <th class="text-left text-no-wrap">Library</th>
+                <td>
+                  {{ status.manga_count ?? 0 }} manga ·
+                  {{ status.chapter_count ?? 0 }} chapters ·
+                  {{ status.category_count ?? 0 }} categories
+                </td>
+              </tr>
               <tr>
                 <th class="text-left text-no-wrap">Stored payload</th>
                 <td :title="relativeDate(status.data_updated_at)">
@@ -60,13 +93,14 @@
             no-data-text="No devices seen yet. Devices appear once they report sync events."
           >
             <template #[`item.name`]="{ item }">
-              {{ item.device_name || item.device_id }}
+              <span :title="deviceTooltip(item)">{{ deviceName(item) }}</span>
             </template>
             <template #[`item.last_status`]="{ item }">
               <v-chip
                 v-if="item.last_status"
                 :color="statusColor(item.last_status)"
                 size="x-small"
+                :title="item.last_message || undefined"
               >
                 {{ item.last_status }}
               </v-chip>
@@ -80,7 +114,27 @@
               >
                 legacy
               </v-chip>
-              <span v-else>{{ item.protocol || "—" }}</span>
+              <span v-else-if="item.protocol">{{ item.protocol }}</span>
+              <span v-else>—</span>
+              <v-chip
+                v-if="deviceLag(item) === 0"
+                size="x-small"
+                variant="tonal"
+                color="success"
+                class="ml-1"
+              >
+                up to date
+              </v-chip>
+              <v-chip
+                v-else-if="deviceLag(item) !== null"
+                size="x-small"
+                variant="tonal"
+                color="warning"
+                class="ml-1"
+                title="Merges on the server this device has not pulled yet."
+              >
+                {{ deviceLag(item) }} behind
+              </v-chip>
             </template>
             <template #[`item.last_event`]="{ item }">
               {{ item.last_event || "—" }}
@@ -90,12 +144,22 @@
                 simplifyDate(item.last_seen)
               }}</span>
             </template>
+            <template #[`item.actions`]="{ item }">
+              <v-btn
+                icon="mdi-delete-outline"
+                size="x-small"
+                variant="text"
+                title="Forget this device. It reappears if it syncs again."
+                :loading="forgetDevice.isPending.value && forgettingId === item.id"
+                @click="askForget(item.id)"
+              />
+            </template>
           </v-data-table>
         </v-card>
       </v-col>
 
       <v-col cols="12">
-        <v-card variant="outlined" title="History">
+        <v-card variant="outlined" title="History" :subtitle="historySubtitle">
           <v-data-table
             :headers="historyHeaders"
             :items="history"
@@ -117,7 +181,27 @@
             <template #[`item.etag`]="{ item }">
               <code>{{ item.etag }}</code>
             </template>
+            <template #[`item.origin`]="{ item }">
+              <v-chip
+                size="x-small"
+                variant="tonal"
+                :title="
+                  historyOrigin(item) === 'device upload'
+                    ? 'Uploaded by a device, byte-for-byte.'
+                    : 'Assembled by the server from merged changes.'
+                "
+              >
+                {{ historyOrigin(item) }}
+              </v-chip>
+            </template>
             <template #[`item.actions`]="{ item, index }">
+              <v-btn
+                icon="mdi-download-outline"
+                size="x-small"
+                variant="text"
+                title="Download this payload as a backup file."
+                :href="APIClient.sync.downloadHistoryUrl(props.apiKey, item.id)"
+              />
               <v-chip v-if="index === 0" size="x-small">current</v-chip>
               <v-btn
                 v-else
@@ -141,6 +225,13 @@
       @confirmed="confirmedRestore"
       @canceled="restoringId = null"
     />
+    <confirmation-modal
+      ref="forgetConfirmationModal"
+      title="Forget device"
+      message="Remove this device from the list? Its synced data stays; the device reappears if it syncs again."
+      @confirmed="confirmedForget"
+      @canceled="forgettingId = null"
+    />
   </div>
 </template>
 
@@ -162,6 +253,10 @@ const restoreConfirmationModal = ref<InstanceType<
   typeof ConfirmationModal
 > | null>(null);
 const restoringId = ref<number | null>(null);
+const forgetConfirmationModal = ref<InstanceType<
+  typeof ConfirmationModal
+> | null>(null);
+const forgettingId = ref<number | null>(null);
 
 const statusQuery = useQuery({
   queryKey: ["syncStatus", props.apiKey],
@@ -191,6 +286,7 @@ const restore = useMutation({
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ["syncStatus", props.apiKey] });
     queryClient.invalidateQueries({ queryKey: ["syncHistory", props.apiKey] });
+    queryClient.invalidateQueries({ queryKey: ["syncDevices", props.apiKey] });
     emit("restored");
   },
   onError: (error: Error) => emit("error", error.message),
@@ -210,18 +306,88 @@ const confirmedRestore = () => {
   }
 };
 
+const forgetDevice = useMutation({
+  mutationFn: (id: number) => APIClient.sync.deleteDevice(props.apiKey, id),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["syncDevices", props.apiKey] });
+  },
+  onError: (error: Error) => emit("error", error.message),
+  onSettled: () => {
+    forgettingId.value = null;
+  },
+});
+
+const askForget = (id: number) => {
+  forgettingId.value = id;
+  forgetConfirmationModal.value?.showModal();
+};
+
+const confirmedForget = () => {
+  if (forgettingId.value !== null) {
+    forgetDevice.mutate(forgettingId.value);
+  }
+};
+
+// warn when the last write was v1 or any known device still speaks v1
+const hasLegacyDevice = computed(
+  () =>
+    status.value?.last_protocol === "v1" ||
+    devices.value.some((d) => d.protocol === "v1"),
+);
+
+const hasLibraryStats = computed(() => {
+  const s = status.value;
+  return !!s && ((s.manga_count ?? 0) > 0 || (s.category_count ?? 0) > 0);
+});
+
+const historySubtitle = computed(() => {
+  const limit = status.value?.history_limit;
+  return limit ? `Keeps the last ${limit} payloads.` : undefined;
+});
+
+// v1 uploads carry no device identity; the server records them under "legacy"
+const deviceName = (d: SyncDevice) => {
+  if (d.device_name) return d.device_name;
+  if (d.device_id === "legacy") return "Legacy device";
+  return d.device_id;
+};
+
+const deviceTooltip = (d: SyncDevice) => {
+  const parts = [];
+  if (d.device_id === "legacy") {
+    parts.push(
+      "One or more v1 clients that don't identify themselves share this row.",
+    );
+  } else if (d.device_name && d.device_id !== d.device_name) {
+    parts.push(`ID: ${d.device_id}`);
+  }
+  if (d.created_at) parts.push(`First seen ${simplifyDate(d.created_at)}`);
+  return parts.join(" · ") || undefined;
+};
+
+// merges on the server the device has not pulled; null when unknowable
+const deviceLag = (d: SyncDevice) => {
+  const seq = status.value?.seq;
+  if (seq === undefined || !d.protocol) return null;
+  return Math.max(0, seq - d.cursor);
+};
+
+const historyOrigin = (h: SyncHistoryEntry) =>
+  h.etag.startsWith("uuid=") ? "device upload" : "server merge";
+
 const deviceHeaders = [
   { title: "Device", key: "name", sortable: false },
   { title: "Status", key: "last_status" },
-  { title: "Protocol", key: "protocol" },
+  { title: "Sync", key: "protocol", sortable: false },
   { title: "Last event", key: "last_event" },
   { title: "Last seen", key: "last_seen" },
-  { title: "Cursor", key: "cursor", align: "end" as const },
+  { title: "", key: "actions", sortable: false, align: "end" as const },
 ];
 
 const historyHeaders = [
   { title: "Created", key: "created_at", sortable: false },
   { title: "Size", key: "size", sortable: false },
+  { title: "Origin", key: "origin", sortable: false },
   { title: "ETag", key: "etag", sortable: false },
   { title: "", key: "actions", sortable: false, align: "end" as const },
 ];
