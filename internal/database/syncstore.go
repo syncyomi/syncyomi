@@ -18,7 +18,7 @@ import (
 const (
 	refsSep      = "\x1f"
 	sqlBatchSize = 500
-	itemColumns  = "kind, key, parent_key, name, version, deleted, refs, payload, seq, origin_device"
+	itemColumns  = "kind, key, parent_key, name, version, modified_at, deleted, refs, payload, seq, origin_device"
 )
 
 func NewSyncStore(log logger.Logger, db *DB, historyLimit int) domain.SyncStore {
@@ -172,7 +172,7 @@ func (t *syncStoreTx) queryItems(ctx context.Context, where sq.Sqlizer) ([]*merg
 			kind string
 			refs string
 		)
-		if err := rows.Scan(&kind, &it.Key, &it.ParentKey, &it.Name, &it.Version, &it.Deleted, &refs, &it.Payload, &it.Seq, &it.OriginDevice); err != nil {
+		if err := rows.Scan(&kind, &it.Key, &it.ParentKey, &it.Name, &it.Version, &it.ModifiedAt, &it.Deleted, &refs, &it.Payload, &it.Seq, &it.OriginDevice); err != nil {
 			return nil, errors.Wrap(err, "error scanning sync item")
 		}
 		it.Kind = merge.Kind(kind)
@@ -232,8 +232,8 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 
 const upsertItemSuffix = `ON CONFLICT (user_api_key, kind, key) DO UPDATE SET
 	parent_key = EXCLUDED.parent_key, name = EXCLUDED.name, version = EXCLUDED.version,
-	deleted = EXCLUDED.deleted, refs = EXCLUDED.refs, payload = EXCLUDED.payload,
-	seq = EXCLUDED.seq, origin_device = EXCLUDED.origin_device`
+	modified_at = EXCLUDED.modified_at, deleted = EXCLUDED.deleted, refs = EXCLUDED.refs,
+	payload = EXCLUDED.payload, seq = EXCLUDED.seq, origin_device = EXCLUDED.origin_device`
 
 // writeItems upserts rows. modernc sqlite binds thousands of parameters very slowly, so it
 // gets a prepared single-row statement; Postgres is round-trip bound and gets multi-row batches.
@@ -242,14 +242,14 @@ func (t *syncStoreTx) writeItems(ctx context.Context, items []*merge.Item, seq i
 		return nil
 	}
 	if databaseDriver != "postgres" {
-		stmt, err := t.tx.PrepareContext(ctx, `INSERT INTO sync_item (user_api_key, kind, key, parent_key, name, version, deleted, refs, payload, seq, origin_device)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) `+upsertItemSuffix)
+		stmt, err := t.tx.PrepareContext(ctx, `INSERT INTO sync_item (user_api_key, kind, key, parent_key, name, version, modified_at, deleted, refs, payload, seq, origin_device)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) `+upsertItemSuffix)
 		if err != nil {
 			return errors.Wrap(err, "error preparing sync item upsert")
 		}
 		defer stmt.Close()
 		for _, it := range items {
-			if _, err := stmt.ExecContext(ctx, t.apiKey, string(it.Kind), it.Key, it.ParentKey, it.Name, it.Version, false, strings.Join(it.Refs, refsSep), it.Payload, seq, device); err != nil {
+			if _, err := stmt.ExecContext(ctx, t.apiKey, string(it.Kind), it.Key, it.ParentKey, it.Name, it.Version, it.ModifiedAt, false, strings.Join(it.Refs, refsSep), it.Payload, seq, device); err != nil {
 				return errors.Wrap(err, "error writing sync item")
 			}
 		}
@@ -263,9 +263,9 @@ func (t *syncStoreTx) writeItems(ctx context.Context, items []*merge.Item, seq i
 		end := min(start+batch, len(items))
 		ins := t.repo.db.squirrel.
 			Insert("sync_item").
-			Columns("user_api_key", "kind", "key", "parent_key", "name", "version", "deleted", "refs", "payload", "seq", "origin_device")
+			Columns("user_api_key", "kind", "key", "parent_key", "name", "version", "modified_at", "deleted", "refs", "payload", "seq", "origin_device")
 		for _, it := range items[start:end] {
-			ins = ins.Values(t.apiKey, string(it.Kind), it.Key, it.ParentKey, it.Name, it.Version, false, strings.Join(it.Refs, refsSep), it.Payload, seq, device)
+			ins = ins.Values(t.apiKey, string(it.Kind), it.Key, it.ParentKey, it.Name, it.Version, it.ModifiedAt, false, strings.Join(it.Refs, refsSep), it.Payload, seq, device)
 		}
 		if _, err := ins.Suffix(upsertItemSuffix).RunWith(t.tx).ExecContext(ctx); err != nil {
 			return errors.Wrap(err, "error writing sync items")

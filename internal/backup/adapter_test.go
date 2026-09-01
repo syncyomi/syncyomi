@@ -179,3 +179,30 @@ func TestSplitDedupesRepeatedKeys(t *testing.T) {
 		t.Errorf("later occurrence not kept for ties: %v %v", p, err)
 	}
 }
+
+func TestSplitPopulatesModifiedAt(t *testing.T) {
+	lm := int64(1700000000)
+	b := &pb.Backup{
+		BackupCategories: []*pb.BackupCategory{{Name: "A", Uid: 1, LastModifiedAt: lm}},
+		BackupManga: []*pb.BackupManga{
+			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: lm + 2}}},
+			// version tie deduped by the newer timestamp
+			{Source: 1, Url: "/dup", LastModifiedAt: lm + 9},
+			{Source: 1, Url: "/dup", LastModifiedAt: lm + 3},
+		},
+	}
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, it := range items {
+		got[string(it.Kind)+"|"+it.Key] = it.ModifiedAt
+	}
+	if got["category|uid:1"] != lm || got["manga|1|/m"] != lm+1 || got["chapter|"+ChapterKey("1|/m", "/c")] != lm+2 {
+		t.Errorf("ModifiedAt not extracted: %v", got)
+	}
+	if got["manga|1|/dup"] != lm+9 {
+		t.Errorf("dedupe kept the older timestamp: %v", got["manga|1|/dup"])
+	}
+}
