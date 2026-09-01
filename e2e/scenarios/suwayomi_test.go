@@ -163,7 +163,8 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	if !slices.Contains(cats, "E2E Renamed") || slices.Contains(cats, "E2E Alpha") {
 		t.Errorf("suwayomi categories = %v, want rename E2E Alpha -> E2E Renamed applied", cats)
 	}
-	// Server orders: Renamed=0, Zeta=1 — Suwayomi must hold the same positions.
+	// Server orders: Renamed=0, Zeta=1 — Suwayomi ranks them 1-based after
+	// Default but must keep the same relative positions.
 	if ri, zi := slices.Index(cats, "E2E Renamed"), slices.Index(cats, "E2E Zeta"); ri > zi {
 		t.Errorf("suwayomi category order = %v, want E2E Renamed before E2E Zeta", cats)
 	}
@@ -194,6 +195,38 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 		t.Errorf("suwayomi still has E2E Zeta after tombstone: %v", cats)
 	}
 	assertSuwaLibrarySize(t, ctx, suwa, fixtureAManga)
+
+	// Send side: a category created on Suwayomi above E2E Renamed (position 1,
+	// after Default) must reach the server as 0-based contiguous wire orders
+	// with manga refs remapped through the same rebase.
+	if _, err := suwa.CreateCategoryAt(ctx, "E2E Suwa", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := suwa.AddMangaToCategory(ctx, "E2E Alpha 02", "E2E Suwa"); err != nil {
+		t.Fatal(err)
+	}
+	suwaSync(t, ctx, suwa)
+	snap, err = srv.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshotCategoryOrder(snap); !slices.Equal(got, []string{"E2E Suwa", "E2E Renamed"}) {
+		t.Errorf("server category order after suwayomi push = %v, want [E2E Suwa, E2E Renamed]", got)
+	}
+	orders := make([]int64, 0, len(snap.BackupCategories))
+	for _, c := range snap.BackupCategories {
+		orders = append(orders, c.Order)
+	}
+	slices.Sort(orders)
+	for i, o := range orders {
+		if o != int64(i) {
+			t.Errorf("server category orders = %v, want 0-based contiguous", orders)
+			break
+		}
+	}
+	if !snapshotMangaInCategory(snap, "E2E Alpha 02", "E2E Suwa") {
+		t.Errorf("server missing E2E Alpha 02 in E2E Suwa after suwayomi push")
+	}
 }
 
 // TestS15_CrossPlatformDeepSync: edits made on Android through the real UI
