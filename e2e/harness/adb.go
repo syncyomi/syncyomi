@@ -29,6 +29,7 @@ func prefsXML(p SyncPrefs) string {
     <string name="sync_client_api_key">%s</string>
     <int name="sync_service" value="1" />
     <boolean name="__APP_STATE_onboarding_complete" value="true" />
+    <boolean name="eh_debug_toggle_enable_debug_overlay" value="false" />
     <boolean name="appSettings" value="false" />
     <boolean name="extensionRepoSettings" value="false" />
     <boolean name="sourceSettings" value="false" />

@@ -1,0 +1,22 @@
+# Deletes the category at row INDEX (0-based, list position) via its per-row
+# "Delete" icon on More -> Categories. Pass INDEX and NAME (for the wait) via -e.
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp
+- tapOn: "More"
+- tapOn: "Categories"
+- tapOn:
+    text: "Delete"
+    index: ${INDEX}
+- tapOn: "OK"
+# The open screen's reactive category query can miss the change; re-enter to verify.
+- back
+- tapOn: "Categories"
+- extendedWaitUntil:
+    notVisible: ${NAME}
+    timeout: 10000

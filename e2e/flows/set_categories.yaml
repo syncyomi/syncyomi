@@ -1,0 +1,18 @@
+# Assigns one manga to a category through the library selection bottom menu.
+# Pass TITLE and CATEGORY via -e.
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp
+- tapOn: "Library"
+- longPressOn: ${TITLE}
+- tapOn: "Set categories"
+- extendedWaitUntil:
+    visible: ${CATEGORY}
+    timeout: 10000
+- tapOn: ${CATEGORY}
+- tapOn: "OK"

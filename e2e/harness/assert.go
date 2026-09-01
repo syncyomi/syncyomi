@@ -163,3 +163,27 @@ func CategoryNames(db *sql.DB) ([]string, error) {
 	}
 	return names, rows.Err()
 }
+
+// CategorySort is one user category's position in the app DB.
+type CategorySort struct {
+	Name string
+	Sort int64
+}
+
+// CategorySorts returns user categories (system category excluded) by position.
+func CategorySorts(db *sql.DB) ([]CategorySort, error) {
+	rows, err := db.Query(`SELECT name, sort FROM categories WHERE _id != 0 ORDER BY sort`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CategorySort
+	for rows.Next() {
+		var c CategorySort
+		if err := rows.Scan(&c.Name, &c.Sort); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
