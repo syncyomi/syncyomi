@@ -138,4 +138,3 @@ func (m *merger) returnItem(cur *Item) {
 	m.res.ReturnKeys[cur.Kind] = append(m.res.ReturnKeys[cur.Kind], cur.Key)
 	m.res.ChangedForClient = true
 }
-
