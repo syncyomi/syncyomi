@@ -69,7 +69,8 @@ jobs:
           cache-read-only: false
 
       - name: Build shadowJar
-        run: ./gradlew :server:shadowJar
+        # The Kotlin daemon's default heap sizing OOMs on 16 GB runners
+        run: ./gradlew :server:shadowJar "-Dkotlin.daemon.jvmargs=-Xmx4g"
 
       - uses: actions/upload-artifact@v7
         with:
