@@ -83,7 +83,7 @@
         <v-card variant="outlined" title="Devices">
           <v-data-table
             :headers="deviceHeaders"
-            :items="devices"
+            :items="visibleDevices"
             :loading="devicesQuery.isLoading.value"
             :sort-by="[{ key: 'last_seen', order: 'desc' }]"
             :items-per-page="-1"
@@ -335,6 +335,17 @@ const hasLegacyDevice = computed(
     devices.value.some((d) => d.protocol === "v1"),
 );
 
+// "legacy" aggregates anonymous v1 uploads; once a named row is tagged v1 it represents
+// that traffic, so showing the aggregate too would list one phone twice
+const visibleDevices = computed(() => {
+  const named = devices.value.some(
+    (d) => d.device_id !== "legacy" && d.protocol === "v1",
+  );
+  return named
+    ? devices.value.filter((d) => d.device_id !== "legacy")
+    : devices.value;
+});
+
 const hasLibraryStats = computed(() => {
   const s = status.value;
   return !!s && ((s.manga_count ?? 0) > 0 || (s.category_count ?? 0) > 0);
@@ -365,10 +376,13 @@ const deviceTooltip = (d: SyncDevice) => {
   return parts.join(" · ") || undefined;
 };
 
-// merges on the server the device has not pulled; null when unknowable
+// merges on the server the device has not pulled; null when unknowable. A v1 row with
+// cursor 0 was tagged from events only — its real cursor lives on the anonymous upload.
 const deviceLag = (d: SyncDevice) => {
   const seq = status.value?.seq;
   if (seq === undefined || !d.protocol) return null;
+  if (d.protocol === "v1" && d.cursor === 0 && d.device_id !== "legacy")
+    return null;
   return Math.max(0, seq - d.cursor);
 };
 

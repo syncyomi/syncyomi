@@ -106,7 +106,15 @@ func (s *service) ReportSyncEvent(ctx context.Context, apiKey string, event stri
 
 	now := time.Now().UTC()
 	status := statusFromEvent(ev)
-	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage, ""); err != nil {
+	// v1 requests carry no device identity, so the anonymous upload and the named event
+	// rows for the same phone cannot be joined directly. When the key's last sync was v1,
+	// tag the event's device row (only if it has no protocol yet) so the UI can show one
+	// device instead of a named row plus the "legacy" aggregate.
+	protocolHint := ""
+	if st, err := s.repo.GetStatus(ctx, apiKey); err == nil && st != nil && st.LastProtocol == ProtocolV1 {
+		protocolHint = ProtocolV1
+	}
+	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage, protocolHint); err != nil {
 		s.log.Warn().Err(err).Msg("failed to record device")
 	}
 	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{

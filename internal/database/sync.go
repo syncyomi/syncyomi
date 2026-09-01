@@ -252,7 +252,7 @@ func (r SyncRepo) TouchDevice(ctx context.Context, apiKey string, dev domain.Dev
 			last_event   = CASE WHEN EXCLUDED.last_event = '' THEN sync_device.last_event ELSE EXCLUDED.last_event END,
 			last_status  = CASE WHEN EXCLUDED.last_status = '' THEN sync_device.last_status ELSE EXCLUDED.last_status END,
 			last_message = CASE WHEN EXCLUDED.last_event = '' THEN sync_device.last_message ELSE EXCLUDED.last_message END,
-			protocol     = CASE WHEN EXCLUDED.protocol = '' THEN sync_device.protocol ELSE EXCLUDED.protocol END`,
+			protocol     = CASE WHEN sync_device.protocol = '' THEN EXCLUDED.protocol ELSE sync_device.protocol END`,
 		apiKey, deviceKey, dev.Name, now, event, status, message, protocol, now)
 	if err != nil {
 		return errors.Wrap(err, "error upserting device")

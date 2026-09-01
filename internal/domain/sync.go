@@ -75,7 +75,8 @@ type SyncRepo interface {
 	// GetHistoryData returns the stored payload of a history entry. ErrNotFound if id is unknown.
 	GetHistoryData(ctx context.Context, apiKey string, id int) ([]byte, error)
 
-	// Empty fields never overwrite stored values. No-op when dev has no ID and no Name.
+	// Empty fields never overwrite stored values, and protocol is only filled when the row
+	// has none yet (SetDeviceCursor owns updates). No-op when dev has no ID and no Name.
 	TouchDevice(ctx context.Context, apiKey string, dev DeviceInfo, event, status, message, protocol string) error
 	ListDevices(ctx context.Context, apiKey string) ([]SyncDevice, error)
 	// DeleteDevice removes a device row. ErrNotFound if id is unknown for the key.

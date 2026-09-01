@@ -172,6 +172,61 @@ describe("SyncKeyDetails", () => {
     expect(download.attributes("href")).toContain("/history/11/download");
   });
 
+  it("collapses the legacy aggregate into a tagged device", async () => {
+    sync.status.mockResolvedValue({
+      last_synced_at: "2026-09-02T01:13:29Z",
+      last_event_at: "2026-09-02T01:13:29Z",
+      last_event: "SYNC_SUCCESS",
+      last_status: "success",
+      last_device: "My Phone",
+      last_message: "",
+      last_protocol: "v1",
+      data_size: 1024,
+      data_updated_at: "2026-09-02T01:13:29Z",
+      seq: 4,
+      manga_count: 359,
+      chapter_count: 42137,
+      category_count: 11,
+      history_limit: 10,
+    });
+    sync.devices.mockResolvedValue([
+      {
+        id: 1,
+        device_id: "My Phone",
+        device_name: "My Phone",
+        last_seen: "2026-09-02T01:13:29Z",
+        last_event: "SYNC_SUCCESS",
+        last_status: "success",
+        last_message: "",
+        protocol: "v1",
+        cursor: 0,
+        created_at: "2026-09-02T01:00:00Z",
+      },
+      {
+        id: 2,
+        device_id: "legacy",
+        device_name: "",
+        last_seen: "2026-09-02T01:13:29Z",
+        last_event: "",
+        last_status: "",
+        last_message: "",
+        protocol: "v1",
+        cursor: 4,
+        created_at: "2026-09-02T01:00:00Z",
+      },
+    ]);
+    sync.history.mockResolvedValue([]);
+
+    const wrapper = await mountDetails();
+    const deviceRows = wrapper.findAll("table")[1].findAll("tbody tr");
+    expect(deviceRows).toHaveLength(1);
+    expect(deviceRows[0].text()).toContain("My Phone");
+    expect(deviceRows[0].text()).not.toContain("Legacy device");
+    // the tagged row's cursor is not real; no lag state is invented for it
+    expect(deviceRows[0].find('[aria-label="Up to date"]').exists()).toBe(false);
+    expect(deviceRows[0].text()).not.toContain("behind");
+  });
+
   it("shows empty states", async () => {
     sync.status.mockRejectedValue(new Error("404"));
     sync.devices.mockResolvedValue([]);

@@ -354,11 +354,14 @@ func TestSyncRepo_Devices(t *testing.T) {
 		t.Errorf("tablet = %+v", tab)
 	}
 
-	// protocol sticks once known and empty never clears it
+	// protocol fills once and later touches never change it (SetDeviceCursor owns updates)
 	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", "v1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", "v2"); err != nil {
 		t.Fatal(err)
 	}
 	devices, _ = repo.ListDevices(ctx, "key1")

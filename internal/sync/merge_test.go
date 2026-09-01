@@ -451,6 +451,44 @@ func TestRestore_EmptyBackupRefreshesRender(t *testing.T) {
 	}
 }
 
+// A v1 phone shows up twice — an anonymous upload row and a named event row — unless the
+// event tags the named row with the protocol.
+func TestV1_EventTagsDeviceProtocol(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+	// the handler records the access (and with it the protocol) after every v1 PUT
+	svc.RecordContentAccess(ctx, "key1", domain.DeviceInfo{}, true, ProtocolV1)
+	if err := svc.ReportSyncEvent(ctx, "key1", "SYNC_SUCCESS", domain.DeviceInfo{Name: "My Phone"}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := svc.ListDevices(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]string{}
+	for _, d := range devices {
+		byID[d.DeviceID] = d.Protocol
+	}
+	if byID["My Phone"] != "v1" {
+		t.Errorf("event device protocol = %q, want v1 (devices: %+v)", byID["My Phone"], devices)
+	}
+
+	// a later v2 sync from the same device overrides the tag
+	sync2(t, svc, "My Phone", 0, true, &pb.Backup{})
+	devices, _ = svc.ListDevices(ctx, "key1")
+	for _, d := range devices {
+		if d.DeviceID == "My Phone" && d.Protocol != "v2" {
+			t.Errorf("protocol after v2 sync = %q", d.Protocol)
+		}
+	}
+}
+
 func TestV1_IfMatch(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
