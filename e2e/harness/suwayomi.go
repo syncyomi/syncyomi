@@ -269,6 +269,87 @@ func (s *Suwayomi) CategoryNames(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
+// CreateCategoryAt creates a category at the given 1-based position, shifting
+// existing categories down, and returns its id.
+func (s *Suwayomi) CreateCategoryAt(ctx context.Context, name string, position int) (int, error) {
+	var out struct {
+		Data struct {
+			CreateCategory struct {
+				Category struct {
+					ID int `json:"id"`
+				} `json:"category"`
+			} `json:"createCategory"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	err := s.GraphQL(ctx,
+		`mutation($name: String!, $order: Int) { createCategory(input: {name: $name, order: $order}) { category { id } } }`,
+		map[string]any{"name": name, "order": position}, &out)
+	if err != nil {
+		return 0, err
+	}
+	if len(out.Errors) > 0 {
+		return 0, fmt.Errorf("createCategory: %s", out.Errors[0].Message)
+	}
+	return out.Data.CreateCategory.Category.ID, nil
+}
+
+// AddMangaToCategory adds the manga with the given title to the named category.
+func (s *Suwayomi) AddMangaToCategory(ctx context.Context, title, category string) error {
+	library, err := s.Library(ctx)
+	if err != nil {
+		return err
+	}
+	mangaID := 0
+	for _, m := range library {
+		if m.Title == title {
+			mangaID = m.ID
+		}
+	}
+	if mangaID == 0 {
+		return fmt.Errorf("no library manga titled %q", title)
+	}
+	var cats struct {
+		Data struct {
+			Categories struct {
+				Nodes []struct {
+					ID   int    `json:"id"`
+					Name string `json:"name"`
+				} `json:"nodes"`
+			} `json:"categories"`
+		} `json:"data"`
+	}
+	if err := s.GraphQL(ctx, `{ categories { nodes { id name } } }`, nil, &cats); err != nil {
+		return err
+	}
+	categoryID := -1
+	for _, c := range cats.Data.Categories.Nodes {
+		if c.Name == category {
+			categoryID = c.ID
+		}
+	}
+	if categoryID < 0 {
+		return fmt.Errorf("no category named %q", category)
+	}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	err = s.GraphQL(ctx,
+		`mutation($id: Int!, $cats: [Int!]!) { updateMangaCategories(input: {id: $id, patch: {addToCategories: $cats}}) { clientMutationId } }`,
+		map[string]any{"id": mangaID, "cats": []int{categoryID}}, &out)
+	if err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("updateMangaCategories: %s", out.Errors[0].Message)
+	}
+	return nil
+}
+
 // MarkChaptersRead flips all chapters of the given manga to read via GraphQL.
 func (s *Suwayomi) MarkChaptersRead(ctx context.Context, title string) error {
 	library, err := s.Library(ctx)
