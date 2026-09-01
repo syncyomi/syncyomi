@@ -68,9 +68,15 @@ jobs:
         with:
           cache-read-only: false
 
+      - name: Configure build memory
+        # The Kotlin daemon's default heap sizing OOMs on 16 GB runners; the
+        # setting must live in gradle.properties (a -D flag doesn't reach it)
+        run: |
+          echo "org.gradle.jvmargs=-Xmx2g" >> gradle.properties
+          echo "kotlin.daemon.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m" >> gradle.properties
+
       - name: Build shadowJar
-        # The Kotlin daemon's default heap sizing OOMs on 16 GB runners
-        run: ./gradlew :server:shadowJar "-Dkotlin.daemon.jvmargs=-Xmx4g"
+        run: ./gradlew :server:shadowJar
 
       - uses: actions/upload-artifact@v7
         with:
