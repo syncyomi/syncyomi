@@ -30,8 +30,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: syncyomi/TachiyomiSY
-          ref: ${{ inputs.tachiyomi_ref || 'feat/syncyomi-v2' }}
+          # Post-upstream-merge: set repo variables E2E_TACHIYOMI_REPO/REF
+          # (e.g. jobobby04/TachiyomiSY + master) instead of editing this file
+          repository: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
+          ref: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
 
       - uses: actions/setup-java@v5
         with:
@@ -56,8 +58,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: syncyomi/Suwayomi-Server
-          ref: ${{ inputs.suwayomi_ref || 'feat/syncyomi-v2' }}
+          # Post-upstream-merge: set repo variables E2E_SUWAYOMI_REPO/REF
+          # (e.g. Suwayomi/Suwayomi-Server + master) instead of editing this file
+          repository: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
+          ref: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'feat/syncyomi-v2' }}
 
       - uses: actions/setup-java@v5
         with:
