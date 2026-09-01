@@ -122,13 +122,12 @@ jobs:
       - name: Point ANDROID_SDK_ROOT at the preinstalled SDK
         run: echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
 
-      - name: Cache emulator, system image, AVDs and Maestro
+      - name: Cache emulator, system image and Maestro
         uses: actions/cache@v6
         with:
           path: |
             ${{ env.ANDROID_HOME }}/emulator
             ${{ env.ANDROID_HOME }}/system-images/android-35
-            ~/.android/avd
             e2e/.tools
           key: e2e-android-${{ runner.os }}-${{ hashFiles('e2e/scripts/setup-env.sh') }}
 
