@@ -412,6 +412,45 @@ func TestV1_V2Interplay(t *testing.T) {
 	}
 }
 
+// Restoring an entry that decodes to an empty backup writes no items and cannot bump seq;
+// the render must still be rewritten or v2 readers keep the pre-restore content.
+func TestRestore_EmptyBackupRefreshesRender(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	empty, _ := backup.Encode(&pb.Backup{})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", empty); err != nil {
+		t.Fatal(err)
+	}
+	full, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", full); err != nil {
+		t.Fatal(err)
+	}
+	if snap, err := svc.Snapshot(ctx, "key1", 0); err != nil {
+		t.Fatal(err)
+	} else if got, _ := backup.Decode(snap.Data); len(got.BackupManga) != 1 {
+		t.Fatalf("pre-restore snapshot = %v", got.BackupManga)
+	}
+
+	history, _ := svc.ListHistory(ctx, "key1")
+	emptyID := history[len(history)-1].ID
+	if _, err := svc.RestoreHistory(ctx, "key1", emptyID); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := backup.Decode(snap.Data); len(got.BackupManga) != 0 {
+		t.Errorf("v2 snapshot after empty restore still has %v", got.BackupManga)
+	}
+	v1snap, _ := svc.GetContent(ctx, "key1")
+	if !bytes.Equal(v1snap.Data, empty) {
+		t.Error("v1 get did not serve the restored empty payload")
+	}
+}
+
 func TestV1_IfMatch(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()

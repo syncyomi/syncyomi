@@ -287,6 +287,7 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 
 	var etag string
 	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		startSeq := tx.Seq()
 		if err := tx.Clear(ctx); err != nil {
 			return err
 		}
@@ -294,8 +295,16 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Apply(ctx, res, deviceRestore); err != nil {
+		newSeq, err := tx.Apply(ctx, res, deviceRestore)
+		if err != nil {
 			return err
+		}
+		if newSeq == startSeq {
+			// an empty backup writes nothing, so the seq cannot signal the change; rewrite
+			// the render in place or v2 readers keep the pre-restore content
+			if err := s.refreshRenderCache(ctx, tx, false, nil); err != nil {
+				return err
+			}
 		}
 		// the restored payload becomes the raw blob so v1 devices get it byte-for-byte;
 		// the render refreshes lazily on the next v2 read

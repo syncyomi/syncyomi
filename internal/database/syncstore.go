@@ -392,6 +392,9 @@ func (t *syncStoreTx) RawBlob(ctx context.Context) (*domain.RawBlob, error) {
 }
 
 func (t *syncStoreTx) SetRawBlob(ctx context.Context, data []byte, etag string, seq int64) error {
+	if data == nil {
+		data = []byte{} // a zero-byte upload is valid; nil violates NOT NULL columns
+	}
 	now := time.Now().UTC()
 	// the INSERT arm needs a value for the NOT NULL render columns; never touch them on conflict
 	_, err := t.repo.db.squirrel.
