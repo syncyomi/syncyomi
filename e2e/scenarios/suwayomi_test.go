@@ -153,8 +153,8 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	if got := byTitle["E2E Alpha 01"].ReadCount; got != fixtureAChapters {
 		t.Errorf("suwayomi read count for Alpha 01 = %d, want %d", got, fixtureAChapters)
 	}
-	if got := byTitle["E2E Alpha 02"].Categories; !slices.Contains(got, "E2E Zeta") {
-		t.Errorf("suwayomi Alpha 02 categories = %v, want to contain E2E Zeta", got)
+	if got := byTitle["E2E Alpha 02"].Categories; !slices.Contains(got, "E2E Zeta") || slices.Contains(got, "E2E Renamed") {
+		t.Errorf("suwayomi Alpha 02 categories = %v, want a MOVE to E2E Zeta (old membership removed)", got)
 	}
 	cats, err := suwa.CategoryNames(ctx)
 	if err != nil {
@@ -162,6 +162,10 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	}
 	if !slices.Contains(cats, "E2E Renamed") || slices.Contains(cats, "E2E Alpha") {
 		t.Errorf("suwayomi categories = %v, want rename E2E Alpha -> E2E Renamed applied", cats)
+	}
+	// Server orders: Renamed=0, Zeta=1 — Suwayomi must hold the same positions.
+	if ri, zi := slices.Index(cats, "E2E Renamed"), slices.Index(cats, "E2E Zeta"); ri > zi {
+		t.Errorf("suwayomi category order = %v, want E2E Renamed before E2E Zeta", cats)
 	}
 
 	// Reverse direction: Suwayomi marks another manga read and pushes it.
@@ -214,7 +218,19 @@ func TestS15_CrossPlatformDeepSync(t *testing.T) {
 		t.Fatalf("mark_read flow: %v", err)
 	}
 	awaitReadCount(t, ctx, emuA, "E2E Alpha 01", fixtureAChapters)
-	createAndAssign(t, ctx, srv, "E2E Zeta", "E2E Alpha 03")
+
+	// True category MOVE through the real UI: check Zeta, uncheck Alpha.
+	if err := emuA.RunFlow(ctx, harness.FlowPath("create_category.yaml"), artifactDir,
+		map[string]string{"NAME": "E2E Zeta"}); err != nil {
+		t.Fatalf("create category flow: %v", err)
+	}
+	if err := emuA.RunFlow(ctx, harness.FlowPath("move_category.yaml"), artifactDir,
+		map[string]string{"TITLE": "E2E Alpha 03", "NEW": "E2E Zeta", "OLD": "E2E Alpha"}); err != nil {
+		t.Fatalf("move category flow: %v", err)
+	}
+	awaitMangaInCategory(t, ctx, emuA, "E2E Alpha 03", "E2E Zeta")
+	awaitMangaNotInCategory(t, ctx, emuA, "E2E Alpha 03", "E2E Alpha")
+	syncViaBroadcast(t, ctx, emuA, srv)
 
 	suwa := startSuwayomi(t, ctx, srv)
 	suwaSync(t, ctx, suwa)
@@ -229,8 +245,8 @@ func TestS15_CrossPlatformDeepSync(t *testing.T) {
 	if got := byTitle["E2E Alpha 01"].ReadCount; got != fixtureAChapters {
 		t.Errorf("suwayomi read count for Alpha 01 = %d, want %d", got, fixtureAChapters)
 	}
-	if got := byTitle["E2E Alpha 03"].Categories; !slices.Contains(got, "E2E Zeta") {
-		t.Errorf("suwayomi Alpha 03 categories = %v, want to contain E2E Zeta", got)
+	if got := byTitle["E2E Alpha 03"].Categories; !slices.Contains(got, "E2E Zeta") || slices.Contains(got, "E2E Alpha") {
+		t.Errorf("suwayomi Alpha 03 categories = %v, want a MOVE to E2E Zeta (E2E Alpha removed)", got)
 	}
 
 	// Suwayomi-side edit back to Android.

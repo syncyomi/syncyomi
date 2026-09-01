@@ -136,6 +136,7 @@ func TestS5_ConflictBothEditsSurvive(t *testing.T) {
 
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitMangaInCategory(t, ctx, emuA, title, "E2E Conflict")
+	awaitMangaNotInCategory(t, ctx, emuA, title, "E2E Alpha")
 	awaitReadCount(t, ctx, emuA, title, fixtureAChapters)
 
 	// One more sync so A pushes its merged state; server must hold both edits.
@@ -289,6 +290,21 @@ func awaitMangaInCategory(t *testing.T, ctx context.Context, e *harness.Emulator
 		defer db.Close()
 		names, err := harness.MangaCategoryNames(db, title)
 		return err == nil && slices.Contains(names, category)
+	})
+}
+
+// awaitMangaNotInCategory verifies a move removed the old membership — a move
+// that merely adds must fail this.
+func awaitMangaNotInCategory(t *testing.T, ctx context.Context, e *harness.Emulator, title, category string) {
+	t.Helper()
+	pollLiveDB(t, ctx, e, 60*time.Second, "category removal from manga", func(dbPath string) bool {
+		db, err := harness.OpenAppDB(dbPath)
+		if err != nil {
+			return false
+		}
+		defer db.Close()
+		names, err := harness.MangaCategoryNames(db, title)
+		return err == nil && !slices.Contains(names, category)
 	})
 }
 
