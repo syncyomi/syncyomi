@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/syncyomi/syncyomi/compare/v1.4.0...v1.5.0) (2026-09-01)
+
+
+### New Features
+
+* **e2e:** category, Suwayomi and cross-platform sync scenarios plus CI ([#215](https://github.com/syncyomi/syncyomi/issues/215)) ([aab49e1](https://github.com/syncyomi/syncyomi/commit/aab49e1c477285d5f07ca1fc55afc5f99b06beb9))
+
+
+### Dependencies
+
+* bump happy-dom in /web in the npm-minor-patch group ([#216](https://github.com/syncyomi/syncyomi/issues/216)) ([b812172](https://github.com/syncyomi/syncyomi/commit/b812172156ebbe7cdbdf0cdbe83fd7896e67020e))
+
 ## [1.4.0](https://github.com/syncyomi/syncyomi/compare/v1.3.0...v1.4.0) (2026-08-31)
 
 
