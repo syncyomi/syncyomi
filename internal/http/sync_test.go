@@ -174,9 +174,8 @@ func TestSyncHandler_putContent(t *testing.T) {
 		wantStatus int
 		wantETag   string
 	}{
-		{name: "put returns new etag", mock: &mockSyncService{putEtag: "seq=2"}, wantStatus: http.StatusOK, wantETag: "seq=2"},
-		{name: "412 on etag mismatch", ifMatch: "seq=1", mock: &mockSyncService{putErr: sync.ErrPreconditionFailed}, wantStatus: http.StatusPreconditionFailed},
-		{name: "400 on undecodable payload", mock: &mockSyncService{putErr: sync.ErrBadPayload}, wantStatus: http.StatusBadRequest},
+		{name: "put returns new etag", mock: &mockSyncService{putEtag: "uuid=abc"}, wantStatus: http.StatusOK, wantETag: "uuid=abc"},
+		{name: "412 on etag mismatch", ifMatch: "uuid=stale", mock: &mockSyncService{putErr: sync.ErrPreconditionFailed}, wantStatus: http.StatusPreconditionFailed},
 		{name: "500 on error", mock: &mockSyncService{putErr: errors.New("db")}, wantStatus: http.StatusInternalServerError},
 	}
 	for _, tt := range tests {

@@ -118,16 +118,13 @@ func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
 
 	etag, err := h.syncService.PutContent(r.Context(), apiKey, deviceFromRequest(r), r.Header.Get("If-Match"), requestData)
 	if err != nil {
-		switch {
-		case errors.Is(err, sync.ErrPreconditionFailed):
+		if errors.Is(err, sync.ErrPreconditionFailed) {
 			// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Match
 			w.WriteHeader(http.StatusPreconditionFailed)
-		case errors.Is(err, sync.ErrBadPayload):
-			h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "body is not a valid backup"}, http.StatusBadRequest)
-		default:
-			h.log.Error().Err(err).Msg("failed to store sync data")
-			h.encoder.StatusInternalError(w)
+			return
 		}
+		h.log.Error().Err(err).Msg("failed to store sync data")
+		h.encoder.StatusInternalError(w)
 		return
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/merge"
+	"github.com/google/uuid"
 )
 
 const (
@@ -52,6 +53,11 @@ type Snapshot struct {
 }
 
 func etagFor(seq int64) string { return "seq=" + strconv.FormatInt(seq, 10) }
+
+// rawETag mints an etag for a raw v1 upload. The wire format ("uuid=<uuid4>", unquoted)
+// matches pre-1.3 servers: v1 clients echo the value verbatim, and the prefix keeps raw
+// etags distinguishable from the render cache's "seq=<n>".
+func rawETag() string { return "uuid=" + uuid.NewString() }
 
 // keyLocks serialises merges per API key inside this process; the database transaction
 // covers other instances.
@@ -165,13 +171,62 @@ func (s *service) Snapshot(ctx context.Context, apiKey string, cursor int64) (*S
 	return snap, err
 }
 
-// GetContent serves v1 clients the rendered backup. ErrNoData when nothing was ever stored.
+// GetContent serves v1 clients their own uploaded bytes verbatim while no other device
+// has written since; only then does it fall back to the rendered backup. v1 clients merge
+// remote and local state themselves, so fidelity of the stored bytes matters more than
+// server-side merging. ErrNoData when nothing was ever stored.
 func (s *service) GetContent(ctx context.Context, apiKey string) (*Snapshot, error) {
-	return s.Snapshot(ctx, apiKey, 0)
+	defer s.locks.lock(apiKey)()
+
+	var snap *Snapshot
+	err := s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		if _, err := s.ensureMigrated(ctx, tx); err != nil {
+			return err
+		}
+		raw, err := tx.RawBlob(ctx)
+		if err != nil {
+			return err
+		}
+		if raw != nil && raw.Seq == tx.Seq() {
+			snap = &Snapshot{Data: raw.Data, ETag: raw.ETag, Cursor: tx.Seq()}
+			return nil
+		}
+		if !tx.Exists() {
+			return ErrNoData
+		}
+		rc, err := s.currentRender(ctx, tx)
+		if err != nil {
+			return err
+		}
+		snap = &Snapshot{Data: rc.Data, ETag: rc.ETag, Cursor: tx.Seq()}
+		return nil
+	})
+	return snap, err
 }
 
-// PutContent is the v1 upload: the blob is merged like a full v2 request from the "legacy"
-// device. ErrPreconditionFailed when ifMatch is set and differs from the current ETag.
+// v1ETag is the etag a v1 GET would return right now, "" when there is no data yet.
+func (s *service) v1ETag(ctx context.Context, tx domain.SyncStoreTx) (string, error) {
+	raw, err := tx.RawBlob(ctx)
+	if err != nil {
+		return "", err
+	}
+	if raw != nil && raw.Seq == tx.Seq() {
+		return raw.ETag, nil
+	}
+	if !tx.Exists() {
+		return "", nil
+	}
+	rc, err := s.currentRender(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	return rc.ETag, nil
+}
+
+// PutContent is the v1 upload: the bytes are stored verbatim as the authoritative blob
+// (v1 clients merge remote and local themselves, so the upload is already the merged
+// state) and imported into the item store on a best-effort basis for v2 devices.
+// ErrPreconditionFailed when ifMatch is set and differs from the current ETag.
 func (s *service) PutContent(ctx context.Context, apiKey string, dev domain.DeviceInfo, ifMatch string, data []byte) (string, error) {
 	s.warnLegacy(apiKey, dev)
 	defer s.locks.lock(apiKey)()
@@ -182,43 +237,37 @@ func (s *service) PutContent(ctx context.Context, apiKey string, dev domain.Devi
 			return err
 		}
 		if ifMatch != "" {
-			rc, err := tx.RenderCache(ctx)
+			cur, err := s.v1ETag(ctx, tx)
 			if err != nil {
 				return err
 			}
-			if rc == nil || rc.ETag != ifMatch {
+			if cur == "" || cur != ifMatch {
 				return ErrPreconditionFailed
 			}
 		}
 
-		b, err := backup.Decode(data)
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrBadPayload, err)
-		}
 		device := dev.Key()
 		if device == "" {
 			device = deviceLegacy
 		}
-		res, err := s.mergeBackup(ctx, tx, b, device, nil)
-		if err != nil {
-			return err
-		}
-		startSeq := tx.Seq()
-		newSeq, err := tx.Apply(ctx, res, device)
-		if err != nil {
-			return err
-		}
-		if newSeq != startSeq {
-			if err := s.refreshRenderCache(ctx, tx, false, nil); err != nil {
+		// import failures must not fail the request: 1.1.14 accepted arbitrary bytes, and
+		// the raw blob below is what v1 devices actually exchange
+		if b, err := backup.Decode(data); err != nil {
+			s.log.Error().Err(err).Msg("v1 payload does not decode, storing it verbatim without importing")
+		} else if res, err := s.mergeBackup(ctx, tx, b, device, nil); err != nil {
+			if !errors.Is(err, ErrBadPayload) {
 				return err
 			}
-		}
-		rc, err := s.currentRender(ctx, tx)
-		if err != nil {
+			s.log.Error().Err(err).Msg("v1 payload could not be split, storing it verbatim without importing")
+		} else if _, err := tx.Apply(ctx, res, device); err != nil {
 			return err
 		}
-		etag = rc.ETag
-		return tx.SetDeviceCursor(ctx, domain.DeviceCursor{Device: dev, Cursor: newSeq, Protocol: ProtocolV1})
+
+		etag = rawETag()
+		if err := tx.SetRawBlob(ctx, data, etag, tx.Seq()); err != nil {
+			return err
+		}
+		return tx.SetDeviceCursor(ctx, domain.DeviceCursor{Device: domain.DeviceInfo{ID: device, Name: dev.Name}, Cursor: tx.Seq(), Protocol: ProtocolV1})
 	})
 	return etag, err
 }
@@ -248,11 +297,10 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		if _, err := tx.Apply(ctx, res, deviceRestore); err != nil {
 			return err
 		}
-		if err := s.refreshRenderCache(ctx, tx, false, nil); err != nil {
-			return err
-		}
-		etag = etagFor(tx.Seq())
-		return nil
+		// the restored payload becomes the raw blob so v1 devices get it byte-for-byte;
+		// the render refreshes lazily on the next v2 read
+		etag = rawETag()
+		return tx.SetRawBlob(ctx, data, etag, tx.Seq())
 	})
 	if err != nil {
 		return nil, err
@@ -260,23 +308,34 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 	return &etag, nil
 }
 
-// ensureMigrated imports a pre-v2 blob into the item store on first contact. Returns true
-// when an import happened in this call.
+// ensureMigrated imports a pre-v2 blob into the item store on first contact, first
+// promoting it to the raw blob (original bytes and etag) so v1 clients keep receiving it
+// verbatim even when it cannot be decoded. Returns true when an import happened in this call.
 func (s *service) ensureMigrated(ctx context.Context, tx domain.SyncStoreTx) (bool, error) {
 	if tx.Exists() {
 		return false, nil
 	}
-	rc, err := tx.RenderCache(ctx)
+	raw, err := tx.RawBlob(ctx)
 	if err != nil {
 		return false, err
 	}
-	if rc == nil || rc.RenderedSeq != nil {
-		return false, nil
+	if raw == nil {
+		rc, err := tx.RenderCache(ctx)
+		if err != nil {
+			return false, err
+		}
+		if rc == nil || rc.RenderedSeq != nil {
+			return false, nil
+		}
+		if err := tx.SetRawBlob(ctx, rc.Data, rc.ETag, tx.Seq()); err != nil {
+			return false, err
+		}
+		raw = &domain.RawBlob{Data: rc.Data, ETag: rc.ETag, Seq: tx.Seq()}
 	}
 
-	b, err := backup.Decode(rc.Data)
+	b, err := backup.Decode(raw.Data)
 	if err != nil {
-		// keep serving the raw blob to v1 clients; the store starts empty
+		// the raw blob keeps being served verbatim to v1 clients; the store stays empty
 		s.log.Error().Err(err).Msg("legacy sync payload cannot be decoded, starting with an empty item store")
 		return false, nil
 	}
@@ -288,7 +347,7 @@ func (s *service) ensureMigrated(ctx context.Context, tx domain.SyncStoreTx) (bo
 	if err != nil {
 		return false, err
 	}
-	if err := tx.MarkRendered(ctx, seq); err != nil {
+	if err := tx.MarkRawCurrent(ctx, seq); err != nil {
 		return false, err
 	}
 	s.log.Info().Int("manga", len(b.BackupManga)).Int("categories", len(b.BackupCategories)).Msg("imported legacy sync payload into the item store")
