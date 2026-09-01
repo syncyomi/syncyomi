@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
@@ -36,11 +37,14 @@ type mockSyncService struct {
 	reportedDevice domain.DeviceInfo
 	accessDevice   domain.DeviceInfo
 	accessWrite    bool
+	accessProto    string
 	accessCalls    int
 
 	adminErr    error
 	history     []domain.SyncHistoryEntry
+	historyData []byte
 	devices     []domain.SyncDevice
+	deletedID   int
 	status      *domain.SyncStatus
 	restoreEtag *string
 }
@@ -77,9 +81,10 @@ func (m *mockSyncService) ReportSyncEvent(ctx context.Context, apiKey string, ev
 	return m.reportEventErr
 }
 
-func (m *mockSyncService) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool) {
+func (m *mockSyncService) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool, protocol string) {
 	m.accessDevice = dev
 	m.accessWrite = write
+	m.accessProto = protocol
 	m.accessCalls++
 }
 
@@ -99,6 +104,24 @@ func (m *mockSyncService) RestoreHistory(ctx context.Context, apiKey string, id 
 
 func (m *mockSyncService) ListDevices(ctx context.Context, apiKey string) ([]domain.SyncDevice, error) {
 	return m.devices, m.adminErr
+}
+
+func (m *mockSyncService) DeleteDevice(ctx context.Context, apiKey string, id int) error {
+	if m.adminErr != nil {
+		return m.adminErr
+	}
+	m.deletedID = id
+	return nil
+}
+
+func (m *mockSyncService) GetHistoryData(ctx context.Context, apiKey string, id int) ([]byte, error) {
+	if m.adminErr != nil {
+		return nil, m.adminErr
+	}
+	if m.historyData == nil {
+		return nil, domain.ErrNotFound
+	}
+	return m.historyData, nil
 }
 
 func (m *mockSyncService) GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error) {
@@ -174,9 +197,8 @@ func TestSyncHandler_putContent(t *testing.T) {
 		wantStatus int
 		wantETag   string
 	}{
-		{name: "put returns new etag", mock: &mockSyncService{putEtag: "seq=2"}, wantStatus: http.StatusOK, wantETag: "seq=2"},
-		{name: "412 on etag mismatch", ifMatch: "seq=1", mock: &mockSyncService{putErr: sync.ErrPreconditionFailed}, wantStatus: http.StatusPreconditionFailed},
-		{name: "400 on undecodable payload", mock: &mockSyncService{putErr: sync.ErrBadPayload}, wantStatus: http.StatusBadRequest},
+		{name: "put returns new etag", mock: &mockSyncService{putEtag: "uuid=abc"}, wantStatus: http.StatusOK, wantETag: "uuid=abc"},
+		{name: "412 on etag mismatch", ifMatch: "uuid=stale", mock: &mockSyncService{putErr: sync.ErrPreconditionFailed}, wantStatus: http.StatusPreconditionFailed},
 		{name: "500 on error", mock: &mockSyncService{putErr: errors.New("db")}, wantStatus: http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
@@ -351,6 +373,51 @@ func TestSyncHandler_adminRoutes(t *testing.T) {
 			newAdmin(mock).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 			if rec.Code != http.StatusOK || !bytes.HasPrefix(bytes.TrimSpace(rec.Body.Bytes()), []byte("[")) {
 				t.Errorf("%s = %v %q", path, rec.Code, rec.Body.String())
+			}
+		}
+	})
+
+	t.Run("delete device", func(t *testing.T) {
+		for _, tc := range []struct {
+			path string
+			mock *mockSyncService
+			want int
+		}{
+			{"/key1/devices/3", &mockSyncService{}, http.StatusNoContent},
+			{"/key1/devices/abc", &mockSyncService{}, http.StatusBadRequest},
+			{"/key1/devices/9", &mockSyncService{adminErr: domain.ErrNotFound}, http.StatusNotFound},
+		} {
+			rec := httptest.NewRecorder()
+			newAdmin(tc.mock).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Errorf("%s = %v, want %v", tc.path, rec.Code, tc.want)
+			}
+		}
+	})
+
+	t.Run("download history", func(t *testing.T) {
+		gz := gzipBytes(t, []byte("backup"))
+		for _, tc := range []struct {
+			path     string
+			mock     *mockSyncService
+			want     int
+			wantName string
+		}{
+			{"/key1/history/1/download", &mockSyncService{historyData: gz}, http.StatusOK, `filename="sync-history-1.tachibk"`},
+			{"/key1/history/1/download", &mockSyncService{historyData: []byte("raw")}, http.StatusOK, `filename="sync-history-1.bin"`},
+			{"/key1/history/2/download", &mockSyncService{}, http.StatusNotFound, ""},
+			{"/key1/history/abc/download", &mockSyncService{}, http.StatusBadRequest, ""},
+		} {
+			rec := httptest.NewRecorder()
+			newAdmin(tc.mock).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Errorf("%s = %v, want %v", tc.path, rec.Code, tc.want)
+			}
+			if tc.wantName != "" && !strings.Contains(rec.Header().Get("Content-Disposition"), tc.wantName) {
+				t.Errorf("%s disposition = %q, want %q", tc.path, rec.Header().Get("Content-Disposition"), tc.wantName)
+			}
+			if tc.want == http.StatusOK && !bytes.Equal(rec.Body.Bytes(), tc.mock.historyData) {
+				t.Errorf("%s body mismatch", tc.path)
 			}
 		}
 	})

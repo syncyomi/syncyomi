@@ -5,12 +5,15 @@ the combinations behave.
 
 ## Compatibility
 
-| Client                                | Server < 1.3                                | Server ≥ 1.3                         |
-| ------------------------------------- | ------------------------------------------- | ------------------------------------ |
-| v1 client (`GET`/`PUT /sync/content`) | works, client-side merge                    | works, server-side merge, deprecated |
-| v2 client                             | falls back to v1 (capabilities returns 404) | v2                                   |
+| Client                                | Server < 1.3                                | Server ≥ 1.6                                        |
+| ------------------------------------- | ------------------------------------------- | --------------------------------------------------- |
+| v1 client (`GET`/`PUT /sync/content`) | works, client-side merge                    | works, client-side merge (blob echo), deprecated    |
+| v2 client                             | falls back to v1 (capabilities returns 404) | v2                                                  |
 
-A library can be shared by v1 and v2 clients at the same time.
+A library can be shared by v1 and v2 clients at the same time. Between v1 clients the server
+echoes the uploaded bytes verbatim, so their client-side merge behaves exactly as on old
+servers; only when a v2 device writes on the same key does a v1 `GET` receive a
+server-rendered backup — that is the one case where the zero-default warning below matters.
 
 ## Implementing v2
 

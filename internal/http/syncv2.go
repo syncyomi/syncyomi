@@ -89,7 +89,7 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.syncService.RecordContentAccess(ctx, r.Header.Get("X-API-Token"), dev, true)
+	h.syncService.RecordContentAccess(ctx, r.Header.Get("X-API-Token"), dev, true, sync.ProtocolV2)
 
 	w.Header().Set(headerCursor, strconv.FormatInt(resp.Cursor, 10))
 	w.Header().Set(headerChanged, strconv.FormatBool(resp.Changed))
@@ -122,7 +122,7 @@ func (h syncHandler) snapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.syncService.RecordContentAccess(r.Context(), r.Header.Get("X-API-Token"), deviceFromRequest(r), false)
+	h.syncService.RecordContentAccess(r.Context(), r.Header.Get("X-API-Token"), deviceFromRequest(r), false, sync.ProtocolV2)
 
 	w.Header().Set(headerCursor, strconv.FormatInt(snap.Cursor, 10))
 	w.Header().Set("ETag", snap.ETag)

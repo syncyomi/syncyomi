@@ -35,11 +35,32 @@ Back up the config directory (SQLite) or take a PostgreSQL dump. Sync payloads a
 
 ## Rolling back sync data
 
-Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web UI, open *Settings → API Keys → Details* for the key and pick *Restore* on an older entry. The restored payload becomes current under a new ETag; each device downloads it on its next sync (a device that tries to upload with a stale `If-Match` gets `412` and re-syncs).
+Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web UI, open *Settings → API Keys → Details* for the key and pick *Restore* on an older entry. The restored payload becomes current under a new ETag; each device downloads it on its next sync (a device that tries to upload with a stale `If-Match` gets `412` and re-syncs). Each entry can also be downloaded; entries marked *device upload* are complete backup files the apps can import directly.
 
 The same view shows which devices have synced with the key, when they were last seen and the last status they reported. Devices appear once they report sync events or send the `X-Device-ID`/`X-Device-Name` headers.
 
 ## Upgrade notes
+
+### 1.6.0
+
+- The v1 endpoints store and serve client uploads byte-for-byte again, as before 1.3.0:
+  `PUT /api/sync/content` keeps the exact bytes (and imports them into the item store on a
+  best-effort basis), `GET` echoes them until a v2 device writes. v1 ETags return to
+  `uuid=…`. Payloads that do not decode are accepted and served unchanged, like 1.1.x.
+- A pre-1.3 payload that cannot be decoded is no longer answered with 404 or overwritten by
+  a later upload; it is served verbatim until a device pushes a fresh library.
+- Equal-version conflicts now fall back to the payloads' `last_modified_at`, so clients that
+  never bump `version` (v1-era builds) propagate changes instead of being stuck at their
+  first upload forever.
+- If a library got stuck while syncing v1 clients through 1.3/1.4: restore a history entry
+  with a `uuid=…` etag (a device upload) from *Settings → API Keys → Details*, or push a
+  full library from the device with the most complete state.
+- Schema: `sync_data` gains `raw_data`/`raw_etag`/`raw_seq`, `sync_item` gains
+  `modified_at`, `sync_status` gains `last_protocol`. The migration runs automatically.
+- Web UI: keys with v1 devices are flagged with a banner and *legacy* chips; devices show
+  how many merges they are behind; history entries show their origin and can be downloaded;
+  stale devices can be forgotten. New admin endpoints `DELETE …/devices/{id}` and
+  `GET …/history/{id}/download`.
 
 ### 1.3.1
 

@@ -46,7 +46,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, &merge.Item{Kind: merge.KindCategory, Key: key, Name: c.Name, Version: c.Version, Payload: payload})
+		items = append(items, &merge.Item{Kind: merge.KindCategory, Key: key, Name: c.Name, Version: c.Version, ModifiedAt: c.GetLastModifiedAt(), Payload: payload})
 	}
 
 	for _, m := range b.BackupManga {
@@ -67,7 +67,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, &merge.Item{Kind: merge.KindManga, Key: key, Version: m.Version, Refs: refs, Payload: payload})
+		items = append(items, &merge.Item{Kind: merge.KindManga, Key: key, Version: m.Version, ModifiedAt: m.GetLastModifiedAt(), Refs: refs, Payload: payload})
 
 		for _, ch := range m.Chapters {
 			if ch.Url == "" {
@@ -77,7 +77,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, Payload: payload})
+			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: ch.GetLastModifiedAt(), Payload: payload})
 		}
 	}
 
@@ -126,8 +126,8 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 }
 
 // dedupe keeps one item per (kind, key): backups can repeat a chapter url or a category,
-// and a single write must not touch the same row twice. The highest version wins, ties go
-// to the later occurrence.
+// and a single write must not touch the same row twice. The highest version wins, version
+// ties fall to the newer ModifiedAt, and full ties go to the later occurrence.
 func dedupe(items []*merge.Item) []*merge.Item {
 	type id struct {
 		kind merge.Kind
@@ -138,7 +138,8 @@ func dedupe(items []*merge.Item) []*merge.Item {
 	for _, it := range items {
 		k := id{it.Kind, it.Key}
 		if i, ok := index[k]; ok {
-			if it.Version >= out[i].Version {
+			cur := out[i]
+			if it.Version > cur.Version || (it.Version == cur.Version && it.ModifiedAt >= cur.ModifiedAt) {
 				out[i] = it
 			}
 			continue

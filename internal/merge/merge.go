@@ -5,7 +5,8 @@ import "bytes"
 // Merge applies the client's items to the store state and decides what to write and what to send back. Absence never means deletion: only explicit tombstones delete.
 //
 // Rules (same as TachiyomiSY's client merge, minus the absence inference):
-//   - versioned kinds (manga, chapter, category): higher version wins, tie -> server keeps
+//   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
+//     newer ModifiedAt wins, and only a full tie keeps the server copy
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
 func Merge(store Store, req Request) *Result {
@@ -75,6 +76,8 @@ func (m *merger) category(it *Item) {
 		m.write(it)
 	case it.Version < cur.Version:
 		m.returnItem(cur)
+	default:
+		m.tiebreak(it, cur)
 	}
 }
 
@@ -102,9 +105,22 @@ func (m *merger) versioned(it *Item) {
 		m.write(it)
 	case it.Version < cur.Version:
 		m.returnItem(cur)
+	default:
+		m.tiebreak(it, cur)
 	}
-	// equal version: server keeps its copy; differences without a version bump are
-	// not synced (the client's SQL triggers bump the version for anything that matters)
+}
+
+// tiebreak resolves an equal-version conflict by ModifiedAt. Clients whose SQL triggers
+// bump Version never land here with a real difference, but clients that leave Version at
+// zero (v1-era builds) rely on this to propagate anything after their first upload.
+func (m *merger) tiebreak(it, cur *Item) {
+	switch {
+	case it.ModifiedAt > cur.ModifiedAt:
+		m.write(it)
+	case it.ModifiedAt < cur.ModifiedAt:
+		m.returnItem(cur)
+	}
+	// full tie: server keeps its copy
 }
 
 func (m *merger) section(it *Item) {
@@ -121,21 +137,4 @@ func (m *merger) write(it *Item) {
 func (m *merger) returnItem(cur *Item) {
 	m.res.ReturnKeys[cur.Kind] = append(m.res.ReturnKeys[cur.Kind], cur.Key)
 	m.res.ChangedForClient = true
-}
-
-func sameRefs(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	seen := make(map[string]int, len(a))
-	for _, x := range a {
-		seen[x]++
-	}
-	for _, x := range b {
-		if seen[x] == 0 {
-			return false
-		}
-		seen[x]--
-	}
-	return true
 }

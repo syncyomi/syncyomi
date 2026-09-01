@@ -97,6 +97,10 @@ export const APIClient = {
       appClient.Post<{ etag: string }>(
         `api/sync/admin/${key}/history/${id}/restore`,
       ),
+    deleteDevice: (key: string, id: number) =>
+      appClient.Delete(`api/sync/admin/${key}/devices/${id}`),
+    downloadHistoryUrl: (key: string, id: number) =>
+      `${baseUrl()}api/sync/admin/${key}/history/${id}/download`,
   },
   config: {
     get: () => appClient.Get<Config>("api/config"),

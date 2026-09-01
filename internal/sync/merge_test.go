@@ -1,7 +1,9 @@
 package sync
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
@@ -209,66 +211,302 @@ func TestMerge_LegacyImportAndV1(t *testing.T) {
 	legacy := &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/legacy", 3, true, chapterOf("/c", 1, true))}, BackupCategories: []*pb.BackupCategory{{Name: "Old", Uid: 5}}}
 	raw, _ := backup.Encode(legacy)
 	repo := database.NewSyncRepo(logger.Mock(), db, 3)
-	if _, err := repo.SetSyncData(ctx, "key1", raw); err != nil {
+	legacyETag, err := repo.SetSyncData(ctx, "key1", raw)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	// v1 GET keeps working and serves it
+	// v1 GET serves the legacy blob byte-for-byte under its original etag
 	snap, err := svc.GetContent(ctx, "key1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := backup.Decode(snap.Data)
-	if len(got.BackupManga) != 1 || got.BackupManga[0].Url != "/legacy" {
-		t.Fatalf("v1 get after import = %v", got.BackupManga)
+	if !bytes.Equal(snap.Data, raw) {
+		t.Fatal("v1 get did not echo the legacy blob verbatim")
+	}
+	if snap.ETag != *legacyETag {
+		t.Errorf("etag after promotion = %q, want the original %q", snap.ETag, *legacyETag)
 	}
 
-	// a v2 client starting fresh gets the imported data and is told to do a full sync next time
+	// a v2 client starting fresh gets the imported data
 	resp := sync2(t, svc, "N", 0, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(2, "/new", 1, true)}})
 	if urls(resp.Backup)["/legacy"] == nil {
 		t.Errorf("imported manga missing from v2 response: %v", resp.Backup.BackupManga)
 	}
 
-	// a v1 client uploads a client-merged blob: merged, not replaced, and If-Match is honoured
-	v1blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(3, "/v1only", 1, true)}})
+	// the v2 write made the raw blob stale: v1 GET falls back to a render of everything
+	snap, err = svc.GetContent(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(snap.ETag, "seq=") {
+		t.Errorf("render fallback etag = %q", snap.ETag)
+	}
+	got, _ := backup.Decode(snap.Data)
+	if len(got.BackupManga) != 2 {
+		t.Fatalf("render fallback manga = %v", got.BackupManga)
+	}
+
+	// a v1 client uploads its client-merged state: If-Match honoured, then echoed verbatim
+	v1blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{
+		mangaOf(1, "/legacy", 3, true, chapterOf("/c", 1, true)), mangaOf(2, "/new", 1, true), mangaOf(3, "/v1only", 1, true),
+	}})
 	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{Name: "Old phone"}, "uuid=stale", v1blob); err != ErrPreconditionFailed {
 		t.Errorf("stale If-Match err = %v", err)
 	}
-	snap, _ = svc.GetContent(ctx, "key1")
 	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{Name: "Old phone"}, snap.ETag, v1blob)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.HasPrefix(etag, "uuid=") {
+		t.Errorf("v1 put etag = %q", etag)
 	}
 	snap, _ = svc.GetContent(ctx, "key1")
 	if snap.ETag != etag {
 		t.Errorf("etag after put %q != get %q", etag, snap.ETag)
 	}
-	got, _ = backup.Decode(snap.Data)
-	if len(got.BackupManga) != 3 {
-		t.Errorf("v1 put replaced instead of merged: %d manga", len(got.BackupManga))
-	}
-	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", []byte("garbage")); err == nil {
-		t.Error("garbage accepted")
+	if !bytes.Equal(snap.Data, v1blob) {
+		t.Error("v1 get did not echo the uploaded blob verbatim")
 	}
 
-	// history captured the renders; restoring the first one rebuilds the store
+	// the upload was also imported for v2 devices
+	resp = sync2(t, svc, "N", resp.Cursor, false, &pb.Backup{})
+	if urls(resp.Backup)["/v1only"] == nil {
+		t.Errorf("v1 upload missing from v2 delta: %v", resp.Backup.BackupManga)
+	}
+
+	// garbage is stored and echoed like 1.1.14, never imported
+	gtag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", []byte("garbage"))
+	if err != nil {
+		t.Fatalf("garbage rejected: %v", err)
+	}
+	snap, _ = svc.GetContent(ctx, "key1")
+	if string(snap.Data) != "garbage" || snap.ETag != gtag {
+		t.Errorf("garbage echo = %q etag %q want %q", snap.Data, snap.ETag, gtag)
+	}
+	v2snap, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v2got, _ := backup.Decode(v2snap.Data); len(v2got.BackupManga) != 3 {
+		t.Errorf("garbage leaked into the item store: %v", v2got.BackupManga)
+	}
+
+	// history captured the uploads; restoring one serves those bytes verbatim again
 	history, _ := svc.ListHistory(ctx, "key1")
 	if len(history) < 2 {
 		t.Fatalf("history = %v", history)
 	}
-	oldest := history[len(history)-1]
-	if _, err := svc.RestoreHistory(ctx, "key1", oldest.ID); err != nil {
+	var restoreID int
+	for _, h := range history {
+		if h.ETag == etag {
+			restoreID = h.ID
+		}
+	}
+	if restoreID == 0 {
+		t.Fatalf("v1 upload not in history: %v", history)
+	}
+	if _, err := svc.RestoreHistory(ctx, "key1", restoreID); err != nil {
 		t.Fatal(err)
 	}
 	snap, _ = svc.GetContent(ctx, "key1")
-	got, _ = backup.Decode(snap.Data)
-	if len(got.BackupManga) >= 3 {
-		t.Errorf("restore did not rebuild the store: %d manga", len(got.BackupManga))
+	if !bytes.Equal(snap.Data, v1blob) {
+		t.Error("restore did not serve the restored payload verbatim")
 	}
 	// devices with an old cursor get everything again
 	resp = sync2(t, svc, "N", resp.Cursor, false, &pb.Backup{})
 	if !resp.Changed || len(resp.Backup.BackupManga) == 0 {
 		t.Errorf("after restore delta = changed=%v %d manga", resp.Changed, len(resp.Backup.BackupManga))
+	}
+}
+
+// An undecodable pre-v2 blob must keep being served verbatim forever and never be
+// replaced by a render, even as v1 and v2 writes continue on the same key.
+func TestV1_UndecodableLegacyPreserved(t *testing.T) {
+	svc, db := newTestService(t)
+	ctx := context.Background()
+
+	garbage := []byte{0xde, 0xad, 0xbe, 0xef, 0x01}
+	repo := database.NewSyncRepo(logger.Mock(), db, 3)
+	gtag, err := repo.SetSyncData(ctx, "key1", garbage)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.GetContent(ctx, "key1")
+	if err != nil {
+		t.Fatalf("v1 get on undecodable legacy blob: %v", err)
+	}
+	if !bytes.Equal(snap.Data, garbage) || snap.ETag != *gtag {
+		t.Fatal("undecodable legacy blob not served verbatim")
+	}
+
+	// v2 has nothing: the store is empty, but the blob must survive that
+	if _, err := svc.Snapshot(ctx, "key1", 0); err != ErrNoData {
+		t.Errorf("v2 snapshot on empty store err = %v, want ErrNoData", err)
+	}
+	snap, err = svc.GetContent(ctx, "key1")
+	if err != nil || !bytes.Equal(snap.Data, garbage) {
+		t.Fatalf("legacy blob lost after v2 snapshot: %v", err)
+	}
+
+	// a valid v1 upload takes over without having destroyed anything in between
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, _ = svc.GetContent(ctx, "key1")
+	if !bytes.Equal(snap.Data, blob) || snap.ETag != etag {
+		t.Error("valid upload after undecodable legacy not echoed")
+	}
+}
+
+// A v1 upload must not disturb what v2 clients see beyond its imported items, and a
+// v2 write makes the raw blob stale until the next v1 upload.
+func TestV1_V2Interplay(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true)}})
+	before, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// a v1 upload that adds nothing new: the v2 snapshot must be untouched
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+	after, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before.Data, after.Data) || before.ETag != after.ETag {
+		t.Error("no-op v1 upload changed the v2 snapshot")
+	}
+
+	// the raw blob is current, so v1 gets the echo
+	snap, _ := svc.GetContent(ctx, "key1")
+	if !bytes.Equal(snap.Data, blob) {
+		t.Error("v1 get did not echo while raw is current")
+	}
+
+	// a v2 write invalidates it: v1 falls back to the render until the next upload
+	sync2(t, svc, "B", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(2, "/b", 1, true)}})
+	snap, _ = svc.GetContent(ctx, "key1")
+	if !strings.HasPrefix(snap.ETag, "seq=") {
+		t.Errorf("etag after v2 write = %q, want render fallback", snap.ETag)
+	}
+	if got, _ := backup.Decode(snap.Data); len(got.BackupManga) != 2 {
+		t.Errorf("render fallback = %v", got.BackupManga)
+	}
+	etag2, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, snap.ETag, blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, _ = svc.GetContent(ctx, "key1")
+	if !bytes.Equal(snap.Data, blob) || snap.ETag != etag2 {
+		t.Error("echo did not resume after v1 upload")
+	}
+}
+
+// Restoring an entry that decodes to an empty backup writes no items and cannot bump seq;
+// the render must still be rewritten or v2 readers keep the pre-restore content.
+func TestRestore_EmptyBackupRefreshesRender(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	empty, _ := backup.Encode(&pb.Backup{})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", empty); err != nil {
+		t.Fatal(err)
+	}
+	full, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", full); err != nil {
+		t.Fatal(err)
+	}
+	if snap, err := svc.Snapshot(ctx, "key1", 0); err != nil {
+		t.Fatal(err)
+	} else if got, _ := backup.Decode(snap.Data); len(got.BackupManga) != 1 {
+		t.Fatalf("pre-restore snapshot = %v", got.BackupManga)
+	}
+
+	history, _ := svc.ListHistory(ctx, "key1")
+	emptyID := history[len(history)-1].ID
+	if _, err := svc.RestoreHistory(ctx, "key1", emptyID); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := backup.Decode(snap.Data); len(got.BackupManga) != 0 {
+		t.Errorf("v2 snapshot after empty restore still has %v", got.BackupManga)
+	}
+	v1snap, _ := svc.GetContent(ctx, "key1")
+	if !bytes.Equal(v1snap.Data, empty) {
+		t.Error("v1 get did not serve the restored empty payload")
+	}
+}
+
+// A v1 phone shows up twice — an anonymous upload row and a named event row — unless the
+// event tags the named row with the protocol.
+func TestV1_EventTagsDeviceProtocol(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+	// the handler records the access (and with it the protocol) after every v1 PUT
+	svc.RecordContentAccess(ctx, "key1", domain.DeviceInfo{}, true, ProtocolV1)
+	if err := svc.ReportSyncEvent(ctx, "key1", "SYNC_SUCCESS", domain.DeviceInfo{Name: "My Phone"}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := svc.ListDevices(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]string{}
+	for _, d := range devices {
+		byID[d.DeviceID] = d.Protocol
+	}
+	if byID["My Phone"] != "v1" {
+		t.Errorf("event device protocol = %q, want v1 (devices: %+v)", byID["My Phone"], devices)
+	}
+
+	// a later v2 sync from the same device overrides the tag
+	sync2(t, svc, "My Phone", 0, true, &pb.Backup{})
+	devices, _ = svc.ListDevices(ctx, "key1")
+	for _, d := range devices {
+		if d.DeviceID == "My Phone" && d.Protocol != "v2" {
+			t.Errorf("protocol after v2 sync = %q", d.Protocol)
+		}
+	}
+}
+
+func TestV1_IfMatch(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+
+	// If-Match against an empty key fails like 1.1.14 did
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "uuid=anything", blob); err != ErrPreconditionFailed {
+		t.Errorf("If-Match on empty key err = %v", err)
+	}
+	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "uuid=stale", blob); err != ErrPreconditionFailed {
+		t.Errorf("stale If-Match err = %v", err)
+	}
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, etag, blob); err != nil {
+		t.Errorf("matching If-Match err = %v", err)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"github.com/rs/zerolog"
 )
 
@@ -229,7 +230,7 @@ func TestAPIRepo_DeleteCascadesSyncData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := syncRepo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d"}, "", "", ""); err != nil {
+	if err := syncRepo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d"}, "", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := apiRepo.Delete(ctx, "key1"); err != nil {
@@ -315,22 +316,22 @@ func TestSyncRepo_Devices(t *testing.T) {
 	repo := SyncRepo{log: zerolog.Nop(), db: db}
 	ctx := context.Background()
 
-	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{}, "", "", ""); err != nil {
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{}, "", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if n := countRows(t, db, "sync_device", "key1"); n != 0 {
 		t.Errorf("anonymous touch created %d rows", n)
 	}
 
-	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1", Name: "Phone"}, "SYNC_SUCCESS", "success", "done"); err != nil {
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1", Name: "Phone"}, "SYNC_SUCCESS", "success", "done", ""); err != nil {
 		t.Fatal(err)
 	}
 	// second touch with no name/event keeps what we know
-	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", ""); err != nil {
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// name-only device falls back to name as id
-	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{Name: "Tablet"}, "SYNC_STARTED", "running", ""); err != nil {
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{Name: "Tablet"}, "SYNC_STARTED", "running", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,6 +352,40 @@ func TestSyncRepo_Devices(t *testing.T) {
 	}
 	if tab := byID["Tablet"]; tab.DeviceName != "Tablet" || tab.LastStatus != "running" {
 		t.Errorf("tablet = %+v", tab)
+	}
+
+	// protocol fills once and later touches never change it (SetDeviceCursor owns updates)
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", "v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d1"}, "", "", "", "v2"); err != nil {
+		t.Fatal(err)
+	}
+	devices, _ = repo.ListDevices(ctx, "key1")
+	for _, d := range devices {
+		if d.DeviceID == "d1" && d.Protocol != "v1" {
+			t.Errorf("protocol = %q, want v1", d.Protocol)
+		}
+	}
+
+	// forget a device
+	var id int
+	for _, d := range devices {
+		if d.DeviceID == "d1" {
+			id = d.ID
+		}
+	}
+	if err := repo.DeleteDevice(ctx, "key1", id); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteDevice(ctx, "key1", id); !stderrors.Is(err, domain.ErrNotFound) {
+		t.Errorf("second delete err = %v, want ErrNotFound", err)
+	}
+	if devices, _ = repo.ListDevices(ctx, "key1"); len(devices) != 1 {
+		t.Errorf("devices after delete = %+v", devices)
 	}
 }
 
@@ -391,6 +426,18 @@ func TestSyncRepo_Status(t *testing.T) {
 		t.Errorf("data size = %d, want 5", st.DataSize)
 	}
 
+	// protocol sticks and empty never clears it
+	if err := repo.UpsertStatus(ctx, "key1", domain.SyncStatus{LastProtocol: "v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertStatus(ctx, "key1", domain.SyncStatus{LastStatus: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = repo.GetStatus(ctx, "key1")
+	if st.LastProtocol != "v1" {
+		t.Errorf("last_protocol = %q, want v1", st.LastProtocol)
+	}
+
 	// data only, no status row
 	insertTestAPIKey(t, db, "key2")
 	if _, err := repo.SetSyncData(ctx, "key2", []byte("ab")); err != nil {
@@ -399,6 +446,46 @@ func TestSyncRepo_Status(t *testing.T) {
 	st, err = repo.GetStatus(ctx, "key2")
 	if err != nil || st == nil || st.DataSize != 2 {
 		t.Errorf("data-only status = (%+v, %v)", st, err)
+	}
+}
+
+// GetStatus enriches the response with the server seq, item counts and the served
+// payload size (the raw v1 blob when one exists).
+func TestSyncRepo_StatusStoreFields(t *testing.T) {
+	store, db := newTestStore(t)
+	repo := SyncRepo{log: zerolog.Nop(), db: db, historyLimit: 3}
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(
+			&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Version: 1, Payload: []byte("c")},
+			&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 1, Payload: []byte("m")},
+			&merge.Item{Kind: merge.KindChapter, Key: "1|/m\x1f/c1", ParentKey: "1|/m", Version: 1, Payload: []byte("ch")},
+			&merge.Item{Kind: merge.KindChapter, Key: "1|/m\x1f/c2", ParentKey: "1|/m", Version: 1, Payload: []byte("ch")},
+		), "A"); err != nil {
+			return err
+		}
+		if err := tx.SetRenderCache(ctx, []byte("render!"), "seq=1", 1); err != nil {
+			return err
+		}
+		return tx.SetRawBlob(ctx, []byte("raw"), "uuid=a", 1)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := repo.GetStatus(ctx, "key1")
+	if err != nil || st == nil {
+		t.Fatalf("status = (%+v, %v)", st, err)
+	}
+	if st.Seq != 1 || st.MangaCount != 1 || st.ChapterCount != 2 || st.CategoryCount != 1 {
+		t.Errorf("store fields = seq=%d m=%d ch=%d cat=%d", st.Seq, st.MangaCount, st.ChapterCount, st.CategoryCount)
+	}
+	if st.DataSize != 3 {
+		t.Errorf("data size = %d, want the raw blob's 3", st.DataSize)
+	}
+	if st.HistoryLimit != 3 {
+		t.Errorf("history limit = %d", st.HistoryLimit)
 	}
 }
 
@@ -420,9 +507,10 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	// rewind to the previous version by dropping what the last migration added
 	previous := len(sqliteMigrations) - 1
 	for _, stmt := range []string{
-		"DROP TABLE sync_item", "DROP TABLE sync_state",
-		"ALTER TABLE sync_device DROP COLUMN last_cursor", "ALTER TABLE sync_device DROP COLUMN protocol",
-		"ALTER TABLE sync_data DROP COLUMN rendered_seq",
+		"ALTER TABLE sync_data DROP COLUMN raw_data", "ALTER TABLE sync_data DROP COLUMN raw_etag",
+		"ALTER TABLE sync_data DROP COLUMN raw_seq",
+		"ALTER TABLE sync_item DROP COLUMN modified_at",
+		"ALTER TABLE sync_status DROP COLUMN last_protocol",
 		fmt.Sprintf("PRAGMA user_version = %d", previous),
 	} {
 		if _, err := db.handler.Exec(stmt); err != nil {
@@ -452,7 +540,7 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	if err != nil || !bytes.Equal(data, []byte{1}) || *etag != "uuid=old" {
 		t.Errorf("existing data lost across migration: %v %v %v", data, etag, err)
 	}
-	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d"}, "", "", ""); err != nil {
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "d"}, "", "", "", ""); err != nil {
 		t.Errorf("new table unusable after migration: %v", err)
 	}
 	if _, err := repo.SetSyncData(ctx, "key1", []byte{2}); err != nil {
@@ -472,7 +560,7 @@ func TestSyncRepo_TimestampsAreUTC(t *testing.T) {
 	repo := SyncRepo{log: zerolog.Nop(), db: db, historyLimit: 3}
 	ctx := context.Background()
 
-	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "dev", Name: "Phone"}, "SYNC_SUCCESS", "success", ""); err != nil {
+	if err := repo.TouchDevice(ctx, "key1", domain.DeviceInfo{ID: "dev", Name: "Phone"}, "SYNC_SUCCESS", "success", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.SetSyncData(ctx, "key1", []byte("abc")); err != nil {

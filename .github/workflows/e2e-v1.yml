@@ -1,0 +1,58 @@
+name: e2e-v1
+
+# The v1 protocol suite is server-only (no emulators, APKs or Suwayomi) and runs in
+# minutes; it stays deliberately separate from the full e2e workflow.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "internal/**"
+      - "proto/**"
+      - "e2e/**"
+      - "main.go"
+      - "go.mod"
+      - ".github/workflows/e2e-v1.yml"
+
+concurrency:
+  group: e2e-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-v1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+
+      - name: Set up corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web/dist
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          CI= pnpm run build
+
+      - name: Run v1 E2E suite
+        run: e2e/scripts/run-e2e-v1.sh
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-v1-failure-artifacts
+          path: e2e/artifacts/
+          retention-days: 7

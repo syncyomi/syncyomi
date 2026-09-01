@@ -122,6 +122,46 @@ func TestHigherVersionWinsTieServerKeeps(t *testing.T) {
 	}
 }
 
+// Clients that never bump Version (v1-era builds leave it at 0) rely on ModifiedAt to
+// break the tie; otherwise their first upload would win forever.
+func TestEqualVersionModifiedAtTiebreak(t *testing.T) {
+	s := newMemStore()
+	old := &Item{Kind: KindManga, Key: "1|/m", Version: 0, ModifiedAt: 100, Payload: []byte("old")}
+	s.merge("A", old)
+
+	// same version, newer timestamp: client wins
+	newer := &Item{Kind: KindManga, Key: "1|/m", Version: 0, ModifiedAt: 200, Payload: []byte("new")}
+	res := s.merge("B", newer)
+	if len(res.Writes) != 1 || string(s.Get(KindManga, "1|/m").Payload) != "new" {
+		t.Errorf("newer ModifiedAt must win on a version tie: %+v", res)
+	}
+
+	// same version, older timestamp: server wins and the item is returned
+	res = s.merge("A", old)
+	if len(res.Writes) != 0 || !res.ChangedForClient || len(res.ReturnKeys[KindManga]) != 1 {
+		t.Errorf("older ModifiedAt must lose and be returned: %+v", res)
+	}
+
+	// full tie stays a no-op
+	res = s.merge("A", newer)
+	if len(res.Writes) != 0 || res.ChangedForClient {
+		t.Errorf("full tie must be a no-op: %+v", res)
+	}
+
+	// a higher version still beats a newer timestamp
+	res = s.merge("A", &Item{Kind: KindManga, Key: "1|/m", Version: 1, ModifiedAt: 50, Payload: []byte("v1")})
+	if len(res.Writes) != 1 || string(s.Get(KindManga, "1|/m").Payload) != "v1" {
+		t.Errorf("version outranks ModifiedAt: %+v", res)
+	}
+
+	// same rule for categories
+	s.merge("A", &Item{Kind: KindCategory, Key: "uid:1", Name: "Read", Version: 0, ModifiedAt: 100, Payload: []byte("a")})
+	res = s.merge("B", &Item{Kind: KindCategory, Key: "uid:1", Name: "Read", Version: 0, ModifiedAt: 200, Payload: []byte("b")})
+	if len(res.Writes) != 1 || string(s.Get(KindCategory, "uid:1").Payload) != "b" {
+		t.Errorf("category tiebreak: %+v", res)
+	}
+}
+
 func TestUnfavoriteTravelsAsVersionBump(t *testing.T) {
 	s := newMemStore()
 	s.merge("A", manga("1|/m", 5, "fav"))

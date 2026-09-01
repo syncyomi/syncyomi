@@ -2,6 +2,7 @@ package harness
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -85,4 +86,69 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 		return &pb.Backup{}, nil
 	}
 	return backup.Decode(data)
+}
+
+// PutV1 uploads raw bytes through the deprecated v1 endpoint exactly as legacy clients
+// do: no device headers, optional If-Match, optionally gzip-encoded. Non-2xx statuses
+// are returned, not treated as errors, so tests can assert on them.
+func (c *SyntheticClient) PutV1(ctx context.Context, raw []byte, ifMatch string, gzipBody bool) (etag string, status int, err error) {
+	body := raw
+	if gzipBody {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		if _, err := gz.Write(raw); err != nil {
+			return "", 0, err
+		}
+		if err := gz.Close(); err != nil {
+			return "", 0, err
+		}
+		body = buf.Bytes()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.Server.BaseURL+"/api/sync/content", bytes.NewReader(body))
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-API-Token", c.Server.APIKey)
+	if ifMatch != "" {
+		req.Header.Set("If-Match", ifMatch)
+	}
+	if gzipBody {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.Header.Get("ETag"), resp.StatusCode, nil
+}
+
+// GetV1 fetches the v1 payload with an optional If-None-Match. The body is nil on 304/404.
+func (c *SyntheticClient) GetV1(ctx context.Context, ifNoneMatch string) (data []byte, etag string, status int, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.Server.BaseURL+"/api/sync/content", nil)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	req.Header.Set("X-API-Token", c.Server.APIKey)
+	if ifNoneMatch != "" {
+		req.Header.Set("If-None-Match", ifNoneMatch)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, resp.Header.Get("ETag"), resp.StatusCode, nil
+	}
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	return data, resp.Header.Get("ETag"), resp.StatusCode, nil
 }
