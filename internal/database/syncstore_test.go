@@ -191,6 +191,81 @@ func TestSyncStore_RenderCacheAndHistory(t *testing.T) {
 	}
 }
 
+func TestSyncStore_RawBlob(t *testing.T) {
+	store, db := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		raw, err := tx.RawBlob(ctx)
+		if err != nil || raw != nil {
+			t.Errorf("empty raw blob = %+v, %v", raw, err)
+		}
+		if err := tx.SetRawBlob(ctx, []byte("client bytes"), "uuid=a", 2); err != nil {
+			return err
+		}
+		raw, err = tx.RawBlob(ctx)
+		if err != nil {
+			return err
+		}
+		if raw == nil || !bytes.Equal(raw.Data, []byte("client bytes")) || raw.ETag != "uuid=a" || raw.Seq != 2 {
+			t.Errorf("raw blob = %+v", raw)
+		}
+
+		// renders and raw blobs live in the same row without clobbering each other
+		if err := tx.SetRenderCache(ctx, []byte("rendered"), "seq=3", 3); err != nil {
+			return err
+		}
+		raw, _ = tx.RawBlob(ctx)
+		if raw == nil || !bytes.Equal(raw.Data, []byte("client bytes")) || raw.Seq != 2 {
+			t.Errorf("raw blob after render = %+v", raw)
+		}
+		if err := tx.SetRawBlob(ctx, []byte("newer"), "uuid=b", 4); err != nil {
+			return err
+		}
+		rc, _ := tx.RenderCache(ctx)
+		if rc == nil || !bytes.Equal(rc.Data, []byte("rendered")) || *rc.RenderedSeq != 3 {
+			t.Errorf("render cache after raw write = %+v", rc)
+		}
+
+		if err := tx.MarkRawCurrent(ctx, 9); err != nil {
+			return err
+		}
+		raw, _ = tx.RawBlob(ctx)
+		if raw == nil || raw.Seq != 9 || !bytes.Equal(raw.Data, []byte("newer")) {
+			t.Errorf("raw blob after mark = %+v", raw)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// raw uploads are recorded in the history
+	history, err := store.history.ListHistory(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 3 || history[0].ETag != "uuid=b" {
+		t.Errorf("history = %+v", history)
+	}
+
+	// a row whose raw columns are NULL (render-only key) yields nil
+	insertTestAPIKey(t, db, "key2")
+	err = store.Tx(ctx, "key2", func(tx domain.SyncStoreTx) error {
+		if err := tx.SetRenderCache(ctx, []byte("r"), "seq=1", 1); err != nil {
+			return err
+		}
+		raw, err := tx.RawBlob(ctx)
+		if err != nil || raw != nil {
+			t.Errorf("render-only raw blob = %+v, %v", raw, err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSyncStore_DeviceCursor(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()

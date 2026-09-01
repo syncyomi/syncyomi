@@ -420,9 +420,10 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	// rewind to the previous version by dropping what the last migration added
 	previous := len(sqliteMigrations) - 1
 	for _, stmt := range []string{
-		"DROP TABLE sync_item", "DROP TABLE sync_state",
-		"ALTER TABLE sync_device DROP COLUMN last_cursor", "ALTER TABLE sync_device DROP COLUMN protocol",
-		"ALTER TABLE sync_data DROP COLUMN rendered_seq",
+		"ALTER TABLE sync_data DROP COLUMN raw_data", "ALTER TABLE sync_data DROP COLUMN raw_etag",
+		"ALTER TABLE sync_data DROP COLUMN raw_seq",
+		"ALTER TABLE sync_item DROP COLUMN modified_at",
+		"ALTER TABLE sync_status DROP COLUMN last_protocol",
 		fmt.Sprintf("PRAGMA user_version = %d", previous),
 	} {
 		if _, err := db.handler.Exec(stmt); err != nil {

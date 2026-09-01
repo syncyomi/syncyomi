@@ -55,6 +55,9 @@ CREATE TABLE sync_data
 	data BYTEA NOT NULL,
 	data_etag TEXT NOT NULL,
 	rendered_seq BIGINT,
+	raw_data BYTEA,
+	raw_etag TEXT,
+	raw_seq BIGINT,
 
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
@@ -97,6 +100,7 @@ CREATE TABLE sync_status
 	last_status    TEXT NOT NULL DEFAULT '',
 	last_device    TEXT NOT NULL DEFAULT '',
 	last_message   TEXT NOT NULL DEFAULT '',
+	last_protocol  TEXT NOT NULL DEFAULT '',
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
 
@@ -122,6 +126,7 @@ CREATE TABLE sync_item
     payload       BYTEA NOT NULL,
     seq           BIGINT NOT NULL,
     origin_device TEXT NOT NULL DEFAULT '',
+    modified_at   BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (user_api_key, kind, key),
     FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
@@ -287,5 +292,12 @@ CREATE INDEX idx_sync_item_parent ON sync_item (user_api_key, kind, parent_key);
 ALTER TABLE sync_device ADD COLUMN last_cursor BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE sync_device ADD COLUMN protocol TEXT NOT NULL DEFAULT '';
 ALTER TABLE sync_data ADD COLUMN rendered_seq BIGINT;
+`,
+	`
+ALTER TABLE sync_data ADD COLUMN raw_data BYTEA;
+ALTER TABLE sync_data ADD COLUMN raw_etag TEXT;
+ALTER TABLE sync_data ADD COLUMN raw_seq BIGINT;
+ALTER TABLE sync_item ADD COLUMN modified_at BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE sync_status ADD COLUMN last_protocol TEXT NOT NULL DEFAULT '';
 `,
 }

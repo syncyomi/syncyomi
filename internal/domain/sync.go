@@ -37,6 +37,7 @@ type SyncStatus struct {
 	LastStatus    string     `json:"last_status"`
 	LastDevice    string     `json:"last_device"`
 	LastMessage   string     `json:"last_message"`
+	LastProtocol  string     `json:"last_protocol"` // "", v1 or v2
 	DataSize      int64      `json:"data_size"`
 	DataUpdatedAt *time.Time `json:"data_updated_at"`
 }
@@ -77,12 +78,21 @@ type SyncRepo interface {
 	GetStatus(ctx context.Context, apiKey string) (*SyncStatus, error)
 }
 
-// RenderCache is the last full backup rendered from the item store (served to v1 clients).
-// RenderedSeq is nil for a blob written by a pre-v2 server that has not been imported yet.
+// RenderCache is the last full backup rendered from the item store, served to v1 clients
+// only when no raw client blob is current. RenderedSeq is nil for a blob written by a
+// pre-v2 server that has not been promoted to a raw blob yet.
 type RenderCache struct {
 	Data        []byte
 	ETag        string
 	RenderedSeq *int64
+}
+
+// RawBlob is the last v1 client upload, kept byte-for-byte. It is served back verbatim
+// while Seq still equals the store's seq (no other device has written since).
+type RawBlob struct {
+	Data []byte
+	ETag string
+	Seq  int64
 }
 
 type DeviceCursor struct {
@@ -112,6 +122,12 @@ type SyncStoreTx interface {
 	SetRenderCache(ctx context.Context, data []byte, etag string, seq int64) error
 	// MarkRendered stamps the existing cache as matching seq without rewriting it.
 	MarkRendered(ctx context.Context, seq int64) error
+	// RawBlob returns the last v1 upload, or nil when none was ever stored.
+	RawBlob(ctx context.Context) (*RawBlob, error)
+	// SetRawBlob stores a v1 upload verbatim and records it in the history.
+	SetRawBlob(ctx context.Context, data []byte, etag string, seq int64) error
+	// MarkRawCurrent stamps the existing raw blob as matching seq without rewriting it.
+	MarkRawCurrent(ctx context.Context, seq int64) error
 	// Clear removes every item so the store can be rebuilt from a backup.
 	Clear(ctx context.Context) error
 	SetDeviceCursor(ctx context.Context, dc DeviceCursor) error

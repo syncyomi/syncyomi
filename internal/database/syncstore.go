@@ -364,6 +364,62 @@ func (t *syncStoreTx) MarkRendered(ctx context.Context, seq int64) error {
 	return nil
 }
 
+func (t *syncStoreTx) RawBlob(ctx context.Context) (*domain.RawBlob, error) {
+	var (
+		rb   domain.RawBlob
+		etag sql.NullString
+		seq  sql.NullInt64
+	)
+	err := t.repo.db.squirrel.
+		Select("raw_data", "raw_etag", "raw_seq").
+		From("sync_data").
+		Where(sq.Eq{"user_api_key": t.apiKey}).
+		RunWith(t.tx).
+		QueryRowContext(ctx).
+		Scan(&rb.Data, &etag, &seq)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "error reading raw blob")
+	}
+	if !seq.Valid {
+		return nil, nil
+	}
+	rb.ETag = etag.String
+	rb.Seq = seq.Int64
+	return &rb, nil
+}
+
+func (t *syncStoreTx) SetRawBlob(ctx context.Context, data []byte, etag string, seq int64) error {
+	now := time.Now().UTC()
+	// the INSERT arm needs a value for the NOT NULL render columns; never touch them on conflict
+	_, err := t.repo.db.squirrel.
+		Insert("sync_data").
+		Columns("user_api_key", "created_at", "updated_at", "data", "data_etag", "raw_data", "raw_etag", "raw_seq").
+		Values(t.apiKey, now, now, []byte{}, "", data, etag, seq).
+		Suffix("ON CONFLICT (user_api_key) DO UPDATE SET raw_data = EXCLUDED.raw_data, raw_etag = EXCLUDED.raw_etag, raw_seq = EXCLUDED.raw_seq, updated_at = EXCLUDED.updated_at").
+		RunWith(t.tx).
+		ExecContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "error writing raw blob")
+	}
+	return t.repo.history.recordHistory(ctx, t.tx, t.apiKey, etag, data)
+}
+
+func (t *syncStoreTx) MarkRawCurrent(ctx context.Context, seq int64) error {
+	_, err := t.repo.db.squirrel.
+		Update("sync_data").
+		Set("raw_seq", seq).
+		Where(sq.Eq{"user_api_key": t.apiKey}).
+		RunWith(t.tx).
+		ExecContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "error marking raw blob")
+	}
+	return nil
+}
+
 func (t *syncStoreTx) Clear(ctx context.Context) error {
 	_, err := t.repo.db.squirrel.
 		Delete("sync_item").
