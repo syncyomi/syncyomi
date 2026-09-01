@@ -25,21 +25,29 @@ func (e *Emulator) RunFlow(ctx context.Context, flowPath, artifactDir string, fl
 	for k, v := range flowEnv {
 		args = append(args, "-e", k+"="+v)
 	}
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Env = append(os.Environ(), "MAESTRO_CLI_NO_ANALYTICS=1", "MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true")
-	out, err := cmd.CombinedOutput()
 	logPath := filepath.Join(outDir, "maestro.log")
-	_ = os.WriteFile(logPath, out, 0o644)
-	if err != nil {
+	for attempt := 1; ; attempt++ {
+		cmd := exec.CommandContext(ctx, bin, args...)
+		cmd.Env = append(os.Environ(), "MAESTRO_CLI_NO_ANALYTICS=1", "MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true")
+		out, err := cmd.CombinedOutput()
+		_ = os.WriteFile(logPath, out, 0o644)
+		if err == nil {
+			return nil
+		}
 		// On resource-starved runners Maestro sometimes crashes at teardown
 		// after every step ran; a transcript with completed steps and no
 		// failed one means the flow itself succeeded.
 		if bytesContains(out, "COMPLETED") && !bytesContains(out, "FAILED") {
 			return nil
 		}
+		// A crash before ANY step completed did nothing on the device, so one
+		// retry is safe; a mid-flow failure is not retried (steps may not be
+		// idempotent) and fails loudly instead.
+		if attempt == 1 && !bytesContains(out, "COMPLETED") {
+			continue
+		}
 		return fmt.Errorf("maestro flow %s on %s failed (log: %s): %w", filepath.Base(flowPath), e.AVD, logPath, err)
 	}
-	return nil
 }
 
 func bytesContains(b []byte, s string) bool {
