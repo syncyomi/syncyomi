@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.1](https://github.com/syncyomi/syncyomi/compare/v1.5.0...v1.5.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* restore v1 protocol compatibility with blob-echo semantics ([#221](https://github.com/syncyomi/syncyomi/issues/221)) ([a98f59c](https://github.com/syncyomi/syncyomi/commit/a98f59c2aa833fc796c50ffbcd060f9bf3da37cb))
+
+
+### Tests
+
+* **e2e:** cover Suwayomi send-side category wire orders in S14 ([#218](https://github.com/syncyomi/syncyomi/issues/218)) ([a7144b9](https://github.com/syncyomi/syncyomi/commit/a7144b938d2e98fc7528e56640baf5129ca003f3))
+
 ## [1.5.0](https://github.com/syncyomi/syncyomi/compare/v1.4.0...v1.5.0) (2026-09-01)
 
 
