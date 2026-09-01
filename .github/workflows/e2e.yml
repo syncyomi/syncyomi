@@ -1,0 +1,156 @@
+name: e2e
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      tachiyomi_ref:
+        description: "TachiyomiSY ref to build"
+        default: "feat/syncyomi-v2"
+      suwayomi_ref:
+        description: "Suwayomi-Server ref to build"
+        default: "feat/syncyomi-v2"
+  pull_request:
+    paths:
+      - "internal/**"
+      - "proto/**"
+      - "e2e/**"
+      - "main.go"
+      - "go.mod"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: syncyomi/TachiyomiSY
+          ref: ${{ inputs.tachiyomi_ref || 'feat/syncyomi-v2' }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tachiyomi-apk
+          path: app/build/outputs/apk/debug/app-x86_64-debug.apk
+          retention-days: 3
+
+  build-suwayomi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: syncyomi/Suwayomi-Server
+          ref: ${{ inputs.suwayomi_ref || 'feat/syncyomi-v2' }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
+
+      - name: Build shadowJar
+        run: ./gradlew :server:shadowJar
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: suwayomi-jar
+          path: server/build/Suwayomi-Server-*.jar
+          retention-days: 3
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [build-apk, build-suwayomi]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ".node-version"
+
+      - name: Set up corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web/dist
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          CI= pnpm run build
+
+      - name: Point ANDROID_SDK_ROOT at the preinstalled SDK
+        run: echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      - name: Cache emulator, system image, AVDs and Maestro
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/emulator
+            ${{ env.ANDROID_HOME }}/system-images/android-35
+            ~/.android/avd
+            e2e/.tools
+          key: e2e-android-${{ runner.os }}-${{ hashFiles('e2e/scripts/setup-env.sh') }}
+
+      - name: Set up E2E environment
+        run: |
+          e2e/scripts/setup-env.sh
+          e2e/scripts/doctor.sh || true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: tachiyomi-apk
+          path: /tmp/e2e-artifacts
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: suwayomi-jar
+          path: /tmp/e2e-artifacts
+
+      - name: Run E2E suite
+        env:
+          E2E_TACHIYOMI_APK: /tmp/e2e-artifacts/app-x86_64-debug.apk
+        run: |
+          export E2E_SUWAYOMI_JAR="$(ls /tmp/e2e-artifacts/Suwayomi-Server-*.jar | head -1)"
+          e2e/scripts/run-e2e.sh
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure-artifacts
+          path: e2e/artifacts/
+          retention-days: 7
