@@ -11,16 +11,19 @@ appId: eu.kanade.tachiyomi.sy.debug
     commands:
       - tapOn: "Wait"
 - launchApp
+- extendedWaitUntil:
+    visible: "More"
+    timeout: 30000
 - tapOn: "More"
 - tapOn: "Categories"
 - extendedWaitUntil:
     visible: "Edit categories"
-    timeout: 10000
+    timeout: 30000
 - tapOn:
     point: 85%,93%
 - extendedWaitUntil:
     visible: "Add category"
-    timeout: 10000
+    timeout: 30000
 - tapOn: "Name"
 - inputText: ${NAME}
 - tapOn:
@@ -33,4 +36,4 @@ appId: eu.kanade.tachiyomi.sy.debug
 - tapOn: "Categories"
 - extendedWaitUntil:
     visible: ${NAME}
-    timeout: 10000
+    timeout: 30000

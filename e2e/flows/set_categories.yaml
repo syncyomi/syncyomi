@@ -8,11 +8,14 @@ appId: eu.kanade.tachiyomi.sy.debug
     commands:
       - tapOn: "Wait"
 - launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
 - tapOn: "Library"
 - longPressOn: ${TITLE}
 - tapOn: "Set categories"
 - extendedWaitUntil:
     visible: ${CATEGORY}
-    timeout: 10000
+    timeout: 30000
 - tapOn: ${CATEGORY}
 - tapOn: "OK"

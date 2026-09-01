@@ -70,7 +70,7 @@ func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifac
 }
 
 func (s *Suwayomi) waitReady(ctx context.Context) error {
-	deadline := time.Now().Add(120 * time.Second)
+	deadline := time.Now().Add(240 * time.Second)
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()

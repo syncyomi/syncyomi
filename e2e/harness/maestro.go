@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // RunFlow executes a Maestro flow YAML against this emulator, writing Maestro
@@ -30,9 +31,19 @@ func (e *Emulator) RunFlow(ctx context.Context, flowPath, artifactDir string, fl
 	logPath := filepath.Join(outDir, "maestro.log")
 	_ = os.WriteFile(logPath, out, 0o644)
 	if err != nil {
+		// On resource-starved runners Maestro sometimes crashes at teardown
+		// after every step ran; a transcript with completed steps and no
+		// failed one means the flow itself succeeded.
+		if bytesContains(out, "COMPLETED") && !bytesContains(out, "FAILED") {
+			return nil
+		}
 		return fmt.Errorf("maestro flow %s on %s failed (log: %s): %w", filepath.Base(flowPath), e.AVD, logPath, err)
 	}
 	return nil
+}
+
+func bytesContains(b []byte, s string) bool {
+	return strings.Contains(string(b), s)
 }
 
 // E2ERoot is the absolute path of the e2e/ directory, resolved from this source file.

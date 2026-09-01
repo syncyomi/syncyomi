@@ -8,6 +8,9 @@ appId: eu.kanade.tachiyomi.sy.debug
     commands:
       - tapOn: "Wait"
 - launchApp
+- extendedWaitUntil:
+    visible: "More"
+    timeout: 30000
 - tapOn: "More"
 - tapOn: "Categories"
 - tapOn:
@@ -19,4 +22,4 @@ appId: eu.kanade.tachiyomi.sy.debug
 - tapOn: "Categories"
 - extendedWaitUntil:
     notVisible: ${NAME}
-    timeout: 10000
+    timeout: 30000

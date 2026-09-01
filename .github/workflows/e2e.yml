@@ -101,6 +101,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Maestro and the Suwayomi jar both need a modern JRE; the runner default is older
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 25
+
       - uses: actions/setup-node@v7
         with:
           node-version-file: ".node-version"

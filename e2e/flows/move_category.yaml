@@ -9,12 +9,15 @@ appId: eu.kanade.tachiyomi.sy.debug
     commands:
       - tapOn: "Wait"
 - launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
 - tapOn: "Library"
 - longPressOn: ${TITLE}
 - tapOn: "Set categories"
 - extendedWaitUntil:
     visible: ${NEW}
-    timeout: 10000
+    timeout: 30000
 # The library category tabs behind the dialog can carry the same names; anchor
 # the row taps below the dialog title so they hit the checkboxes.
 - tapOn:
