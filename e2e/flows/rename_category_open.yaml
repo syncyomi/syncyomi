@@ -1,0 +1,19 @@
+# Opens the rename dialog for a category (tapping the row opens it). The test
+# then moves the cursor to the end via adb before running rename_category_finish.
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp
+- extendedWaitUntil:
+    visible: "More"
+    timeout: 30000
+- tapOn: "More"
+- tapOn: "Categories"
+- tapOn: ${OLD}
+- extendedWaitUntil:
+    visible: "Rename category"
+    timeout: 30000

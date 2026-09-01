@@ -70,7 +70,7 @@ func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifac
 }
 
 func (s *Suwayomi) waitReady(ctx context.Context) error {
-	deadline := time.Now().Add(120 * time.Second)
+	deadline := time.Now().Add(240 * time.Second)
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -171,26 +171,134 @@ func (s *Suwayomi) WaitForSyncSuccess(ctx context.Context, timeout time.Duration
 	return fmt.Errorf("suwayomi sync not successful within %s", timeout)
 }
 
-// LibraryTitles returns the titles of manga in the Suwayomi library.
-func (s *Suwayomi) LibraryTitles(ctx context.Context) ([]string, error) {
+// SuwayomiManga is one library entry with the relations the tests assert on.
+type SuwayomiManga struct {
+	ID         int
+	Title      string
+	Categories []string
+	ReadCount  int
+	ChapterIDs []int
+}
+
+// Library returns the Suwayomi library with categories and chapter read state.
+func (s *Suwayomi) Library(ctx context.Context) ([]SuwayomiManga, error) {
 	var out struct {
 		Data struct {
 			Mangas struct {
 				Nodes []struct {
-					Title string `json:"title"`
+					ID         int    `json:"id"`
+					Title      string `json:"title"`
+					Categories struct {
+						Nodes []struct {
+							Name string `json:"name"`
+						} `json:"nodes"`
+					} `json:"categories"`
+					Chapters struct {
+						Nodes []struct {
+							ID     int  `json:"id"`
+							IsRead bool `json:"isRead"`
+						} `json:"nodes"`
+					} `json:"chapters"`
 				} `json:"nodes"`
 			} `json:"mangas"`
 		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
 	}
-	err := s.GraphQL(ctx, `{ mangas(condition: {inLibrary: true}) { nodes { title } } }`, nil, &out)
+	query := `{ mangas(condition: {inLibrary: true}) { nodes {
+		id title
+		categories { nodes { name } }
+		chapters { nodes { id isRead } }
+	} } }`
+	if err := s.GraphQL(ctx, query, nil, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Errors) > 0 {
+		return nil, fmt.Errorf("library query: %s", out.Errors[0].Message)
+	}
+	mangas := make([]SuwayomiManga, 0, len(out.Data.Mangas.Nodes))
+	for _, n := range out.Data.Mangas.Nodes {
+		m := SuwayomiManga{ID: n.ID, Title: n.Title}
+		for _, c := range n.Categories.Nodes {
+			m.Categories = append(m.Categories, c.Name)
+		}
+		for _, ch := range n.Chapters.Nodes {
+			m.ChapterIDs = append(m.ChapterIDs, ch.ID)
+			if ch.IsRead {
+				m.ReadCount++
+			}
+		}
+		mangas = append(mangas, m)
+	}
+	return mangas, nil
+}
+
+// LibraryTitles returns the titles of manga in the Suwayomi library.
+func (s *Suwayomi) LibraryTitles(ctx context.Context) ([]string, error) {
+	library, err := s.Library(ctx)
 	if err != nil {
 		return nil, err
 	}
-	titles := make([]string, 0, len(out.Data.Mangas.Nodes))
-	for _, n := range out.Data.Mangas.Nodes {
-		titles = append(titles, n.Title)
+	titles := make([]string, 0, len(library))
+	for _, m := range library {
+		titles = append(titles, m.Title)
 	}
 	return titles, nil
+}
+
+// CategoryNames returns Suwayomi's categories by position (default included).
+func (s *Suwayomi) CategoryNames(ctx context.Context) ([]string, error) {
+	var out struct {
+		Data struct {
+			Categories struct {
+				Nodes []struct {
+					Name  string `json:"name"`
+					Order int    `json:"order"`
+				} `json:"nodes"`
+			} `json:"categories"`
+		} `json:"data"`
+	}
+	if err := s.GraphQL(ctx, `{ categories(orderBy: ORDER) { nodes { name order } } }`, nil, &out); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(out.Data.Categories.Nodes))
+	for _, c := range out.Data.Categories.Nodes {
+		names = append(names, c.Name)
+	}
+	return names, nil
+}
+
+// MarkChaptersRead flips all chapters of the given manga to read via GraphQL.
+func (s *Suwayomi) MarkChaptersRead(ctx context.Context, title string) error {
+	library, err := s.Library(ctx)
+	if err != nil {
+		return err
+	}
+	var ids []int
+	for _, m := range library {
+		if m.Title == title {
+			ids = m.ChapterIDs
+		}
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf("no chapters found for %q", title)
+	}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	err = s.GraphQL(ctx,
+		`mutation($ids: [Int!]!) { updateChapters(input: {ids: $ids, patch: {isRead: true}}) { chapters { id } } }`,
+		map[string]any{"ids": ids}, &out)
+	if err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("updateChapters: %s", out.Errors[0].Message)
+	}
+	return nil
 }
 
 func (s *Suwayomi) Stop() {

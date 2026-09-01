@@ -2,7 +2,10 @@
 appId: eu.kanade.tachiyomi.sy.debug
 ---
 - launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
 - tapOn: "Library"
 - extendedWaitUntil:
     visible: ${TITLE}
-    timeout: 15000
+    timeout: 30000

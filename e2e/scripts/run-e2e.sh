@@ -12,4 +12,5 @@ fi
 
 "$E2E_DIR/scripts/doctor.sh" || { echo "[run-e2e] doctor failed"; exit 1; }
 
-exec go test -C "$REPO_DIR" -tags e2e ./e2e/scenarios/... -v -timeout 60m "$@"
+# -count=1 so a green run is always a real run, never Go's cached result
+exec go test -C "$REPO_DIR" -tags e2e -count=1 ./e2e/scenarios/... -v -timeout 60m "$@"

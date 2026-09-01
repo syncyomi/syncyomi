@@ -19,8 +19,9 @@ echo "SyncYomi E2E doctor"
 command -v adb >/dev/null && ok "adb: $(adb --version | head -1)" || bad "adb not on PATH"
 [ -x "$SDK/emulator/emulator" ] && ok "emulator: $("$SDK/emulator/emulator" -version 2>/dev/null | head -1)" || bad "emulator not installed (run setup-env.sh)"
 [ -d "$SDK/system-images/android-35/google_apis/x86_64" ] && ok "system image android-35 google_apis x86_64" || bad "system image missing (run setup-env.sh)"
+AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 for avd in syncE2E-a syncE2E-b; do
-    [ -d "$HOME/.android/avd/$avd.avd" ] && ok "AVD $avd" || bad "AVD $avd missing (run setup-env.sh)"
+    [ -f "$AVD_HOME/$avd.ini" ] && ok "AVD $avd" || bad "AVD $avd missing (run setup-env.sh)"
 done
 [ -x "$E2E_DIR/.tools/maestro/bin/maestro" ] && ok "maestro: $("$E2E_DIR/.tools/maestro/bin/maestro" --version 2>/dev/null)" || bad "maestro missing (run setup-env.sh)"
 command -v java >/dev/null && ok "java: $(java -version 2>&1 | head -1)" || bad "java not on PATH (maestro needs 17+)"

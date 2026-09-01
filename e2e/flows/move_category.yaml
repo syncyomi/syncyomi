@@ -1,0 +1,31 @@
+# Moves one manga between categories through the library selection bottom menu:
+# checks NEW and unchecks OLD in the "Set categories" dialog.
+# Pass TITLE, NEW and OLD via -e.
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "Library"
+- longPressOn: ${TITLE}
+- tapOn: "Set categories"
+- extendedWaitUntil:
+    visible: ${NEW}
+    timeout: 30000
+# The library category tabs behind the dialog can carry the same names; anchor
+# the row taps below the dialog title so they hit the checkboxes.
+- tapOn:
+    text: ${NEW}
+    below:
+      text: "Set categories"
+- tapOn:
+    text: ${OLD}
+    below:
+      text: "Set categories"
+- tapOn: "OK"

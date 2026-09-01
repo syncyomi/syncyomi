@@ -6,6 +6,9 @@ appId: eu.kanade.tachiyomi.sy.debug
     commands:
       - tapOn: "Wait"
 - launchApp
+- extendedWaitUntil:
+    visible: "More"
+    timeout: 30000
 - tapOn: "More"
 - tapOn: "Settings"
 - tapOn: "Data and storage"

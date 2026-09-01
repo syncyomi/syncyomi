@@ -71,9 +71,30 @@ Env vars:
 | S6 stale cursor | A device several generations behind converges without duplicates |
 | S7 Android⇄Suwayomi | Both directions through the server, asserted via Suwayomi GraphQL |
 | S8 soak (skipped with `-short`) | The scrubbed real-library fixture stays byte-stable across repeated syncs |
+| S10 category rename (UI) | A rename keeps the category uid, doesn't duplicate, and reaches the other device |
+| S11 category reorder | A remote position swap lands on the device and survives its next push |
+| S12 create + assign (UI) | A category created and populated through the real UI reaches server and peer |
+| S13 device tombstone (UI) | Deleting a category on-device sends `X-Sync-Deleted-Categories`; no resurrection |
+| S14 Suwayomi core convergence | Suwayomi applies read progress, category rename/membership and tombstones, and pushes its own edits back |
+| S15 cross-platform deep sync | Android UI edits (read + category assign) reach Suwayomi; Suwayomi edits come back to Android |
+
+Device-originated *drag* reorder is a known gap: the drag handle has no
+accessibility label, so Maestro can't grip it; S11 covers reorder propagation
+from the server side instead.
 
 v1-fallback (S9) is not covered: this server always speaks v2, so the 404-probe
 path needs an old server build — test it manually when touching the fallback code.
+
+## CI
+
+`.github/workflows/e2e.yml` runs the whole suite on GitHub-hosted runners
+(KVM-accelerated emulators): nightly, on demand via *Run workflow* (with
+overridable TachiyomiSY/Suwayomi refs), and on PRs touching sync-relevant paths
+(`internal/`, `proto/`, `e2e/`). The APK and shadowJar are built in parallel
+jobs from the `feat/syncyomi-v2` fork branches with Gradle caching; the
+emulator, system image, AVDs and Maestro are cached between runs. On failure
+the run uploads `e2e/artifacts/` (logcat, Maestro screenshots, server logs) as
+a workflow artifact. Expect ~25–30 min warm, ~45 min on cold caches.
 
 ## Ports
 

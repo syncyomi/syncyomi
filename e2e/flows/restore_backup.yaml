@@ -8,5 +8,5 @@ appId: eu.kanade.tachiyomi.sy.debug
       - tapOn: "Wait"
 - extendedWaitUntil:
     visible: "Restore"
-    timeout: 20000
+    timeout: 30000
 - tapOn: "Restore"

@@ -1,0 +1,10 @@
+# Continues rename_category_open after the cursor was moved to the end of the
+# pre-filled name (adb KEYCODE_MOVE_END). No launchApp — the dialog is open.
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- eraseText: 60
+- inputText: ${NEW}
+- tapOn: "OK"
+- extendedWaitUntil:
+    visible: ${NEW}
+    timeout: 30000

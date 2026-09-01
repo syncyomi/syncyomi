@@ -35,14 +35,24 @@ else
     log "system image already installed"
 fi
 
+# Pin the AVD location so avdmanager and the emulator agree everywhere (CI
+# runners otherwise place AVDs in surprising directories).
+export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+AVD_HOME="$ANDROID_AVD_HOME"
+mkdir -p "$AVD_HOME"
+
 create_avd() {
-    local name="$1" avd_dir="$HOME/.android/avd/$1.avd"
-    if [ -d "$avd_dir" ]; then
+    local name="$1" ini="$AVD_HOME/$1.ini"
+    if [ -f "$ini" ]; then
         log "AVD $name already exists"
     else
         log "creating AVD $name"
-        echo no | "$AVDMANAGER" create avd -n "$name" -k "$SYSIMG" -d pixel_6 >/dev/null
+        echo no | "$AVDMANAGER" create avd -n "$name" -k "$SYSIMG" -d pixel_6
     fi
+    # avdmanager records the actual AVD directory in the .ini — don't assume it.
+    local avd_dir
+    avd_dir="$(grep '^path=' "$ini" | head -1 | cut -d= -f2-)"
+    [ -n "$avd_dir" ] && [ -d "$avd_dir" ] || die "AVD dir for $name not found (ini: $ini)"
     local cfg="$avd_dir/config.ini"
     # Idempotent config pinning: drop any prior value, append ours.
     for kv in "hw.ramSize=2048" "disk.dataPartition.size=6G" "hw.keyboard=yes" "hw.gpu.enabled=yes" "hw.gpu.mode=swiftshader_indirect"; do
