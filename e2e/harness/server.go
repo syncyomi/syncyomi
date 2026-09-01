@@ -30,6 +30,7 @@ type SyncServer struct {
 	Port    int
 
 	cmd     *exec.Cmd
+	bin     string
 	logFile *os.File
 	admin   *http.Client
 }
@@ -84,6 +85,7 @@ func StartServer(ctx context.Context, repoRoot, artifactDir string, port int) (*
 		DataDir: dataDir,
 		LogPath: logPath,
 		cmd:     cmd,
+		bin:     bin,
 		logFile: logFile,
 		admin:   &http.Client{Jar: jar, Timeout: 15 * time.Second},
 	}
@@ -177,6 +179,25 @@ func (s *SyncServer) AdminGet(ctx context.Context, path string, out any) error {
 		return fmt.Errorf("%s: status %d", path, resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// Restart boots the server again on the same data dir, e.g. after editing the database
+// directly to fabricate pre-upgrade state. The provisioned API key stays valid.
+func (s *SyncServer) Restart(ctx context.Context) error {
+	s.Stop()
+	logFile, err := os.OpenFile(s.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, s.bin, "--config", s.DataDir)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("restart server: %w", err)
+	}
+	s.cmd, s.logFile = cmd, logFile
+	return s.waitReady(ctx)
 }
 
 // HostURLForEmulator is the server URL as seen from inside an emulator.
