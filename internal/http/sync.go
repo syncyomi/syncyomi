@@ -60,7 +60,9 @@ func (h syncHandler) Routes(r chi.Router) {
 func (h syncHandler) AdminRoutes(r chi.Router) {
 	r.Get("/{apikey}/status", h.getStatus)
 	r.Get("/{apikey}/devices", h.listDevices)
+	r.Delete("/{apikey}/devices/{id}", h.deleteDevice)
 	r.Get("/{apikey}/history", h.listHistory)
+	r.Get("/{apikey}/history/{id}/download", h.downloadHistory)
 	r.Post("/{apikey}/history/{id}/restore", h.restoreHistory)
 }
 
@@ -91,7 +93,7 @@ func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), false)
+	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), false, sync.ProtocolV1)
 
 	if etag := r.Header.Get("If-None-Match"); etag != "" && etag == snap.ETag {
 		// see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match
@@ -128,7 +130,7 @@ func (h syncHandler) putContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), true)
+	h.syncService.RecordContentAccess(r.Context(), apiKey, deviceFromRequest(r), true, sync.ProtocolV1)
 
 	w.Header().Set("ETag", etag)
 	w.WriteHeader(http.StatusOK)
@@ -250,6 +252,57 @@ func (h syncHandler) listHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	render.JSON(w, r, history)
+}
+
+func (h syncHandler) deleteDevice(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "invalid device id"}, http.StatusBadRequest)
+		return
+	}
+
+	if err := h.syncService.DeleteDevice(r.Context(), chi.URLParam(r, "apikey"), id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			h.encoder.StatusNotFound(r.Context(), w)
+			return
+		}
+		h.log.Error().Err(err).Msg("failed to delete device")
+		h.encoder.StatusInternalError(w)
+		return
+	}
+
+	h.encoder.NoContent(w)
+}
+
+func (h syncHandler) downloadHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		h.encoder.StatusResponse(r.Context(), w, map[string]string{"message": "invalid history id"}, http.StatusBadRequest)
+		return
+	}
+
+	data, err := h.syncService.GetHistoryData(r.Context(), chi.URLParam(r, "apikey"), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			h.encoder.StatusNotFound(r.Context(), w)
+			return
+		}
+		h.log.Error().Err(err).Msg("failed to read sync history data")
+		h.encoder.StatusInternalError(w)
+		return
+	}
+
+	// gzipped payloads are complete .tachibk backups the apps can import directly
+	ext := ".bin"
+	if len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b {
+		ext = ".tachibk"
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="sync-history-`+strconv.Itoa(id)+ext+`"`)
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(data); err != nil {
+		h.log.Debug().Err(err).Msg("failed to write history download")
+	}
 }
 
 func (h syncHandler) restoreHistory(w http.ResponseWriter, r *http.Request) {

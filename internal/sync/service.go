@@ -25,12 +25,17 @@ type Service interface {
 
 	// ReportSyncEvent persists a device-reported sync event and sends it to the notification service.
 	ReportSyncEvent(ctx context.Context, apiKey string, event string, dev domain.DeviceInfo, detailMessage string) error
-	// RecordContentAccess updates device/status bookkeeping after a successful GET or PUT of the content. Errors are logged, not returned.
-	RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool)
+	// RecordContentAccess updates device/status bookkeeping after a successful GET or PUT of the
+	// content, tagging the key and device with the protocol used. Errors are logged, not returned.
+	RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool, protocol string)
 
 	ListHistory(ctx context.Context, apiKey string) ([]domain.SyncHistoryEntry, error)
 	RestoreHistory(ctx context.Context, apiKey string, id int) (*string, error)
+	// GetHistoryData returns the stored payload of a history entry. domain.ErrNotFound if id is unknown.
+	GetHistoryData(ctx context.Context, apiKey string, id int) ([]byte, error)
 	ListDevices(ctx context.Context, apiKey string) ([]domain.SyncDevice, error)
+	// DeleteDevice removes a device row. domain.ErrNotFound if id is unknown for the key.
+	DeleteDevice(ctx context.Context, apiKey string, id int) error
 	GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error)
 }
 
@@ -62,21 +67,33 @@ func (s *service) ListDevices(ctx context.Context, apiKey string) ([]domain.Sync
 	return s.repo.ListDevices(ctx, apiKey)
 }
 
+func (s *service) DeleteDevice(ctx context.Context, apiKey string, id int) error {
+	return s.repo.DeleteDevice(ctx, apiKey, id)
+}
+
+func (s *service) GetHistoryData(ctx context.Context, apiKey string, id int) ([]byte, error) {
+	return s.repo.GetHistoryData(ctx, apiKey, id)
+}
+
 func (s *service) GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error) {
 	return s.repo.GetStatus(ctx, apiKey)
 }
 
-func (s *service) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool) {
-	if err := s.repo.TouchDevice(ctx, apiKey, dev, "", "", ""); err != nil {
+func (s *service) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool, protocol string) {
+	if err := s.repo.TouchDevice(ctx, apiKey, dev, "", "", "", protocol); err != nil {
 		s.log.Warn().Err(err).Msg("failed to record device")
 	}
 
+	// reads record the protocol too: a v1-only fleet must be flagged even if it never PUTs
 	if !write {
+		if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastProtocol: protocol}); err != nil {
+			s.log.Warn().Err(err).Msg("failed to record sync status")
+		}
 		return
 	}
 
 	now := time.Now().UTC()
-	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastSyncedAt: &now, LastDevice: dev.Name}); err != nil {
+	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastSyncedAt: &now, LastDevice: dev.Name, LastProtocol: protocol}); err != nil {
 		s.log.Warn().Err(err).Msg("failed to record sync status")
 	}
 }
@@ -89,7 +106,7 @@ func (s *service) ReportSyncEvent(ctx context.Context, apiKey string, event stri
 
 	now := time.Now().UTC()
 	status := statusFromEvent(ev)
-	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage); err != nil {
+	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage, ""); err != nil {
 		s.log.Warn().Err(err).Msg("failed to record device")
 	}
 	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{

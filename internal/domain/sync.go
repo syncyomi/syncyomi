@@ -40,6 +40,13 @@ type SyncStatus struct {
 	LastProtocol  string     `json:"last_protocol"` // "", v1 or v2
 	DataSize      int64      `json:"data_size"`
 	DataUpdatedAt *time.Time `json:"data_updated_at"`
+	// Seq is the server's change counter; a device whose cursor is behind it has
+	// that many merges still to pull.
+	Seq           int64 `json:"seq"`
+	MangaCount    int64 `json:"manga_count"`
+	ChapterCount  int64 `json:"chapter_count"`
+	CategoryCount int64 `json:"category_count"`
+	HistoryLimit  int   `json:"history_limit"`
 }
 
 // DeviceInfo is what a client optionally identifies itself with. All fields may be empty.
@@ -69,8 +76,10 @@ type SyncRepo interface {
 	GetHistoryData(ctx context.Context, apiKey string, id int) ([]byte, error)
 
 	// Empty fields never overwrite stored values. No-op when dev has no ID and no Name.
-	TouchDevice(ctx context.Context, apiKey string, dev DeviceInfo, event, status, message string) error
+	TouchDevice(ctx context.Context, apiKey string, dev DeviceInfo, event, status, message, protocol string) error
 	ListDevices(ctx context.Context, apiKey string) ([]SyncDevice, error)
+	// DeleteDevice removes a device row. ErrNotFound if id is unknown for the key.
+	DeleteDevice(ctx context.Context, apiKey string, id int) error
 
 	// Nil timestamps and empty strings never overwrite stored values.
 	UpsertStatus(ctx context.Context, apiKey string, st SyncStatus) error
