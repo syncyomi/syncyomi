@@ -35,7 +35,7 @@ jobs:
           repository: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
           ref: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
@@ -63,7 +63,7 @@ jobs:
           repository: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
           ref: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'feat/syncyomi-v2' }}
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 25
@@ -106,7 +106,7 @@ jobs:
           go-version-file: go.mod
 
       # Maestro and the Suwayomi jar both need a modern JRE; the runner default is older
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 25
