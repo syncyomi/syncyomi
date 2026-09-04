@@ -468,7 +468,7 @@ func TestSyncRepo_StatusStoreFields(t *testing.T) {
 		if err := tx.SetRenderCache(ctx, []byte("render!"), "seq=1", 1); err != nil {
 			return err
 		}
-		return tx.SetRawBlob(ctx, []byte("raw"), "uuid=a", 1)
+		return tx.SetRawBlob(ctx, []byte("raw"), "uuid=a", 1, false)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -507,10 +507,7 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	// rewind to the previous version by dropping what the last migration added
 	previous := len(sqliteMigrations) - 1
 	for _, stmt := range []string{
-		"ALTER TABLE sync_data DROP COLUMN raw_data", "ALTER TABLE sync_data DROP COLUMN raw_etag",
-		"ALTER TABLE sync_data DROP COLUMN raw_seq",
-		"ALTER TABLE sync_item DROP COLUMN modified_at",
-		"ALTER TABLE sync_status DROP COLUMN last_protocol",
+		"ALTER TABLE sync_data DROP COLUMN raw_pending",
 		fmt.Sprintf("PRAGMA user_version = %d", previous),
 	} {
 		if _, err := db.handler.Exec(stmt); err != nil {

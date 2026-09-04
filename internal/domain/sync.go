@@ -100,9 +100,10 @@ type RenderCache struct {
 // RawBlob is the last v1 client upload, kept byte-for-byte. It is served back verbatim
 // while Seq still equals the store's seq (no other device has written since).
 type RawBlob struct {
-	Data []byte
-	ETag string
-	Seq  int64
+	Data    []byte
+	ETag    string
+	Seq     int64
+	Pending bool
 }
 
 type DeviceCursor struct {
@@ -136,9 +137,11 @@ type SyncStoreTx interface {
 	MarkRendered(ctx context.Context, seq int64) error
 	// RawBlob returns the last v1 upload, or nil when none was ever stored.
 	RawBlob(ctx context.Context) (*RawBlob, error)
-	// SetRawBlob stores a v1 upload verbatim and records it in the history.
-	SetRawBlob(ctx context.Context, data []byte, etag string, seq int64) error
-	// MarkRawCurrent stamps the existing raw blob as matching seq without rewriting it.
+	// SetRawBlob stores a v1 upload verbatim and records it in the history. pending marks
+	// it as not yet imported into the item store.
+	SetRawBlob(ctx context.Context, data []byte, etag string, seq int64, pending bool) error
+	// MarkRawCurrent stamps the existing raw blob as matching seq and imported, without
+	// rewriting it.
 	MarkRawCurrent(ctx context.Context, seq int64) error
 	// Clear removes every item so the store can be rebuilt from a backup.
 	Clear(ctx context.Context) error

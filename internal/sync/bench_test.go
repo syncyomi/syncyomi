@@ -68,6 +68,19 @@ func seedV1(b *testing.B, svc *service, raw []byte) string {
 	return etag
 }
 
+func newBenchService(b *testing.B) *service {
+	svc, _ := newTestService(b)
+	svc.scheduleImport = func(string) {}
+	return svc
+}
+
+func importNow(b *testing.B, svc *service) {
+	b.Helper()
+	if _, err := svc.ImportPending(context.Background(), "key1"); err != nil {
+		b.Fatal(err)
+	}
+}
+
 func BenchmarkV1PutContent(b *testing.B) {
 	raw, err := backup.Encode(benchBackup(benchManga, benchChapters))
 	if err != nil {
@@ -78,20 +91,52 @@ func BenchmarkV1PutContent(b *testing.B) {
 	b.Run("first", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StopTimer()
-			svc, _ := newTestService(b)
+			svc := newBenchService(b)
 			b.StartTimer()
 			seedV1(b, svc, raw)
 		}
 	})
 	b.Run("repeat", func(b *testing.B) {
-		svc, _ := newTestService(b)
+		svc := newBenchService(b)
 		etag := seedV1(b, svc, raw)
+		importNow(b, svc)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			var err error
 			if etag, err = svc.PutContent(context.Background(), "key1", domain.DeviceInfo{}, etag, raw); err != nil {
 				b.Fatal(err)
 			}
+		}
+	})
+}
+
+func BenchmarkImportPending(b *testing.B) {
+	raw, err := backup.Encode(benchBackup(benchManga, benchChapters))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("first", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			svc := newBenchService(b)
+			seedV1(b, svc, raw)
+			b.StartTimer()
+			importNow(b, svc)
+		}
+	})
+	b.Run("repeat", func(b *testing.B) {
+		svc := newBenchService(b)
+		etag := seedV1(b, svc, raw)
+		importNow(b, svc)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			if etag, err = svc.PutContent(context.Background(), "key1", domain.DeviceInfo{}, etag, raw); err != nil {
+				b.Fatal(err)
+			}
+			b.StartTimer()
+			importNow(b, svc)
 		}
 	})
 }

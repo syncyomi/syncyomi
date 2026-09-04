@@ -58,6 +58,7 @@ CREATE TABLE sync_data
 	raw_data BYTEA,
 	raw_etag TEXT,
 	raw_seq BIGINT,
+	raw_pending BOOLEAN NOT NULL DEFAULT FALSE,
 
 	FOREIGN KEY (user_api_key) REFERENCES api_key (key) ON DELETE CASCADE
 );
@@ -299,5 +300,8 @@ ALTER TABLE sync_data ADD COLUMN raw_etag TEXT;
 ALTER TABLE sync_data ADD COLUMN raw_seq BIGINT;
 ALTER TABLE sync_item ADD COLUMN modified_at BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE sync_status ADD COLUMN last_protocol TEXT NOT NULL DEFAULT '';
+`,
+	`
+ALTER TABLE sync_data ADD COLUMN raw_pending BOOLEAN NOT NULL DEFAULT FALSE;
 `,
 }
