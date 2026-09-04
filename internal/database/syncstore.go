@@ -157,7 +157,6 @@ func (t *syncStoreTx) queryItems(ctx context.Context, where sq.Sqlizer) ([]*merg
 		Select(strings.Split(itemColumns, ", ")...).
 		From("sync_item").
 		Where(where).
-		OrderBy("seq", "key").
 		RunWith(t.tx).
 		QueryContext(ctx)
 	if err != nil {
