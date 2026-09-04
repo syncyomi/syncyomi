@@ -74,6 +74,11 @@ device for the web UI.
 client upload byte-for-byte: while `raw_seq` still equals `sync_state.seq` (no other device
 has written since), a v1 `GET` echoes exactly those bytes under their `uuid=` etag, so v1
 fleets keep the pre-1.3 semantics where the client-side merge is authoritative.
+`raw_pending` marks an upload that has not been merged into `sync_item` yet: a v1 `PUT`
+only stores the bytes and answers, and the import runs about 20 s later in the background
+or on the first v2 merge, snapshot or render that needs the store, whichever comes first.
+Every path that advances `sync_state.seq` imports first, so a stale raw blob is always an
+imported one.
 `data`/`data_etag`/`rendered_seq` hold the last full backup rendered from the item store; it
 serves the v2 snapshot endpoint, and v1 clients only when the raw blob is stale. Renders
 refresh lazily on the first read after a change.
@@ -85,6 +90,6 @@ so v1 devices receive it verbatim.
 
 A `sync_data` row with `rendered_seq = NULL` and no raw blob is a payload written by a
 pre-1.3 server. On the first request for that key after the upgrade it is promoted to the
-raw blob (keeping its original `uuid=` etag) and imported into `sync_item` (device
-`migration`); if it cannot be decoded it keeps being served to v1 clients verbatim, is never
-overwritten by renders, and the item store starts empty.
+raw blob (keeping its original `uuid=` etag) with `raw_pending` set and imported into
+`sync_item` like any other upload; if it cannot be decoded it keeps being served to v1
+clients verbatim, is never overwritten by renders, and the item store starts empty.
