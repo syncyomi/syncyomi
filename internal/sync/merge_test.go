@@ -30,7 +30,7 @@ func (fakeNotifier) Delete(context.Context, int) error                         {
 func (fakeNotifier) Send(domain.NotificationEvent, domain.NotificationPayload) {}
 func (fakeNotifier) Test(context.Context, domain.Notification) error           { return nil }
 
-func newTestService(t *testing.T) (*service, *database.DB) {
+func newTestService(t testing.TB) (*service, *database.DB) {
 	t.Helper()
 	dir := t.TempDir()
 	log := logger.Mock()
