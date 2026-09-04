@@ -22,8 +22,9 @@ e2e/scripts/doctor.sh      # verify everything
 ## Run
 
 ```sh
-e2e/scripts/run-e2e.sh                 # whole suite
-e2e/scripts/run-e2e.sh -run TestS1     # one scenario
+e2e/scripts/run-e2e.sh                          # whole suite
+e2e/scripts/run-e2e.sh -run TestS1              # one scenario
+e2e/scripts/run-e2e.sh -run 'TestS1_|TestS2_'   # a subset (one CI shard, say)
 ```
 
 Env vars:
@@ -87,14 +88,23 @@ path needs an old server build — test it manually when touching the fallback c
 
 ## CI
 
-`.github/workflows/e2e.yml` runs the whole suite on GitHub-hosted runners
+`.github/workflows/e2e.yml` runs the suite on GitHub-hosted runners
 (KVM-accelerated emulators): nightly, on demand via *Run workflow* (with
-overridable TachiyomiSY/Suwayomi refs), and on PRs touching sync-relevant paths
-(`internal/`, `proto/`, `e2e/`). The APK and shadowJar are built in parallel
-jobs from the `feat/syncyomi-v2` fork branches with Gradle caching; the
-emulator, system image, AVDs and Maestro are cached between runs. On failure
-the run uploads `e2e/artifacts/` (logcat, Maestro screenshots, server logs) as
-a workflow artifact. Expect ~25–30 min warm, ~45 min on cold caches.
+overridable TachiyomiSY/Suwayomi refs), and on every PR. A `changes` job decides
+from the changed paths (`internal/`, `proto/`, `e2e/`, `main.go`, `go.mod`)
+whether the suite runs; otherwise the jobs skip and still report, so the `e2e`
+check can be required by the branch ruleset.
+
+The APK and shadowJar are cached by the upstream commit they were built from
+(`build-apk`/`build-suwayomi` resolve `feat/syncyomi-v2` with `git ls-remote`
+and only run Gradle on a cache miss). The scenarios run in three parallel
+shards defined in `e2e/scripts/shards.sh` — `devices`, `categories`,
+`suwayomi`, each roughly six minutes of tests plus its own emulator boot — and
+a roll-up job named `e2e` is the required check. `shards.sh` fails the run if a
+scenario is not in exactly one shard, so a new `TestSnn_` must be added there.
+The emulator, system image, AVDs and Maestro are cached between runs. On
+failure each shard uploads `e2e/artifacts/` (logcat, Maestro screenshots,
+server logs) as `e2e-failure-artifacts-<shard>`. Expect ~12 min warm.
 
 ## Ports
 
