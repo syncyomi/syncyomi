@@ -398,7 +398,7 @@ func loadStoreView(ctx context.Context, tx domain.SyncStoreTx, items []*merge.It
 	}
 	view := &storeView{items: map[merge.Kind]map[string]*merge.Item{}}
 	for kind, ks := range keys {
-		found, err := tx.GetItems(ctx, kind, ks)
+		found, err := lookupItems(ctx, tx, kind, ks)
 		if err != nil {
 			return nil, err
 		}
@@ -414,6 +414,29 @@ func loadStoreView(ctx context.Context, tx domain.SyncStoreTx, items []*merge.It
 		view.items[merge.KindCategory][c.Key] = c
 	}
 	return view, nil
+}
+
+const fullScanMinKeys = 500
+
+func lookupItems(ctx context.Context, tx domain.SyncStoreTx, kind merge.Kind, keys []string) (map[string]*merge.Item, error) {
+	if len(keys) > fullScanMinKeys {
+		n, err := tx.CountOfKind(ctx, kind)
+		if err != nil {
+			return nil, err
+		}
+		if n <= 2*len(keys) {
+			all, err := tx.ItemsOfKind(ctx, kind)
+			if err != nil {
+				return nil, err
+			}
+			out := make(map[string]*merge.Item, len(all))
+			for _, it := range all {
+				out[it.Key] = it
+			}
+			return out, nil
+		}
+	}
+	return tx.GetItems(ctx, kind, keys)
 }
 
 func (v *storeView) Get(kind merge.Kind, key string) *merge.Item {

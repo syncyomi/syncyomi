@@ -120,6 +120,8 @@ type SyncStoreTx interface {
 	GetItems(ctx context.Context, kind merge.Kind, keys []string) (map[string]*merge.Item, error)
 	// Categories returns every category item, tombstoned ones included.
 	Categories(ctx context.Context) ([]*merge.Item, error)
+	CountOfKind(ctx context.Context, kind merge.Kind) (int, error)
+	ItemsOfKind(ctx context.Context, kind merge.Kind) ([]*merge.Item, error)
 	// Apply writes the merge result and returns the new seq (unchanged when nothing was written).
 	Apply(ctx context.Context, res *merge.Result, device string) (int64, error)
 	AllItems(ctx context.Context) ([]*merge.Item, error)

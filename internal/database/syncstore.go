@@ -108,7 +108,26 @@ func (t *syncStoreTx) GetItems(ctx context.Context, kind merge.Kind, keys []stri
 }
 
 func (t *syncStoreTx) Categories(ctx context.Context) ([]*merge.Item, error) {
-	return t.queryItems(ctx, sq.Eq{"user_api_key": t.apiKey, "kind": string(merge.KindCategory)})
+	return t.ItemsOfKind(ctx, merge.KindCategory)
+}
+
+func (t *syncStoreTx) CountOfKind(ctx context.Context, kind merge.Kind) (int, error) {
+	var n int
+	err := t.repo.db.squirrel.
+		Select("COUNT(*)").
+		From("sync_item").
+		Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(kind)}).
+		RunWith(t.tx).
+		QueryRowContext(ctx).
+		Scan(&n)
+	if err != nil {
+		return 0, errors.Wrap(err, "error counting sync items")
+	}
+	return n, nil
+}
+
+func (t *syncStoreTx) ItemsOfKind(ctx context.Context, kind merge.Kind) ([]*merge.Item, error) {
+	return t.queryItems(ctx, sq.Eq{"user_api_key": t.apiKey, "kind": string(kind)})
 }
 
 func (t *syncStoreTx) AllItems(ctx context.Context) ([]*merge.Item, error) {
