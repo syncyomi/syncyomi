@@ -24,7 +24,12 @@ jobs:
       pull-requests: read
     outputs:
       sync: ${{ steps.filter.outputs.sync || 'true' }}
+      shards: ${{ steps.shards.outputs.shards }}
+      tachiyomi_sha: ${{ steps.refs.outputs.tachiyomi_sha }}
+      suwayomi_sha: ${{ steps.refs.outputs.suwayomi_sha }}
     steps:
+      - uses: actions/checkout@v7
+
       - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name == 'pull_request'
@@ -38,34 +43,72 @@ jobs:
               - "go.mod"
               - ".github/workflows/e2e.yml"
 
+      - id: shards
+        run: echo "shards=$(e2e/scripts/shards.sh)" >> "$GITHUB_OUTPUT"
+
+      # the upstream refs are branch names; the binaries are cached by the commit
+      # they point at, so an unchanged branch skips the Gradle builds entirely
+      - id: refs
+        run: |
+          resolve() { git ls-remote "https://github.com/$1.git" "refs/heads/$2" "refs/tags/$2" | head -1 | cut -f1; }
+          sha=$(resolve "$TACHIYOMI_REPO" "$TACHIYOMI_REF")
+          echo "tachiyomi_sha=${sha:-$TACHIYOMI_REF}" >> "$GITHUB_OUTPUT"
+          sha=$(resolve "$SUWAYOMI_REPO" "$SUWAYOMI_REF")
+          echo "suwayomi_sha=${sha:-$SUWAYOMI_REF}" >> "$GITHUB_OUTPUT"
+        env:
+          # Post-upstream-merge: set repo variables E2E_TACHIYOMI_REPO/REF and
+          # E2E_SUWAYOMI_REPO/REF (e.g. jobobby04/TachiyomiSY + master) instead of
+          # editing this file
+          TACHIYOMI_REPO: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
+          TACHIYOMI_REF: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
+          SUWAYOMI_REPO: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
+          SUWAYOMI_REF: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'feat/syncyomi-v2' }}
+
   build-apk:
     needs: changes
     if: needs.changes.outputs.sync == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/cache/restore@v6
+        id: apk
         with:
-          # Post-upstream-merge: set repo variables E2E_TACHIYOMI_REPO/REF
-          # (e.g. jobobby04/TachiyomiSY + master) instead of editing this file
+          path: /tmp/e2e-build/app-x86_64-debug.apk
+          key: tachiyomi-apk-${{ needs.changes.outputs.tachiyomi_sha }}
+
+      - uses: actions/checkout@v7
+        if: steps.apk.outputs.cache-hit != 'true'
+        with:
           repository: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
-          ref: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
+          ref: ${{ needs.changes.outputs.tachiyomi_sha }}
 
       - uses: actions/setup-java@v6
+        if: steps.apk.outputs.cache-hit != 'true'
         with:
           distribution: temurin
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v6
+        if: steps.apk.outputs.cache-hit != 'true'
         with:
           cache-read-only: false
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug
+        if: steps.apk.outputs.cache-hit != 'true'
+        run: |
+          ./gradlew :app:assembleDebug
+          mkdir -p /tmp/e2e-build
+          cp app/build/outputs/apk/debug/app-x86_64-debug.apk /tmp/e2e-build/
+
+      - uses: actions/cache/save@v6
+        if: steps.apk.outputs.cache-hit != 'true'
+        with:
+          path: /tmp/e2e-build/app-x86_64-debug.apk
+          key: tachiyomi-apk-${{ needs.changes.outputs.tachiyomi_sha }}
 
       - uses: actions/upload-artifact@v7
         with:
           name: tachiyomi-apk
-          path: app/build/outputs/apk/debug/app-x86_64-debug.apk
+          path: /tmp/e2e-build/app-x86_64-debug.apk
           retention-days: 3
 
   build-suwayomi:
@@ -73,23 +116,31 @@ jobs:
     if: needs.changes.outputs.sync == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/cache/restore@v6
+        id: jar
         with:
-          # Post-upstream-merge: set repo variables E2E_SUWAYOMI_REPO/REF
-          # (e.g. Suwayomi/Suwayomi-Server + master) instead of editing this file
+          path: /tmp/e2e-build/suwayomi
+          key: suwayomi-jar-${{ needs.changes.outputs.suwayomi_sha }}
+
+      - uses: actions/checkout@v7
+        if: steps.jar.outputs.cache-hit != 'true'
+        with:
           repository: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
-          ref: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'feat/syncyomi-v2' }}
+          ref: ${{ needs.changes.outputs.suwayomi_sha }}
 
       - uses: actions/setup-java@v6
+        if: steps.jar.outputs.cache-hit != 'true'
         with:
           distribution: zulu
           java-version: 25
 
       - uses: gradle/actions/setup-gradle@v6
+        if: steps.jar.outputs.cache-hit != 'true'
         with:
           cache-read-only: false
 
       - name: Configure build memory
+        if: steps.jar.outputs.cache-hit != 'true'
         # The Kotlin daemon's default heap sizing OOMs on 16 GB runners; the
         # setting must live in gradle.properties (a -D flag doesn't reach it)
         run: |
@@ -97,19 +148,33 @@ jobs:
           echo "kotlin.daemon.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m" >> gradle.properties
 
       - name: Build shadowJar
-        run: ./gradlew :server:shadowJar
+        if: steps.jar.outputs.cache-hit != 'true'
+        run: |
+          ./gradlew :server:shadowJar
+          mkdir -p /tmp/e2e-build/suwayomi
+          cp server/build/Suwayomi-Server-*.jar /tmp/e2e-build/suwayomi/
+
+      - uses: actions/cache/save@v6
+        if: steps.jar.outputs.cache-hit != 'true'
+        with:
+          path: /tmp/e2e-build/suwayomi
+          key: suwayomi-jar-${{ needs.changes.outputs.suwayomi_sha }}
 
       - uses: actions/upload-artifact@v7
         with:
           name: suwayomi-jar
-          path: server/build/Suwayomi-Server-*.jar
+          path: /tmp/e2e-build/suwayomi/Suwayomi-Server-*.jar
           retention-days: 3
 
-  e2e:
+  e2e-shard:
+    name: e2e (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changes, build-apk, build-suwayomi]
     if: needs.changes.outputs.sync == 'true'
-    timeout-minutes: 60
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.shards) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -178,17 +243,34 @@ jobs:
           name: suwayomi-jar
           path: /tmp/e2e-artifacts
 
-      - name: Run E2E suite
+      - name: Run E2E shard
         env:
           E2E_TACHIYOMI_APK: /tmp/e2e-artifacts/app-x86_64-debug.apk
         run: |
           export E2E_SUWAYOMI_JAR="$(ls /tmp/e2e-artifacts/Suwayomi-Server-*.jar | head -1)"
-          e2e/scripts/run-e2e.sh
+          e2e/scripts/run-e2e.sh -run '${{ matrix.run }}'
 
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-failure-artifacts
+          name: e2e-failure-artifacts-${{ matrix.name }}
           path: e2e/artifacts/
           retention-days: 7
+
+  # the required check: passes when the shards passed or were skipped on purpose,
+  # fails when the changes job or any shard failed
+  e2e:
+    needs: [changes, e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          case "$CHANGES/$SYNC/$SHARDS" in
+            success/false/skipped | success/true/success) exit 0 ;;
+            *) echo "changes=$CHANGES sync=$SYNC shards=$SHARDS"; exit 1 ;;
+          esac
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          SYNC: ${{ needs.changes.outputs.sync }}
+          SHARDS: ${{ needs.e2e-shard.result }}
