@@ -12,20 +12,35 @@ on:
         description: "Suwayomi-Server ref to build"
         default: "feat/syncyomi-v2"
   pull_request:
-    paths:
-      - "internal/**"
-      - "proto/**"
-      - "e2e/**"
-      - "main.go"
-      - "go.mod"
-      - ".github/workflows/e2e.yml"
 
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      sync: ${{ steps.filter.outputs.sync || 'true' }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            sync:
+              - "internal/**"
+              - "proto/**"
+              - "e2e/**"
+              - "main.go"
+              - "go.mod"
+              - ".github/workflows/e2e.yml"
+
   build-apk:
+    needs: changes
+    if: needs.changes.outputs.sync == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -54,6 +69,8 @@ jobs:
           retention-days: 3
 
   build-suwayomi:
+    needs: changes
+    if: needs.changes.outputs.sync == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -90,7 +107,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    needs: [build-apk, build-suwayomi]
+    needs: [changes, build-apk, build-suwayomi]
+    if: needs.changes.outputs.sync == 'true'
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
