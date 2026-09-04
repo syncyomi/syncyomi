@@ -61,12 +61,27 @@ func (r *SyncStoreRepo) Tx(ctx context.Context, apiKey string, fn func(tx domain
 	return nil
 }
 
+func (r *SyncStoreRepo) ReadTx(ctx context.Context, apiKey string, fn func(tx domain.SyncStoreReader) error) error {
+	tx, err := r.db.handler.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return errors.Wrap(err, "error starting read transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	st := &syncStoreTx{repo: r, tx: tx, apiKey: apiKey, readOnly: true}
+	if err := st.loadState(ctx); err != nil {
+		return err
+	}
+	return fn(st)
+}
+
 type syncStoreTx struct {
-	repo   *SyncStoreRepo
-	tx     *sql.Tx
-	apiKey string
-	seq    int64
-	exists bool
+	repo     *SyncStoreRepo
+	tx       *sql.Tx
+	apiKey   string
+	seq      int64
+	exists   bool
+	readOnly bool
 }
 
 func (t *syncStoreTx) Seq() int64   { return t.seq }
@@ -74,7 +89,7 @@ func (t *syncStoreTx) Exists() bool { return t.exists }
 
 func (t *syncStoreTx) loadState(ctx context.Context) error {
 	query := `SELECT seq FROM sync_state WHERE user_api_key = $1`
-	if databaseDriver == "postgres" {
+	if databaseDriver == "postgres" && !t.readOnly {
 		query += " FOR UPDATE"
 	}
 	err := t.tx.QueryRowContext(ctx, query, t.apiKey).Scan(&t.seq)

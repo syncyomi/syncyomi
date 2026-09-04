@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/merge"
@@ -369,5 +370,48 @@ func TestSyncStore_KindQueries(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSyncStore_ReadTxDoesNotWaitForWriters(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
+			return err
+		}
+		return tx.SetRawBlob(ctx, []byte("raw"), "uuid=a", 1, true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	release := make(chan struct{})
+	writing := make(chan struct{})
+	go func() {
+		_ = store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+			close(writing)
+			<-release
+			return nil
+		})
+	}()
+	<-writing
+	defer close(release)
+
+	readCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	err = store.ReadTx(readCtx, "key1", func(tx domain.SyncStoreReader) error {
+		raw, err := tx.RawBlob(readCtx)
+		if err != nil {
+			return err
+		}
+		if !tx.Exists() || tx.Seq() != 1 || raw == nil || !raw.Pending || raw.Seq != 1 {
+			t.Errorf("read tx state: exists=%v seq=%d raw=%+v", tx.Exists(), tx.Seq(), raw)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read tx while a writer holds the store: %v", err)
 	}
 }

@@ -790,3 +790,53 @@ func TestKeyLocks_RespectContext(t *testing.T) {
 		unlock()
 	}
 }
+
+func TestV1_GetEchoDoesNotTakeKeyLock(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlock, err := svc.locks.lock(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	getCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	snap, err := svc.GetContent(getCtx, "key1")
+	if err != nil || !bytes.Equal(snap.Data, blob) || snap.ETag != etag {
+		t.Fatalf("echo while the key is locked: %v", err)
+	}
+}
+
+func TestSnapshot_FastPathMatchesLockedPath(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true)}})
+	first, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil || !bytes.Equal(first.Data, second.Data) || first.ETag != second.ETag {
+		t.Fatalf("cached snapshot differs: %v", err)
+	}
+
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true), mangaOf(1, "/v1", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+	third, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := backup.Decode(third.Data); len(got.BackupManga) != 2 {
+		t.Errorf("snapshot after a pending upload = %v", got.BackupManga)
+	}
+}

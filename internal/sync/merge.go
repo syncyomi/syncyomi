@@ -167,6 +167,10 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 
 // Snapshot renders the whole store for v2 clients. ErrNoData when nothing was ever stored.
 func (s *service) Snapshot(ctx context.Context, apiKey string, cursor int64) (*Snapshot, error) {
+	if snap, err := s.cachedRender(ctx, apiKey); err != nil || snap != nil {
+		return snap, err
+	}
+
 	unlock, err := s.locks.lock(ctx, apiKey)
 	if err != nil {
 		return nil, err
@@ -199,6 +203,10 @@ func (s *service) Snapshot(ctx context.Context, apiKey string, cursor int64) (*S
 // remote and local state themselves, so fidelity of the stored bytes matters more than
 // server-side merging. ErrNoData when nothing was ever stored.
 func (s *service) GetContent(ctx context.Context, apiKey string) (*Snapshot, error) {
+	if snap, err := s.currentRaw(ctx, apiKey); err != nil || snap != nil {
+		return snap, err
+	}
+
 	unlock, err := s.locks.lock(ctx, apiKey)
 	if err != nil {
 		return nil, err
@@ -229,6 +237,46 @@ func (s *service) GetContent(ctx context.Context, apiKey string) (*Snapshot, err
 			return err
 		}
 		snap = &Snapshot{Data: rc.Data, ETag: rc.ETag, Cursor: tx.Seq()}
+		return nil
+	})
+	return snap, err
+}
+
+func (s *service) currentRaw(ctx context.Context, apiKey string) (*Snapshot, error) {
+	var snap *Snapshot
+	err := s.store.ReadTx(ctx, apiKey, func(tx domain.SyncStoreReader) error {
+		raw, err := tx.RawBlob(ctx)
+		if err != nil {
+			return err
+		}
+		if raw != nil && raw.Seq == tx.Seq() {
+			snap = &Snapshot{Data: raw.Data, ETag: raw.ETag, Cursor: tx.Seq()}
+		}
+		return nil
+	})
+	return snap, err
+}
+
+func (s *service) cachedRender(ctx context.Context, apiKey string) (*Snapshot, error) {
+	var snap *Snapshot
+	err := s.store.ReadTx(ctx, apiKey, func(tx domain.SyncStoreReader) error {
+		if !tx.Exists() {
+			return nil
+		}
+		raw, err := tx.RawBlob(ctx)
+		if err != nil {
+			return err
+		}
+		if raw != nil && raw.Pending {
+			return nil
+		}
+		rc, err := tx.RenderCache(ctx)
+		if err != nil {
+			return err
+		}
+		if rc != nil && rc.RenderedSeq != nil && *rc.RenderedSeq == tx.Seq() {
+			snap = &Snapshot{Data: rc.Data, ETag: rc.ETag, Cursor: tx.Seq()}
+		}
 		return nil
 	})
 	return snap, err

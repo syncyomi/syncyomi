@@ -148,6 +148,14 @@ type SyncStoreTx interface {
 	SetDeviceCursor(ctx context.Context, dc DeviceCursor) error
 }
 
+type SyncStoreReader interface {
+	Seq() int64
+	Exists() bool
+	RawBlob(ctx context.Context) (*RawBlob, error)
+	RenderCache(ctx context.Context) (*RenderCache, error)
+}
+
 type SyncStore interface {
 	Tx(ctx context.Context, apiKey string, fn func(tx SyncStoreTx) error) error
+	ReadTx(ctx context.Context, apiKey string, fn func(tx SyncStoreReader) error) error
 }
