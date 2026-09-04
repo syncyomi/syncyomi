@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.5.2](https://github.com/syncyomi/syncyomi/compare/v1.5.1...v1.5.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **sync:** answer v1 uploads before importing them into the item store ([#226](https://github.com/syncyomi/syncyomi/issues/226)) ([2bf2c7f](https://github.com/syncyomi/syncyomi/commit/2bf2c7f9ccc4b139857d2176a39a0db2d6a2affa))
+
+
+### Other Changes
+
+* **e2e:** cache upstream binaries by commit and shard the suite ([eb827c1](https://github.com/syncyomi/syncyomi/commit/eb827c16928539af3a9aabf131888e284b34f26c))
+* require every check and auto-merge dependabot updates ([#230](https://github.com/syncyomi/syncyomi/issues/230)) ([f134994](https://github.com/syncyomi/syncyomi/commit/f1349946f85d9fd82c7666e0d386bf03957730f1))
+
+
+### Documentation
+
+* **e2e:** describe the sharded CI run ([436a060](https://github.com/syncyomi/syncyomi/commit/436a06011236bdbc9bb3441812643719f9e91035))
+
+
+### Dependencies
+
+* bump actions/setup-java from 5 to 6 ([#222](https://github.com/syncyomi/syncyomi/issues/222)) ([44f2d69](https://github.com/syncyomi/syncyomi/commit/44f2d69adf08d408a34881609e6ee8a164adfecb))
+* bump docker/setup-qemu-action from 4.2.0 to 4.3.0 ([#228](https://github.com/syncyomi/syncyomi/issues/228)) ([95ce7e4](https://github.com/syncyomi/syncyomi/commit/95ce7e4a671e1aff3050d7945e75c4ec4020029c))
+* bump gradle/actions from 5 to 6 ([#223](https://github.com/syncyomi/syncyomi/issues/223)) ([b47a9a0](https://github.com/syncyomi/syncyomi/commit/b47a9a049339bb501c0e359bb7d98c7e7e96e820))
+* bump modernc.org/sqlite in the gomod-minor-patch group ([#227](https://github.com/syncyomi/syncyomi/issues/227)) ([6554b01](https://github.com/syncyomi/syncyomi/commit/6554b01ecb06d4082aff4085c34af26183a2608e))
+* bump the npm-minor-patch group in /web with 4 updates ([#229](https://github.com/syncyomi/syncyomi/issues/229)) ([67a7275](https://github.com/syncyomi/syncyomi/commit/67a7275d7885173b06a700dac612db32bc768665))
+
 ## [1.5.1](https://github.com/syncyomi/syncyomi/compare/v1.5.0...v1.5.1) (2026-09-01)
 
 
