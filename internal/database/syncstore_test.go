@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/merge"
@@ -200,14 +201,14 @@ func TestSyncStore_RawBlob(t *testing.T) {
 		if err != nil || raw != nil {
 			t.Errorf("empty raw blob = %+v, %v", raw, err)
 		}
-		if err := tx.SetRawBlob(ctx, []byte("client bytes"), "uuid=a", 2); err != nil {
+		if err := tx.SetRawBlob(ctx, []byte("client bytes"), "uuid=a", 2, true); err != nil {
 			return err
 		}
 		raw, err = tx.RawBlob(ctx)
 		if err != nil {
 			return err
 		}
-		if raw == nil || !bytes.Equal(raw.Data, []byte("client bytes")) || raw.ETag != "uuid=a" || raw.Seq != 2 {
+		if raw == nil || !bytes.Equal(raw.Data, []byte("client bytes")) || raw.ETag != "uuid=a" || raw.Seq != 2 || !raw.Pending {
 			t.Errorf("raw blob = %+v", raw)
 		}
 
@@ -219,7 +220,7 @@ func TestSyncStore_RawBlob(t *testing.T) {
 		if raw == nil || !bytes.Equal(raw.Data, []byte("client bytes")) || raw.Seq != 2 {
 			t.Errorf("raw blob after render = %+v", raw)
 		}
-		if err := tx.SetRawBlob(ctx, []byte("newer"), "uuid=b", 4); err != nil {
+		if err := tx.SetRawBlob(ctx, []byte("newer"), "uuid=b", 4, true); err != nil {
 			return err
 		}
 		rc, _ := tx.RenderCache(ctx)
@@ -231,7 +232,7 @@ func TestSyncStore_RawBlob(t *testing.T) {
 			return err
 		}
 		raw, _ = tx.RawBlob(ctx)
-		if raw == nil || raw.Seq != 9 || !bytes.Equal(raw.Data, []byte("newer")) {
+		if raw == nil || raw.Seq != 9 || raw.Pending || !bytes.Equal(raw.Data, []byte("newer")) {
 			t.Errorf("raw blob after mark = %+v", raw)
 		}
 		return nil
@@ -337,5 +338,80 @@ func TestSyncStore_LargeBatch(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSyncStore_KindQueries(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(
+			&merge.Item{Kind: merge.KindManga, Key: "1|/a", Payload: []byte("a")},
+			&merge.Item{Kind: merge.KindManga, Key: "1|/b", Payload: []byte("b")},
+			&merge.Item{Kind: merge.KindChapter, Key: "1|/a\x1f/c", ParentKey: "1|/a", Payload: []byte("c")},
+		), "A"); err != nil {
+			return err
+		}
+		for kind, want := range map[merge.Kind]int{merge.KindManga: 2, merge.KindChapter: 1, merge.KindCategory: 0} {
+			n, err := tx.CountOfKind(ctx, kind)
+			if err != nil {
+				return err
+			}
+			items, err := tx.ItemsOfKind(ctx, kind)
+			if err != nil {
+				return err
+			}
+			if n != want || len(items) != want {
+				t.Errorf("%s: count=%d items=%d, want %d", kind, n, len(items), want)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSyncStore_ReadTxDoesNotWaitForWriters(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
+			return err
+		}
+		return tx.SetRawBlob(ctx, []byte("raw"), "uuid=a", 1, true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	release := make(chan struct{})
+	writing := make(chan struct{})
+	go func() {
+		_ = store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+			close(writing)
+			<-release
+			return nil
+		})
+	}()
+	<-writing
+	defer close(release)
+
+	readCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	err = store.ReadTx(readCtx, "key1", func(tx domain.SyncStoreReader) error {
+		raw, err := tx.RawBlob(readCtx)
+		if err != nil {
+			return err
+		}
+		if !tx.Exists() || tx.Seq() != 1 || raw == nil || !raw.Pending || raw.Seq != 1 {
+			t.Errorf("read tx state: exists=%v seq=%d raw=%+v", tx.Exists(), tx.Seq(), raw)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read tx while a writer holds the store: %v", err)
 	}
 }

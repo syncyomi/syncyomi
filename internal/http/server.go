@@ -15,6 +15,13 @@ import (
 	"github.com/rs/zerolog"
 	"net"
 	"net/http"
+	"time"
+)
+
+const (
+	readHeaderTimeout = 15 * time.Second
+	requestTimeout    = 10 * time.Minute
+	idleTimeout       = 2 * time.Minute
 )
 
 type Server struct {
@@ -90,13 +97,27 @@ func (s Server) Open() error {
 		return err
 	}
 
-	server := http.Server{
-		Handler: s.Handler(),
-	}
+	server := newHTTPServer(s.Handler())
 
 	s.log.Info().Msgf("Starting server. Listening on %s", listener.Addr().String())
 
 	return server.Serve(listener)
+}
+
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       requestTimeout,
+		WriteTimeout:      requestTimeout,
+		IdleTimeout:       idleTimeout,
+	}
+}
+
+func streamForever(w http.ResponseWriter) {
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Time{})
+	_ = rc.SetWriteDeadline(time.Time{})
 }
 
 func (s Server) Handler() http.Handler {
@@ -142,6 +163,7 @@ func (s Server) Handler() http.Handler {
 			r.Route("/sync", syncHandler.Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+				streamForever(w)
 
 				// inject CORS headers to bypass checks
 				s.sse.Headers = map[string]string{

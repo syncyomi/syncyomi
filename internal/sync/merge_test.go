@@ -3,8 +3,10 @@ package sync
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
@@ -30,7 +32,7 @@ func (fakeNotifier) Delete(context.Context, int) error                         {
 func (fakeNotifier) Send(domain.NotificationEvent, domain.NotificationPayload) {}
 func (fakeNotifier) Test(context.Context, domain.Notification) error           { return nil }
 
-func newTestService(t *testing.T) (*service, *database.DB) {
+func newTestService(t testing.TB) (*service, *database.DB) {
 	t.Helper()
 	dir := t.TempDir()
 	log := logger.Mock()
@@ -48,6 +50,11 @@ func newTestService(t *testing.T) (*service, *database.DB) {
 		t.Fatal(err)
 	}
 	svc := NewService(log, database.NewSyncRepo(log, db, 3), database.NewSyncStore(log, db, 3), fakeNotifier{}, apiRepo).(*service)
+	svc.scheduleImport = func(apiKey string) {
+		if _, err := svc.ImportPending(context.Background(), apiKey); err != nil {
+			t.Errorf("inline import: %v", err)
+		}
+	}
 	return svc, db
 }
 
@@ -537,5 +544,299 @@ func TestMerge_FixtureRoundTrip(t *testing.T) {
 	got, _ := backup.Decode(snap.Data)
 	if !proto.Equal(sortBackup(fixture), sortBackup(got)) {
 		t.Error("snapshot differs from the uploaded fixture")
+	}
+}
+
+func rawState(t *testing.T, svc *service) (pending bool, current bool, exists bool) {
+	t.Helper()
+	err := svc.store.Tx(context.Background(), "key1", func(tx domain.SyncStoreTx) error {
+		raw, err := tx.RawBlob(context.Background())
+		if err != nil {
+			return err
+		}
+		if raw != nil {
+			pending, current = raw.Pending, raw.Seq == tx.Seq()
+		}
+		exists = tx.Exists()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pending, current, exists
+}
+
+func TestV1_PutDefersImport(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true, chapterOf("/c", 1, false))}})
+	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending, current, exists := rawState(t, svc); !pending || !current || exists {
+		t.Fatalf("after put: pending=%v current=%v exists=%v", pending, current, exists)
+	}
+	snap, err := svc.GetContent(ctx, "key1")
+	if err != nil || !bytes.Equal(snap.Data, blob) || snap.ETag != etag {
+		t.Fatalf("echo before import: %v %q", err, snap.ETag)
+	}
+
+	if imported, err := svc.ImportPending(ctx, "key1"); err != nil || !imported {
+		t.Fatalf("import = %v, %v", imported, err)
+	}
+	if imported, err := svc.ImportPending(ctx, "key1"); err != nil || imported {
+		t.Fatalf("second import = %v, %v", imported, err)
+	}
+	if pending, current, exists := rawState(t, svc); pending || !current || !exists {
+		t.Fatalf("after import: pending=%v current=%v exists=%v", pending, current, exists)
+	}
+	v2, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := backup.Decode(v2.Data); len(got.BackupManga) != 1 || len(got.BackupManga[0].Chapters) != 1 {
+		t.Errorf("snapshot after import = %v", got.BackupManga)
+	}
+	snap, _ = svc.GetContent(ctx, "key1")
+	if !bytes.Equal(snap.Data, blob) || snap.ETag != etag {
+		t.Error("echo lost after import")
+	}
+}
+
+func TestV1_SecondPutSupersedesPending(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	first, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true)}})
+	second, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/b", 1, true)}})
+	etag1, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	etag2, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, etag1, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported, err := svc.ImportPending(ctx, "key1"); err != nil || !imported {
+		t.Fatalf("import = %v, %v", imported, err)
+	}
+	v2, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := backup.Decode(v2.Data); len(got.BackupManga) != 1 || got.BackupManga[0].Url != "/b" {
+		t.Errorf("store after two uploads = %v", got.BackupManga)
+	}
+	history, _ := svc.ListHistory(ctx, "key1")
+	tags := map[string]bool{}
+	for _, h := range history {
+		tags[h.ETag] = true
+	}
+	if !tags[etag1] || !tags[etag2] {
+		t.Errorf("history missing an upload: %v", history)
+	}
+}
+
+func TestV1_PendingGarbageClearsFlag(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", []byte("garbage"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported, err := svc.ImportPending(ctx, "key1"); err != nil || imported {
+		t.Fatalf("garbage import = %v, %v", imported, err)
+	}
+	if pending, current, exists := rawState(t, svc); pending || !current || exists {
+		t.Fatalf("after garbage import: pending=%v current=%v exists=%v", pending, current, exists)
+	}
+	snap, _ := svc.GetContent(ctx, "key1")
+	if string(snap.Data) != "garbage" || snap.ETag != etag {
+		t.Error("garbage not echoed")
+	}
+	if _, err := svc.Snapshot(ctx, "key1", 0); err != ErrNoData {
+		t.Errorf("snapshot err = %v, want ErrNoData", err)
+	}
+}
+
+func TestV1_LegacyPromotionIsPending(t *testing.T) {
+	svc, db := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	legacy, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/legacy", 1, true)}})
+	repo := database.NewSyncRepo(logger.Mock(), db, 3)
+	legacyETag, err := repo.SetSyncData(ctx, "key1", legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := svc.GetContent(ctx, "key1")
+	if err != nil || !bytes.Equal(snap.Data, legacy) || snap.ETag != *legacyETag {
+		t.Fatalf("legacy get: %v", err)
+	}
+	if pending, current, exists := rawState(t, svc); !pending || !current || exists {
+		t.Fatalf("after promotion: pending=%v current=%v exists=%v", pending, current, exists)
+	}
+
+	resp := sync2(t, svc, "N", 0, false, &pb.Backup{})
+	if !resp.FullRequested || urls(resp.Backup)["/legacy"] == nil {
+		t.Errorf("v2 after promotion: full=%v manga=%v", resp.FullRequested, resp.Backup.BackupManga)
+	}
+	if pending, _, exists := rawState(t, svc); pending || !exists {
+		t.Errorf("after v2 merge: pending=%v exists=%v", pending, exists)
+	}
+}
+
+func TestV2_MergeAfterPendingDoesNotRequestFull(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true)}})
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true), mangaOf(1, "/v1", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	if a.FullRequested || !a.Changed || urls(a.Backup)["/v1"] == nil {
+		t.Errorf("delta after pending upload: full=%v changed=%v manga=%v", a.FullRequested, a.Changed, a.Backup.BackupManga)
+	}
+	if pending, _, _ := rawState(t, svc); pending {
+		t.Error("v2 merge left the upload pending")
+	}
+}
+
+func TestMerge_DeltaAgainstLargeStoreStaysExact(t *testing.T) {
+	svc, _ := newTestService(t)
+	lib := &pb.Backup{}
+	for i := 0; i < 100; i++ {
+		var chapters []*pb.BackupChapter
+		for c := 0; c < 60; c++ {
+			chapters = append(chapters, chapterOf(fmt.Sprintf("/m%d/c%d", i, c), 1, false))
+		}
+		lib.BackupManga = append(lib.BackupManga, mangaOf(1, fmt.Sprintf("/m%d", i), 1, true, chapters...))
+	}
+	a := sync2(t, svc, "A", 0, true, lib)
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if len(b.Backup.BackupManga) != 100 {
+		t.Fatalf("B full = %d manga", len(b.Backup.BackupManga))
+	}
+
+	changed := &pb.Backup{}
+	for i := 0; i < 10; i++ {
+		m := proto.Clone(lib.BackupManga[i]).(*pb.BackupManga)
+		m.Version = 2
+		for _, ch := range m.Chapters {
+			ch.Read, ch.Version = true, 2
+		}
+		changed.BackupManga = append(changed.BackupManga, m)
+	}
+	sync2(t, svc, "A", a.Cursor, false, changed)
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{})
+	if !b.Changed || len(b.Backup.BackupManga) != 10 {
+		t.Fatalf("B delta = changed=%v %d manga, want the 10 changed", b.Changed, len(b.Backup.BackupManga))
+	}
+	for _, m := range b.Backup.BackupManga {
+		if m.Version != 2 || len(m.Chapters) != 60 || !m.Chapters[0].Read {
+			t.Errorf("delta manga %s = v%d %d chapters read=%v", m.Url, m.Version, len(m.Chapters), m.Chapters[0].Read)
+		}
+	}
+}
+
+func TestV1_BackgroundImport(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = newImporter(5*time.Millisecond, svc.runImport).schedule
+	ctx := context.Background()
+
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if pending, _, exists := rawState(t, svc); !pending && exists {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background import did not run")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestKeyLocks_RespectContext(t *testing.T) {
+	var locks keyLocks
+	unlock, err := locks.lock(context.Background(), "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := locks.lock(ctx, "k"); err == nil {
+		t.Fatal("second lock did not fail on a cancelled context")
+	}
+	unlock()
+	if unlock, err := locks.lock(context.Background(), "k"); err != nil {
+		t.Fatal(err)
+	} else {
+		unlock()
+	}
+}
+
+func TestV1_GetEchoDoesNotTakeKeyLock(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+	etag, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlock, err := svc.locks.lock(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	getCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	snap, err := svc.GetContent(getCtx, "key1")
+	if err != nil || !bytes.Equal(snap.Data, blob) || snap.ETag != etag {
+		t.Fatalf("echo while the key is locked: %v", err)
+	}
+}
+
+func TestSnapshot_FastPathMatchesLockedPath(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.scheduleImport = func(string) {}
+	ctx := context.Background()
+
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true)}})
+	first, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil || !bytes.Equal(first.Data, second.Data) || first.ETag != second.ETag {
+		t.Fatalf("cached snapshot differs: %v", err)
+	}
+
+	blob, _ := backup.Encode(&pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/a", 1, true), mangaOf(1, "/v1", 1, true)}})
+	if _, err := svc.PutContent(ctx, "key1", domain.DeviceInfo{}, "", blob); err != nil {
+		t.Fatal(err)
+	}
+	third, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := backup.Decode(third.Data); len(got.BackupManga) != 2 {
+		t.Errorf("snapshot after a pending upload = %v", got.BackupManga)
 	}
 }

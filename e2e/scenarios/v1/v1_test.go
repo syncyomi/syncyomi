@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/e2e/harness"
 	"github.com/SyncYomi/SyncYomi/internal/backup"
@@ -250,4 +251,62 @@ func TestV1_GarbageTolerated(t *testing.T) {
 	if !bytes.Equal(data, raw) {
 		t.Fatal("recovery upload not echoed")
 	}
+}
+
+func TestV1_LargeLibraryUnderTimeout(t *testing.T) {
+	srv := startServer(t, 8801)
+	v1 := harness.NewSyntheticClient(srv, "")
+	v2 := harness.NewSyntheticClient(srv, "e2e-v2-device")
+	raw := encodeFixture(t, "s6", 3600, 60)
+
+	within := func(name string, fn func(ctx context.Context)) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		start := time.Now()
+		fn(ctx)
+		t.Logf("%s: %s for %d bytes", name, time.Since(start), len(raw))
+	}
+
+	var etag string
+	within("first put", func(ctx context.Context) {
+		tag, status, err := v1.PutV1(ctx, raw, "", false)
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("put = %d, %v", status, err)
+		}
+		etag = tag
+	})
+	within("get", func(ctx context.Context) {
+		data, tag, status, err := v1.GetV1(ctx, "")
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("get = %d, %v", status, err)
+		}
+		if tag != etag || !bytes.Equal(data, raw) {
+			t.Fatal("large upload not echoed")
+		}
+	})
+	within("second put", func(ctx context.Context) {
+		tag, status, err := v1.PutV1(ctx, raw, etag, false)
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("second put = %d, %v", status, err)
+		}
+		etag = tag
+	})
+
+	resp, err := v2.Merge(context.Background(), harness.FixtureBackup("s6v2", 1, 1), harness.MergeOptions{Full: true})
+	if err != nil {
+		t.Fatalf("v2 full merge: %v", err)
+	}
+	if len(resp.BackupManga) != 3601 {
+		t.Fatalf("v2 sees %d manga, want 3601", len(resp.BackupManga))
+	}
+	within("get after v2 write", func(ctx context.Context) {
+		data, tag, status, err := v1.GetV1(ctx, etag)
+		if err != nil || status != http.StatusOK || !strings.HasPrefix(tag, "seq=") {
+			t.Fatalf("get after v2 write = %d %q, %v", status, tag, err)
+		}
+		if render, err := backup.Decode(data); err != nil || len(render.BackupManga) != 3601 {
+			t.Fatalf("render fallback = %d manga, %v", len(render.BackupManga), err)
+		}
+	})
 }

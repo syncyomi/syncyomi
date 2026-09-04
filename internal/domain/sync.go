@@ -100,9 +100,10 @@ type RenderCache struct {
 // RawBlob is the last v1 client upload, kept byte-for-byte. It is served back verbatim
 // while Seq still equals the store's seq (no other device has written since).
 type RawBlob struct {
-	Data []byte
-	ETag string
-	Seq  int64
+	Data    []byte
+	ETag    string
+	Seq     int64
+	Pending bool
 }
 
 type DeviceCursor struct {
@@ -120,6 +121,8 @@ type SyncStoreTx interface {
 	GetItems(ctx context.Context, kind merge.Kind, keys []string) (map[string]*merge.Item, error)
 	// Categories returns every category item, tombstoned ones included.
 	Categories(ctx context.Context) ([]*merge.Item, error)
+	CountOfKind(ctx context.Context, kind merge.Kind) (int, error)
+	ItemsOfKind(ctx context.Context, kind merge.Kind) ([]*merge.Item, error)
 	// Apply writes the merge result and returns the new seq (unchanged when nothing was written).
 	Apply(ctx context.Context, res *merge.Result, device string) (int64, error)
 	AllItems(ctx context.Context) ([]*merge.Item, error)
@@ -134,15 +137,25 @@ type SyncStoreTx interface {
 	MarkRendered(ctx context.Context, seq int64) error
 	// RawBlob returns the last v1 upload, or nil when none was ever stored.
 	RawBlob(ctx context.Context) (*RawBlob, error)
-	// SetRawBlob stores a v1 upload verbatim and records it in the history.
-	SetRawBlob(ctx context.Context, data []byte, etag string, seq int64) error
-	// MarkRawCurrent stamps the existing raw blob as matching seq without rewriting it.
+	// SetRawBlob stores a v1 upload verbatim and records it in the history. pending marks
+	// it as not yet imported into the item store.
+	SetRawBlob(ctx context.Context, data []byte, etag string, seq int64, pending bool) error
+	// MarkRawCurrent stamps the existing raw blob as matching seq and imported, without
+	// rewriting it.
 	MarkRawCurrent(ctx context.Context, seq int64) error
 	// Clear removes every item so the store can be rebuilt from a backup.
 	Clear(ctx context.Context) error
 	SetDeviceCursor(ctx context.Context, dc DeviceCursor) error
 }
 
+type SyncStoreReader interface {
+	Seq() int64
+	Exists() bool
+	RawBlob(ctx context.Context) (*RawBlob, error)
+	RenderCache(ctx context.Context) (*RenderCache, error)
+}
+
 type SyncStore interface {
 	Tx(ctx context.Context, apiKey string, fn func(tx SyncStoreTx) error) error
+	ReadTx(ctx context.Context, apiKey string, fn func(tx SyncStoreReader) error) error
 }

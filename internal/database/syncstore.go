@@ -61,12 +61,27 @@ func (r *SyncStoreRepo) Tx(ctx context.Context, apiKey string, fn func(tx domain
 	return nil
 }
 
+func (r *SyncStoreRepo) ReadTx(ctx context.Context, apiKey string, fn func(tx domain.SyncStoreReader) error) error {
+	tx, err := r.db.handler.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return errors.Wrap(err, "error starting read transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	st := &syncStoreTx{repo: r, tx: tx, apiKey: apiKey, readOnly: true}
+	if err := st.loadState(ctx); err != nil {
+		return err
+	}
+	return fn(st)
+}
+
 type syncStoreTx struct {
-	repo   *SyncStoreRepo
-	tx     *sql.Tx
-	apiKey string
-	seq    int64
-	exists bool
+	repo     *SyncStoreRepo
+	tx       *sql.Tx
+	apiKey   string
+	seq      int64
+	exists   bool
+	readOnly bool
 }
 
 func (t *syncStoreTx) Seq() int64   { return t.seq }
@@ -74,7 +89,7 @@ func (t *syncStoreTx) Exists() bool { return t.exists }
 
 func (t *syncStoreTx) loadState(ctx context.Context) error {
 	query := `SELECT seq FROM sync_state WHERE user_api_key = $1`
-	if databaseDriver == "postgres" {
+	if databaseDriver == "postgres" && !t.readOnly {
 		query += " FOR UPDATE"
 	}
 	err := t.tx.QueryRowContext(ctx, query, t.apiKey).Scan(&t.seq)
@@ -108,7 +123,26 @@ func (t *syncStoreTx) GetItems(ctx context.Context, kind merge.Kind, keys []stri
 }
 
 func (t *syncStoreTx) Categories(ctx context.Context) ([]*merge.Item, error) {
-	return t.queryItems(ctx, sq.Eq{"user_api_key": t.apiKey, "kind": string(merge.KindCategory)})
+	return t.ItemsOfKind(ctx, merge.KindCategory)
+}
+
+func (t *syncStoreTx) CountOfKind(ctx context.Context, kind merge.Kind) (int, error) {
+	var n int
+	err := t.repo.db.squirrel.
+		Select("COUNT(*)").
+		From("sync_item").
+		Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(kind)}).
+		RunWith(t.tx).
+		QueryRowContext(ctx).
+		Scan(&n)
+	if err != nil {
+		return 0, errors.Wrap(err, "error counting sync items")
+	}
+	return n, nil
+}
+
+func (t *syncStoreTx) ItemsOfKind(ctx context.Context, kind merge.Kind) ([]*merge.Item, error) {
+	return t.queryItems(ctx, sq.Eq{"user_api_key": t.apiKey, "kind": string(kind)})
 }
 
 func (t *syncStoreTx) AllItems(ctx context.Context) ([]*merge.Item, error) {
@@ -157,7 +191,6 @@ func (t *syncStoreTx) queryItems(ctx context.Context, where sq.Sqlizer) ([]*merg
 		Select(strings.Split(itemColumns, ", ")...).
 		From("sync_item").
 		Where(where).
-		OrderBy("seq", "key").
 		RunWith(t.tx).
 		QueryContext(ctx)
 	if err != nil {
@@ -371,12 +404,12 @@ func (t *syncStoreTx) RawBlob(ctx context.Context) (*domain.RawBlob, error) {
 		seq  sql.NullInt64
 	)
 	err := t.repo.db.squirrel.
-		Select("raw_data", "raw_etag", "raw_seq").
+		Select("raw_data", "raw_etag", "raw_seq", "raw_pending").
 		From("sync_data").
 		Where(sq.Eq{"user_api_key": t.apiKey}).
 		RunWith(t.tx).
 		QueryRowContext(ctx).
-		Scan(&rb.Data, &etag, &seq)
+		Scan(&rb.Data, &etag, &seq, &rb.Pending)
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -391,7 +424,7 @@ func (t *syncStoreTx) RawBlob(ctx context.Context) (*domain.RawBlob, error) {
 	return &rb, nil
 }
 
-func (t *syncStoreTx) SetRawBlob(ctx context.Context, data []byte, etag string, seq int64) error {
+func (t *syncStoreTx) SetRawBlob(ctx context.Context, data []byte, etag string, seq int64, pending bool) error {
 	if data == nil {
 		data = []byte{} // a zero-byte upload is valid; nil violates NOT NULL columns
 	}
@@ -399,9 +432,9 @@ func (t *syncStoreTx) SetRawBlob(ctx context.Context, data []byte, etag string, 
 	// the INSERT arm needs a value for the NOT NULL render columns; never touch them on conflict
 	_, err := t.repo.db.squirrel.
 		Insert("sync_data").
-		Columns("user_api_key", "created_at", "updated_at", "data", "data_etag", "raw_data", "raw_etag", "raw_seq").
-		Values(t.apiKey, now, now, []byte{}, "", data, etag, seq).
-		Suffix("ON CONFLICT (user_api_key) DO UPDATE SET raw_data = EXCLUDED.raw_data, raw_etag = EXCLUDED.raw_etag, raw_seq = EXCLUDED.raw_seq, updated_at = EXCLUDED.updated_at").
+		Columns("user_api_key", "created_at", "updated_at", "data", "data_etag", "raw_data", "raw_etag", "raw_seq", "raw_pending").
+		Values(t.apiKey, now, now, []byte{}, "", data, etag, seq, pending).
+		Suffix("ON CONFLICT (user_api_key) DO UPDATE SET raw_data = EXCLUDED.raw_data, raw_etag = EXCLUDED.raw_etag, raw_seq = EXCLUDED.raw_seq, raw_pending = EXCLUDED.raw_pending, updated_at = EXCLUDED.updated_at").
 		RunWith(t.tx).
 		ExecContext(ctx)
 	if err != nil {
@@ -414,6 +447,7 @@ func (t *syncStoreTx) MarkRawCurrent(ctx context.Context, seq int64) error {
 	_, err := t.repo.db.squirrel.
 		Update("sync_data").
 		Set("raw_seq", seq).
+		Set("raw_pending", false).
 		Where(sq.Eq{"user_api_key": t.apiKey}).
 		RunWith(t.tx).
 		ExecContext(ctx)

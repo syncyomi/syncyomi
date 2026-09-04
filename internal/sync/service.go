@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	gosync "sync"
 	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
@@ -39,8 +40,13 @@ type Service interface {
 	GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error)
 }
 
+const (
+	importDelay   = 20 * time.Second
+	importTimeout = 10 * time.Minute
+)
+
 func NewService(log logger.Logger, repo domain.SyncRepo, store domain.SyncStore, notificationSvc notification.Service, apiRepo domain.APIRepo) Service {
-	return &service{
+	s := &service{
 		log:                 log.With().Str("module", "sync").Logger(),
 		repo:                repo,
 		store:               store,
@@ -48,6 +54,8 @@ func NewService(log logger.Logger, repo domain.SyncRepo, store domain.SyncStore,
 		apiRepo:             apiRepo,
 		locks:               &keyLocks{},
 	}
+	s.scheduleImport = newImporter(importDelay, s.runImport).schedule
+	return s
 }
 
 type service struct {
@@ -57,6 +65,57 @@ type service struct {
 	notificationService notification.Service
 	apiRepo             domain.APIRepo
 	locks               *keyLocks
+	scheduleImport      func(apiKey string)
+}
+
+type importer struct {
+	mu     gosync.Mutex
+	timers map[string]*time.Timer
+	delay  time.Duration
+	run    func(apiKey string)
+}
+
+func newImporter(delay time.Duration, run func(apiKey string)) *importer {
+	return &importer{timers: map[string]*time.Timer{}, delay: delay, run: run}
+}
+
+func (i *importer) schedule(apiKey string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if t, ok := i.timers[apiKey]; ok {
+		t.Reset(i.delay)
+		return
+	}
+	i.timers[apiKey] = time.AfterFunc(i.delay, func() {
+		i.mu.Lock()
+		delete(i.timers, apiKey)
+		i.mu.Unlock()
+		i.run(apiKey)
+	})
+}
+
+func (s *service) runImport(apiKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), importTimeout)
+	defer cancel()
+	if _, err := s.ImportPending(ctx, apiKey); err != nil {
+		s.log.Error().Err(err).Msg("importing the v1 upload into the item store failed; retrying on the next sync")
+	}
+}
+
+func (s *service) ImportPending(ctx context.Context, apiKey string) (bool, error) {
+	unlock, err := s.locks.lock(ctx, apiKey)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+
+	var imported bool
+	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		var err error
+		imported, err = s.importPending(ctx, tx)
+		return err
+	})
+	return imported, err
 }
 
 func (s *service) ListHistory(ctx context.Context, apiKey string) ([]domain.SyncHistoryEntry, error) {
