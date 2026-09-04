@@ -5,20 +5,35 @@ name: e2e-v1
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - "internal/**"
-      - "proto/**"
-      - "e2e/**"
-      - "main.go"
-      - "go.mod"
-      - ".github/workflows/e2e-v1.yml"
 
 concurrency:
   group: e2e-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      sync: ${{ steps.filter.outputs.sync || 'true' }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            sync:
+              - "internal/**"
+              - "proto/**"
+              - "e2e/**"
+              - "main.go"
+              - "go.mod"
+              - ".github/workflows/e2e-v1.yml"
+
   e2e-v1:
+    needs: changes
+    if: needs.changes.outputs.sync == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
