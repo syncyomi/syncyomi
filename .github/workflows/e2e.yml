@@ -5,12 +5,11 @@ on:
     - cron: "0 16 * * *"
   workflow_dispatch:
     inputs:
+      # no defaults: a blank input falls through to the E2E_*_REF repo variable
       tachiyomi_ref:
-        description: "TachiyomiSY ref to build"
-        default: "feat/syncyomi-v2"
+        description: "TachiyomiSY ref to build (blank = repo variable)"
       suwayomi_ref:
-        description: "Suwayomi-Server ref to build"
-        default: "feat/syncyomi-v2"
+        description: "Suwayomi-Server ref to build (blank = repo variable)"
   pull_request:
 
 concurrency:
