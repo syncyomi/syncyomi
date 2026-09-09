@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.3](https://github.com/syncyomi/syncyomi/compare/v1.5.2...v1.5.3) (2026-09-09)
+
+
+### Other Changes
+
+* **e2e:** drop dispatch input defaults so repo variables apply ([#236](https://github.com/syncyomi/syncyomi/issues/236)) ([e901f29](https://github.com/syncyomi/syncyomi/commit/e901f29c937518bf9b22201897272200a11f2be2))
+
+
+### Dependencies
+
+* bump eslint-plugin-vue in /web in the npm-minor-patch group ([#238](https://github.com/syncyomi/syncyomi/issues/238)) ([66fdc83](https://github.com/syncyomi/syncyomi/commit/66fdc831fb301bc3fc4a01d6ada3b619b98ae253))
+* bump golang.org/x/crypto in the gomod-minor-patch group ([#232](https://github.com/syncyomi/syncyomi/issues/232)) ([8477416](https://github.com/syncyomi/syncyomi/commit/8477416326fbaa945f3e67e07d23a8f76d3dc348))
+* bump golang.org/x/sync in the gomod-minor-patch group ([#237](https://github.com/syncyomi/syncyomi/issues/237)) ([280d837](https://github.com/syncyomi/syncyomi/commit/280d83708df9b9656a688f7171925ccb37936f8b))
+* bump the npm-minor-patch group in /web with 5 updates ([#233](https://github.com/syncyomi/syncyomi/issues/233)) ([e463953](https://github.com/syncyomi/syncyomi/commit/e4639536bfa836531b97e0c811278e58ae090954))
+* bump vitest from 4.1.11 to 5.0.0 in /web ([#234](https://github.com/syncyomi/syncyomi/issues/234)) ([3f37508](https://github.com/syncyomi/syncyomi/commit/3f37508b5345665a76965fbe18fe00c543ae5579))
+
 ## [1.5.2](https://github.com/syncyomi/syncyomi/compare/v1.5.1...v1.5.2) (2026-09-04)
 
 
