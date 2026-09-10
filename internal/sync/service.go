@@ -113,6 +113,9 @@ func (s *service) runImport(apiKey string) {
 	}
 }
 
+// ImportPending imports the pending v1 upload into the item store. The merge is prepared
+// against a read snapshot, so the write lock is only held while the result is written:
+// the per-key lock keeps the store still in between, and the seq is re-checked anyway.
 func (s *service) ImportPending(ctx context.Context, apiKey string) (bool, error) {
 	unlock, err := s.locks.lock(ctx, apiKey)
 	if err != nil {
@@ -120,10 +123,24 @@ func (s *service) ImportPending(ctx context.Context, apiKey string) (bool, error
 	}
 	defer unlock()
 
+	var prepared *preparedImport
+	err = s.store.ReadTx(ctx, apiKey, func(tx domain.SyncStoreReader) error {
+		var err error
+		prepared, err = s.prepareImport(ctx, tx)
+		return err
+	})
+	if err != nil || prepared == nil {
+		return false, err
+	}
+
 	var imported bool
 	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
 		var err error
-		imported, err = s.importPending(ctx, tx)
+		if tx.Seq() != prepared.seq {
+			imported, err = s.importPending(ctx, tx)
+			return err
+		}
+		imported, err = s.applyImport(ctx, tx, prepared)
 		return err
 	})
 	return imported, err
