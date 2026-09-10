@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.5.4](https://github.com/syncyomi/syncyomi/compare/v1.5.3...v1.5.4) (2026-09-10)
+
+
+### Bug Fixes
+
+* **sync:** answer v1 requests without waiting for the bookkeeping writes ([#240](https://github.com/syncyomi/syncyomi/issues/240)) ([8372ab7](https://github.com/syncyomi/syncyomi/commit/8372ab7e07c547ba900e1c3620edd4d7ea285ec8))
+* **sync:** don't rewrite the store when a restore echoes back ([#242](https://github.com/syncyomi/syncyomi/issues/242)) ([eafa5b6](https://github.com/syncyomi/syncyomi/commit/eafa5b6b83933c587c9bcd2019148274ebc9e9e9))
+
+
+### Other Changes
+
+* retry Gradle builds and move Docker layer cache to ghcr ([#239](https://github.com/syncyomi/syncyomi/issues/239)) ([b94186d](https://github.com/syncyomi/syncyomi/commit/b94186d60ab139a058eb1de4487f3d0f6f573a9a))
+
+
+### Tests
+
+* **e2e:** keep Maestro debug output in failure artifacts ([#243](https://github.com/syncyomi/syncyomi/issues/243)) ([60fdcb8](https://github.com/syncyomi/syncyomi/commit/60fdcb8f27f76cee40841cda44707746ab1b0f41))
+
 ## [1.5.3](https://github.com/syncyomi/syncyomi/compare/v1.5.2...v1.5.3) (2026-09-09)
 
 
