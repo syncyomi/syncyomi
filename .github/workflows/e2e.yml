@@ -285,6 +285,8 @@ jobs:
           name: e2e-failure-artifacts-${{ matrix.name }}
           path: e2e/artifacts/
           retention-days: 7
+          # Maestro's detailed log and screenshots live under .maestro/
+          include-hidden-files: true
 
   # the required check: passes when the shards passed or were skipped on purpose,
   # fails when the changes job or any shard failed
