@@ -44,6 +44,7 @@ func startSuwayomi(t *testing.T, ctx context.Context, srv *harness.SyncServer) *
 // suwaSync triggers a Suwayomi sync and waits for it to succeed.
 func suwaSync(t *testing.T, ctx context.Context, suwa *harness.Suwayomi) {
 	t.Helper()
+	start := time.Now()
 	if result, err := suwa.StartSync(ctx); err != nil {
 		t.Fatalf("startSync: %v", err)
 	} else if result != "SUCCESS" {
@@ -52,6 +53,7 @@ func suwaSync(t *testing.T, ctx context.Context, suwa *harness.Suwayomi) {
 	if err := suwa.WaitForSyncSuccess(ctx, 2*time.Minute); err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("suwayomi sync took %s", time.Since(start).Round(time.Millisecond))
 }
 
 // TestS7_AndroidSuwayomiBothDirections: Android app syncs its library up, the
