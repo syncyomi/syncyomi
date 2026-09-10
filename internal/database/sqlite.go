@@ -28,8 +28,15 @@ func (db *DB) openSQLite() error {
 
 	// Enable WAL. SQLite performs better with the WAL  because it allows
 	// multiple readers to operate while data is being written.
-	if _, err = db.handler.Exec(`PRAGMA journal_mode = wal;`); err != nil {
+	// The pragma answers with the mode actually in effect: SQLite silently keeps the
+	// rollback journal on filesystems without shared memory (network mounts, some Docker
+	// volume drivers), and there every reader blocks behind a running import.
+	var journalMode string
+	if err = db.handler.QueryRow(`PRAGMA journal_mode = wal;`).Scan(&journalMode); err != nil {
 		return errors.Wrap(err, "enable wal")
+	}
+	if journalMode != "wal" {
+		db.log.Warn().Str("journal_mode", journalMode).Msg("SQLite refused WAL mode; readers will wait for writers, keep the database on a local filesystem")
 	}
 
 	// When tachi-desk-server does not cleanly shut down, the WAL will still be present and not committed.
