@@ -216,6 +216,7 @@ func TestS8_DedupeIdempotencySoak(t *testing.T) {
 
 	var prevMangas, prevChapters, prevCategories int
 	var prevSnapshot []string
+	prevSeq := serverSeq(t, ctx, srv)
 	for i := 0; i < 3; i++ {
 		syncViaBroadcast(t, ctx, emuA, srv)
 		awaitLibraryFor(t, ctx, emuA, favorites, 2*time.Minute)
@@ -247,6 +248,10 @@ func TestS8_DedupeIdempotencySoak(t *testing.T) {
 			if !slices.Equal(snapTitles, prevSnapshot) {
 				t.Errorf("pass %d: server snapshot titles drifted (%d → %d entries)", i, len(prevSnapshot), len(snapTitles))
 			}
+		}
+		if seq := serverSeq(t, ctx, srv); seq != prevSeq {
+			t.Errorf("pass %d: an idle sync rewrote the server store (seq %d → %d)", i, prevSeq, seq)
+			prevSeq = seq
 		}
 		prevMangas, prevChapters, prevCategories, prevSnapshot = mangas, chapters, categories, snapTitles
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	gosync "sync"
 	"time"
@@ -574,6 +575,20 @@ func lookupItems(ctx context.Context, tx domain.SyncStoreReader, kind merge.Kind
 
 func (v *storeView) Get(kind merge.Kind, key string) *merge.Item {
 	return v.items[kind][key]
+}
+
+func (v *storeView) SameContent(a, b *merge.Item) bool {
+	return sameRefs(a.Refs, b.Refs) && backup.SameContent(a.Kind, a.Payload, b.Payload)
+}
+
+func sameRefs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as, bs := slices.Clone(a), slices.Clone(b)
+	slices.Sort(as)
+	slices.Sort(bs)
+	return slices.Equal(as, bs)
 }
 
 func (v *storeView) CategoryByName(name string) *merge.Item {

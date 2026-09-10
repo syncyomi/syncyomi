@@ -83,6 +83,9 @@ Env vars:
 | S13 device tombstone (UI) | Deleting a category on-device sends `X-Sync-Deleted-Categories`; no resurrection |
 | S14 Suwayomi core convergence | Suwayomi applies read progress, category rename/membership and tombstones, and pushes its own edits back |
 | S15 cross-platform deep sync | Android UI edits (read + category assign) reach Suwayomi; Suwayomi edits come back to Android |
+| S17 restore echo | Applying server data is not re-uploaded as a local change: a sync with no user changes writes nothing to the server and stamps no rows |
+| S18 one change, one write | One user change costs exactly one server write; the peer's follow-up syncs write nothing and skip the restore pass |
+| S19 Suwayomi restore echo | The same contract across Suwayomi and Android, in both directions |
 
 v1 suite (`scenarios/v1/`, server only):
 

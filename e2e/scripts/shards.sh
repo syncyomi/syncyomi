@@ -6,9 +6,9 @@ set -euo pipefail
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 shards='{"include":[
-  {"name":"devices",    "run":"TestS13_|TestS3_|TestS4_|TestS6_|TestS8_"},
+  {"name":"devices",    "run":"TestS13_|TestS3_|TestS4_|TestS6_|TestS8_|TestS17_|TestS18_"},
   {"name":"categories", "run":"TestS10_|TestS12_|TestS11_|TestS2_"},
-  {"name":"suwayomi",   "run":"TestS15_|TestS7_|TestS14_|TestS1_|TestS5_"}
+  {"name":"suwayomi",   "run":"TestS15_|TestS7_|TestS14_|TestS1_|TestS5_|TestS19_"}
 ]}'
 
 status=0
