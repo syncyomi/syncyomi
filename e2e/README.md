@@ -10,6 +10,9 @@ real SyncYomi server booted from this repo.
 - Android SDK at `~/Android/Sdk` (or `$ANDROID_SDK_ROOT`) with cmdline-tools
 - Go, JDK 17+ (Maestro), `adb` on PATH
 - A TachiyomiSY debug APK (`./gradlew :app:assembleDebug` in that repo)
+  - JitPack no longer serves `FlexibleAdapter:c8013533`; on a cold Gradle cache add
+    `--init-script <syncyomi>/e2e/gradle/fallback-repo.init.gradle.kts` with
+    `SYNCYOMI_M2_FALLBACK=<syncyomi>/e2e/gradle/m2` (what CI does)
 - For Suwayomi scenarios: a Suwayomi-Server shadowJar (`./gradlew :server:shadowJar`)
 
 ## Setup (once)
