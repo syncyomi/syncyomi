@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.github.arkon.FlexibleAdapter</groupId>
+  <artifactId>flexible-adapter</artifactId>
+  <version>c8013533</version>
+  <packaging>aar</packaging>
+  <name>arkon/FlexibleAdapter</name>
+  <description>Fast and versatile Adapter for RecyclerView which regroups several features into one library to considerably improve the user experience :-)</description>
+  <url>https://github.com/arkon/FlexibleAdapter</url>
+  <inceptionYear>2021</inceptionYear>
+  <licenses>
+    <license>
+      <name>Apache License 2.0</name>
+      <url>https://api.github.com/licenses/apache-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>arkon</id>
+      <name></name>
+      <email></email>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git://github.com/arkon/FlexibleAdapter.git</connection>
+    <developerConnection>scm:git://github.com/arkon/FlexibleAdapter.git</developerConnection>
+    <url>git://github.com/arkon/FlexibleAdapter.git</url>
+  </scm>
+  <dependencies>
+    <dependency>
+      <groupId>androidx.recyclerview</groupId>
+      <artifactId>recyclerview</artifactId>
+      <version>1.1.0</version>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+</project>
