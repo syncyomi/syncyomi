@@ -94,7 +94,17 @@ jobs:
       - name: Build debug APK
         if: steps.apk.outputs.cache-hit != 'true'
         run: |
-          ./gradlew :app:assembleDebug
+          # JitPack (host of ~10 catalog modules) intermittently 404s; Gradle remembers a
+          # missing module for 24h, so retries must refresh dependencies
+          gradle_retry() {
+            ./gradlew "$@" && return
+            for delay in 60 120; do
+              echo "::warning::gradle failed, retrying in ${delay}s"; sleep "$delay"
+              ./gradlew "$@" --refresh-dependencies && return
+            done
+            return 1
+          }
+          gradle_retry :app:assembleDebug
           mkdir -p /tmp/e2e-build
           cp app/build/outputs/apk/debug/app-x86_64-debug.apk /tmp/e2e-build/
 
@@ -149,7 +159,17 @@ jobs:
       - name: Build shadowJar
         if: steps.jar.outputs.cache-hit != 'true'
         run: |
-          ./gradlew :server:shadowJar
+          # JitPack (host of ~10 catalog modules) intermittently 404s; Gradle remembers a
+          # missing module for 24h, so retries must refresh dependencies
+          gradle_retry() {
+            ./gradlew "$@" && return
+            for delay in 60 120; do
+              echo "::warning::gradle failed, retrying in ${delay}s"; sleep "$delay"
+              ./gradlew "$@" --refresh-dependencies && return
+            done
+            return 1
+          }
+          gradle_retry :server:shadowJar
           mkdir -p /tmp/e2e-build/suwayomi
           cp server/build/Suwayomi-Server-*.jar /tmp/e2e-build/suwayomi/
 
