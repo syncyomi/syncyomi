@@ -9,6 +9,40 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestSameContentIgnoresTimestamps(t *testing.T) {
+	enc := func(m proto.Message) []byte {
+		b, err := encodeMsg(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	fav := int64(5)
+	a := enc(&pb.BackupManga{Source: 1, Url: "/m", Title: "M", LastModifiedAt: 100})
+	b := enc(&pb.BackupManga{Source: 1, Url: "/m", Title: "M", LastModifiedAt: 200, FavoriteModifiedAt: &fav})
+	if !SameContent(merge.KindManga, a, b) {
+		t.Error("manga differing only by timestamps must compare equal")
+	}
+	if SameContent(merge.KindManga, a, enc(&pb.BackupManga{Source: 1, Url: "/m", Title: "Renamed", LastModifiedAt: 100})) {
+		t.Error("a title change is content")
+	}
+
+	c := enc(&pb.BackupChapter{Url: "/c", Read: true, LastModifiedAt: 1})
+	if !SameContent(merge.KindChapter, c, enc(&pb.BackupChapter{Url: "/c", Read: true, LastModifiedAt: 2})) {
+		t.Error("chapter differing only by timestamp must compare equal")
+	}
+	if SameContent(merge.KindChapter, c, enc(&pb.BackupChapter{Url: "/c", Read: false, LastModifiedAt: 1})) {
+		t.Error("read state is content")
+	}
+
+	if !SameContent(merge.KindCategory, enc(&pb.BackupCategory{Name: "Read", LastModifiedAt: 1}), enc(&pb.BackupCategory{Name: "Read", LastModifiedAt: 2})) {
+		t.Error("category differing only by timestamp must compare equal")
+	}
+	if !SameContent(merge.KindAppPref, []byte("x"), []byte("x")) || SameContent(merge.KindAppPref, []byte("x"), []byte("y")) {
+		t.Error("section kinds compare by bytes")
+	}
+}
+
 func TestSplitRenderFixtureRoundTrip(t *testing.T) {
 	b := loadFixture(t)
 	items, err := Split(b)

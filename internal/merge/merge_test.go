@@ -1,6 +1,8 @@
 package merge
 
 import (
+	"bytes"
+	"slices"
 	"testing"
 )
 
@@ -22,6 +24,10 @@ func (s *memStore) CategoryByName(name string) *Item {
 		}
 	}
 	return nil
+}
+
+func (s *memStore) SameContent(a, b *Item) bool {
+	return bytes.Equal(a.Payload, b.Payload) && slices.Equal(a.Refs, b.Refs)
 }
 
 // apply plays the role of the database: it assigns seq/origin and stores writes and tombstones.
@@ -159,6 +165,34 @@ func TestEqualVersionModifiedAtTiebreak(t *testing.T) {
 	res = s.merge("B", &Item{Kind: KindCategory, Key: "uid:1", Name: "Read", Version: 0, ModifiedAt: 200, Payload: []byte("b")})
 	if len(res.Writes) != 1 || string(s.Get(KindCategory, "uid:1").Payload) != "b" {
 		t.Errorf("category tiebreak: %+v", res)
+	}
+}
+
+func TestSameContentTiebreakIsNoop(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", &Item{Kind: KindManga, Key: "1|/m", Version: 3, ModifiedAt: 100, Payload: []byte("p"), Refs: []string{"uid:1"}})
+
+	res := s.merge("B", &Item{Kind: KindManga, Key: "1|/m", Version: 3, ModifiedAt: 200, Payload: []byte("p"), Refs: []string{"uid:1"}})
+	if len(res.Writes) != 0 || res.ChangedForClient {
+		t.Errorf("restore echo must be a no-op: %+v", res)
+	}
+	if s.seq != 1 {
+		t.Errorf("seq = %d, want 1", s.seq)
+	}
+
+	res = s.merge("C", &Item{Kind: KindManga, Key: "1|/m", Version: 3, ModifiedAt: 50, Payload: []byte("p"), Refs: []string{"uid:1"}})
+	if len(res.Writes) != 0 || res.ChangedForClient {
+		t.Errorf("an older timestamp with the same content is not worth returning: %+v", res)
+	}
+
+	res = s.merge("B", &Item{Kind: KindManga, Key: "1|/m", Version: 3, ModifiedAt: 200, Payload: []byte("q"), Refs: []string{"uid:1"}})
+	if len(res.Writes) != 1 {
+		t.Errorf("different content must still win the tiebreak: %+v", res)
+	}
+
+	res = s.merge("B", &Item{Kind: KindManga, Key: "1|/m", Version: 3, ModifiedAt: 300, Payload: []byte("q"), Refs: []string{"uid:2"}})
+	if len(res.Writes) != 1 {
+		t.Errorf("a category move must still win the tiebreak: %+v", res)
 	}
 }
 

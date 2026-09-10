@@ -114,6 +114,10 @@ func (m *merger) versioned(it *Item) {
 // bump Version never land here with a real difference, but clients that leave Version at
 // zero (v1-era builds) rely on this to propagate anything after their first upload.
 func (m *merger) tiebreak(it, cur *Item) {
+	// a restore re-uploading what it received differs only by timestamp
+	if m.store.SameContent(it, cur) {
+		return
+	}
 	switch {
 	case it.ModifiedAt > cur.ModifiedAt:
 		m.write(it)

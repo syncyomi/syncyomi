@@ -54,6 +54,8 @@ type Store interface {
 	Get(kind Kind, key string) *Item
 	// CategoryByName returns a live or tombstoned category with that name, or nil.
 	CategoryByName(name string) *Item
+	// SameContent ignores modification timestamps.
+	SameContent(a, b *Item) bool
 }
 
 type Request struct {

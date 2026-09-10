@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strconv"
@@ -281,6 +282,41 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 
 func encodeMsg(m proto.Message) ([]byte, error) {
 	return proto.MarshalOptions{Deterministic: true}.Marshal(m)
+}
+
+// SameContent compares two payloads of one kind ignoring their modification timestamps.
+func SameContent(kind merge.Kind, a, b []byte) bool {
+	if bytes.Equal(a, b) {
+		return true
+	}
+	var ma, mb proto.Message
+	switch kind {
+	case merge.KindManga:
+		ma, mb = &pb.BackupManga{}, &pb.BackupManga{}
+	case merge.KindChapter:
+		ma, mb = &pb.BackupChapter{}, &pb.BackupChapter{}
+	case merge.KindCategory:
+		ma, mb = &pb.BackupCategory{}, &pb.BackupCategory{}
+	default:
+		return false
+	}
+	if proto.Unmarshal(a, ma) != nil || proto.Unmarshal(b, mb) != nil {
+		return false
+	}
+	clearTimestamps(ma)
+	clearTimestamps(mb)
+	return proto.Equal(ma, mb)
+}
+
+func clearTimestamps(m proto.Message) {
+	switch m := m.(type) {
+	case *pb.BackupManga:
+		m.LastModifiedAt, m.FavoriteModifiedAt = 0, nil
+	case *pb.BackupChapter:
+		m.LastModifiedAt = 0
+	case *pb.BackupCategory:
+		m.LastModifiedAt = 0
+	}
 }
 
 // MangaKeyParts splits a manga key back into source id and url.
