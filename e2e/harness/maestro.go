@@ -44,6 +44,7 @@ func (e *Emulator) RunFlow(ctx context.Context, flowPath, artifactDir string, fl
 		// retry is safe; a mid-flow failure is not retried (steps may not be
 		// idempotent) and fails loudly instead.
 		if attempt == 1 && !bytesContains(out, "COMPLETED") {
+			_ = os.Rename(logPath, filepath.Join(outDir, "maestro-attempt1.log"))
 			continue
 		}
 		return fmt.Errorf("maestro flow %s on %s failed (log: %s): %w", filepath.Base(flowPath), e.AVD, logPath, err)
