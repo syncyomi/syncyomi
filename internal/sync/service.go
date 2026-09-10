@@ -38,11 +38,18 @@ type Service interface {
 	// DeleteDevice removes a device row. domain.ErrNotFound if id is unknown for the key.
 	DeleteDevice(ctx context.Context, apiKey string, id int) error
 	GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error)
+	// Flush waits for the bookkeeping writes that RecordContentAccess and ReportSyncEvent
+	// run in the background.
+	Flush()
 }
 
 const (
 	importDelay   = 20 * time.Second
 	importTimeout = 10 * time.Minute
+	// bookkeepingTimeout bounds a background device/status write; it matches the SQLite
+	// busy timeout so a write never waits longer than one lock acquisition would.
+	bookkeepingTimeout = 5 * time.Second
+	bookkeepingQueue   = 1024
 )
 
 func NewService(log logger.Logger, repo domain.SyncRepo, store domain.SyncStore, notificationSvc notification.Service, apiRepo domain.APIRepo) Service {
@@ -53,8 +60,10 @@ func NewService(log logger.Logger, repo domain.SyncRepo, store domain.SyncStore,
 		notificationService: notificationSvc,
 		apiRepo:             apiRepo,
 		locks:               &keyLocks{},
+		bookkeeping:         make(chan func(), bookkeepingQueue),
 	}
 	s.scheduleImport = newImporter(importDelay, s.runImport).schedule
+	go s.runBookkeeping()
 	return s
 }
 
@@ -66,6 +75,8 @@ type service struct {
 	apiRepo             domain.APIRepo
 	locks               *keyLocks
 	scheduleImport      func(apiKey string)
+	bookkeeping         chan func()
+	bg                  gosync.WaitGroup
 }
 
 type importer struct {
@@ -138,23 +149,56 @@ func (s *service) GetStatus(ctx context.Context, apiKey string) (*domain.SyncSta
 	return s.repo.GetStatus(ctx, apiKey)
 }
 
-func (s *service) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool, protocol string) {
-	if err := s.repo.TouchDevice(ctx, apiKey, dev, "", "", "", protocol); err != nil {
-		s.log.Warn().Err(err).Msg("failed to record device")
+// bookkeep queues a device/status write to run off the request path, in order. Those rows
+// queue behind the SQLite write lock, which a large import can hold for many seconds, and
+// v1 clients hang up after 10 s: the response must not wait for them. One worker keeps the
+// writes ordered (an event reported right after a PUT sees the PUT's status row) and stops
+// them piling up while the lock is held. The request context is detached so a client that
+// already gave up does not cancel the write.
+func (s *service) bookkeep(ctx context.Context, fn func(ctx context.Context)) {
+	s.bg.Add(1)
+	ctx = context.WithoutCancel(ctx)
+	task := func() {
+		defer s.bg.Done()
+		ctx, cancel := context.WithTimeout(ctx, bookkeepingTimeout)
+		defer cancel()
+		fn(ctx)
 	}
+	select {
+	case s.bookkeeping <- task:
+	default:
+		s.bg.Done()
+		s.log.Warn().Msg("bookkeeping queue full, dropping device/status update")
+	}
+}
 
-	// reads record the protocol too: a v1-only fleet must be flagged even if it never PUTs
-	if !write {
-		if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastProtocol: protocol}); err != nil {
+func (s *service) runBookkeeping() {
+	for task := range s.bookkeeping {
+		task()
+	}
+}
+
+func (s *service) Flush() {
+	s.bg.Wait()
+}
+
+func (s *service) RecordContentAccess(ctx context.Context, apiKey string, dev domain.DeviceInfo, write bool, protocol string) {
+	now := time.Now().UTC()
+	s.bookkeep(ctx, func(ctx context.Context) {
+		if err := s.repo.TouchDevice(ctx, apiKey, dev, "", "", "", protocol); err != nil {
+			s.log.Warn().Err(err).Msg("failed to record device")
+		}
+
+		// reads record the protocol too: a v1-only fleet must be flagged even if it never PUTs
+		st := domain.SyncStatus{LastProtocol: protocol}
+		if write {
+			st.LastSyncedAt = &now
+			st.LastDevice = dev.Name
+		}
+		if err := s.repo.UpsertStatus(ctx, apiKey, st); err != nil {
 			s.log.Warn().Err(err).Msg("failed to record sync status")
 		}
-		return
-	}
-
-	now := time.Now().UTC()
-	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{LastSyncedAt: &now, LastDevice: dev.Name, LastProtocol: protocol}); err != nil {
-		s.log.Warn().Err(err).Msg("failed to record sync status")
-	}
+	})
 }
 
 func (s *service) ReportSyncEvent(ctx context.Context, apiKey string, event string, dev domain.DeviceInfo, detailMessage string) error {
@@ -169,22 +213,24 @@ func (s *service) ReportSyncEvent(ctx context.Context, apiKey string, event stri
 	// rows for the same phone cannot be joined directly. When the key's last sync was v1,
 	// tag the event's device row (only if it has no protocol yet) so the UI can show one
 	// device instead of a named row plus the "legacy" aggregate.
-	protocolHint := ""
-	if st, err := s.repo.GetStatus(ctx, apiKey); err == nil && st != nil && st.LastProtocol == ProtocolV1 {
-		protocolHint = ProtocolV1
-	}
-	if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage, protocolHint); err != nil {
-		s.log.Warn().Err(err).Msg("failed to record device")
-	}
-	if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{
-		LastEventAt: &now,
-		LastEvent:   event,
-		LastStatus:  status,
-		LastDevice:  dev.Name,
-		LastMessage: detailMessage,
-	}); err != nil {
-		s.log.Warn().Err(err).Msg("failed to record sync status")
-	}
+	s.bookkeep(ctx, func(ctx context.Context) {
+		protocolHint := ""
+		if st, err := s.repo.GetStatus(ctx, apiKey); err == nil && st != nil && st.LastProtocol == ProtocolV1 {
+			protocolHint = ProtocolV1
+		}
+		if err := s.repo.TouchDevice(ctx, apiKey, dev, event, status, detailMessage, protocolHint); err != nil {
+			s.log.Warn().Err(err).Msg("failed to record device")
+		}
+		if err := s.repo.UpsertStatus(ctx, apiKey, domain.SyncStatus{
+			LastEventAt: &now,
+			LastEvent:   event,
+			LastStatus:  status,
+			LastDevice:  dev.Name,
+			LastMessage: detailMessage,
+		}); err != nil {
+			s.log.Warn().Err(err).Msg("failed to record sync status")
+		}
+	})
 
 	keyName := "Unknown"
 	if key, err := s.apiRepo.Get(ctx, apiKey); err == nil && key != nil && key.Name != "" {

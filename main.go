@@ -127,6 +127,7 @@ func main() {
 		case syscall.SIGHUP:
 			log.Log().Msg("shutting down server sighup")
 			srv.Shutdown()
+			syncService.Flush()
 			err := db.Close()
 			if err != nil {
 				log.Fatal().Stack().Err(err).Msg("could not close db connection")
@@ -135,6 +136,7 @@ func main() {
 			os.Exit(1)
 		case syscall.SIGINT, syscall.SIGQUIT:
 			srv.Shutdown()
+			syncService.Flush()
 			err := db.Close()
 			if err != nil {
 				log.Fatal().Stack().Err(err).Msg("could not close db connection")
@@ -143,6 +145,7 @@ func main() {
 			os.Exit(1)
 		case syscall.SIGKILL, syscall.SIGTERM:
 			srv.Shutdown()
+			syncService.Flush()
 			err := db.Close()
 			if err != nil {
 				log.Fatal().Stack().Err(err).Msg("could not close db connection")
