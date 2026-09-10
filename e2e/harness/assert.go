@@ -45,6 +45,30 @@ func (s *SyncServer) Devices(ctx context.Context) ([]domain.SyncDevice, error) {
 	return devices, err
 }
 
+// Status fetches the per-key sync status the web UI shows.
+func (s *SyncServer) Status(ctx context.Context) (*domain.SyncStatus, error) {
+	var st domain.SyncStatus
+	if err := s.AdminGet(ctx, "/api/sync/admin/"+s.APIKey+"/status", &st); err != nil {
+		return nil, err
+	}
+	return &st, nil
+}
+
+// WaitFor polls cond every 200 ms until it returns true or timeout passes.
+func WaitFor(ctx context.Context, timeout time.Duration, cond func() bool) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if cond() {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("condition not met within %s", timeout)
+}
+
 // WaitForDeviceSync polls until some device's last_seen passes since and its
 // cursor is positive — i.e. a v2 merge completed after the trigger.
 func (s *SyncServer) WaitForDeviceSync(ctx context.Context, since time.Time, timeout time.Duration) (*domain.SyncDevice, error) {

@@ -148,11 +148,17 @@ type SyncStoreTx interface {
 	SetDeviceCursor(ctx context.Context, dc DeviceCursor) error
 }
 
+// SyncStoreReader is the read-only view of the item store; on SQLite it never waits for a
+// writer, so a merge can be prepared against it while the write lock is busy.
 type SyncStoreReader interface {
 	Seq() int64
 	Exists() bool
 	RawBlob(ctx context.Context) (*RawBlob, error)
 	RenderCache(ctx context.Context) (*RenderCache, error)
+	GetItems(ctx context.Context, kind merge.Kind, keys []string) (map[string]*merge.Item, error)
+	Categories(ctx context.Context) ([]*merge.Item, error)
+	CountOfKind(ctx context.Context, kind merge.Kind) (int, error)
+	ItemsOfKind(ctx context.Context, kind merge.Kind) ([]*merge.Item, error)
 }
 
 type SyncStore interface {

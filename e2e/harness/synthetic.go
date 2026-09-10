@@ -4,15 +4,24 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
+
+// LegacyClientTimeout is what the v1 forks give the server: TachiyomiSY and Komikku use
+// a bare OkHttpClient() for the download and the event report, whose read timeout is 10 s.
+const LegacyClientTimeout = 10 * time.Second
+
+// legacyClient carries that timeout so the v1 helpers fail exactly when a phone would.
+var legacyClient = &http.Client{Timeout: LegacyClientTimeout}
 
 // SyntheticClient speaks SyncYomi v2 directly, acting as an extra "device" so
 // tests can seed server state or inject precise conflict/cursor situations
@@ -117,7 +126,7 @@ func (c *SyntheticClient) PutV1(ctx context.Context, raw []byte, ifMatch string,
 	if gzipBody {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := legacyClient.Do(req)
 	if err != nil {
 		return "", 0, err
 	}
@@ -137,7 +146,7 @@ func (c *SyntheticClient) GetV1(ctx context.Context, ifNoneMatch string) (data [
 	if ifNoneMatch != "" {
 		req.Header.Set("If-None-Match", ifNoneMatch)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := legacyClient.Do(req)
 	if err != nil {
 		return nil, "", 0, err
 	}
@@ -151,4 +160,33 @@ func (c *SyntheticClient) GetV1(ctx context.Context, ifNoneMatch string) (data [
 		return nil, "", 0, err
 	}
 	return data, resp.Header.Get("ETag"), resp.StatusCode, nil
+}
+
+// ReportEvent posts a sync event the way the forks do after each phase (SYNC_STARTED,
+// SYNC_SUCCESS, SYNC_FAILED, ...): device identity in the JSON body, not in headers.
+// Non-2xx statuses are returned, not treated as errors.
+func (c *SyntheticClient) ReportEvent(ctx context.Context, event, message string) (status int, err error) {
+	body, err := json.Marshal(map[string]string{
+		"event":       event,
+		"device_id":   c.DeviceID,
+		"device_name": c.DeviceName,
+		"message":     message,
+	})
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.Server.BaseURL+"/api/sync/event", bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Token", c.Server.APIKey)
+	resp, err := legacyClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, nil
 }

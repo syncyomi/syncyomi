@@ -473,6 +473,7 @@ func TestV1_EventTagsDeviceProtocol(t *testing.T) {
 	if err := svc.ReportSyncEvent(ctx, "key1", "SYNC_SUCCESS", domain.DeviceInfo{Name: "My Phone"}, ""); err != nil {
 		t.Fatal(err)
 	}
+	svc.Flush()
 
 	devices, err := svc.ListDevices(ctx, "key1")
 	if err != nil {

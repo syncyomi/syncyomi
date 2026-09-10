@@ -425,27 +425,60 @@ func (s *service) promoteLegacy(ctx context.Context, tx domain.SyncStoreTx) erro
 	return tx.SetRawBlob(ctx, rc.Data, rc.ETag, tx.Seq(), true)
 }
 
+// importPending imports the pending v1 upload inside the caller's write transaction.
 func (s *service) importPending(ctx context.Context, tx domain.SyncStoreTx) (bool, error) {
-	raw, err := tx.RawBlob(ctx)
-	if err != nil || raw == nil || !raw.Pending {
+	p, err := s.prepareImport(ctx, tx)
+	if err != nil || p == nil {
 		return false, err
 	}
+	return s.applyImport(ctx, tx, p)
+}
 
-	start := time.Now()
-	b, err := backup.Decode(raw.Data)
-	var items []*merge.Item
+// preparedImport is a pending v1 upload merged against a snapshot of the store, ready to
+// be written. seq is the store's seq the merge was computed against.
+type preparedImport struct {
+	seq     int64
+	start   time.Time
+	backup  *pb.Backup
+	items   []*merge.Item
+	res     *merge.Result
+	garbage bool // the upload cannot be decoded; mark it current and keep serving it verbatim
+}
+
+// prepareImport does the expensive part of an import — decode, split, load the stored
+// items, merge — against a reader, so it can run outside the write lock. nil when nothing
+// is pending.
+func (s *service) prepareImport(ctx context.Context, tx domain.SyncStoreReader) (*preparedImport, error) {
+	raw, err := tx.RawBlob(ctx)
+	if err != nil || raw == nil || !raw.Pending {
+		return nil, err
+	}
+
+	p := &preparedImport{seq: tx.Seq(), start: time.Now()}
+	p.backup, err = backup.Decode(raw.Data)
 	if err == nil {
-		items, err = splitBackup(b)
+		p.items, err = splitBackup(p.backup)
 	}
 	if err != nil {
 		s.log.Error().Err(err).Msg("v1 payload cannot be decoded, serving it verbatim without importing")
+		p.garbage = true
+		return p, nil
+	}
+	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// applyImport writes a prepared import. The caller guarantees the store has not moved
+// since prepareImport (the per-key lock, or checking tx.Seq() against p.seq).
+func (s *service) applyImport(ctx context.Context, tx domain.SyncStoreTx, p *preparedImport) (bool, error) {
+	if p.garbage {
 		return false, tx.MarkRawCurrent(ctx, tx.Seq())
 	}
-	res, err := s.mergeBackup(ctx, tx, items, deviceLegacy, nil)
-	if err != nil {
-		return false, err
-	}
-	seq, err := tx.Apply(ctx, res, deviceLegacy)
+	writeStart := time.Now()
+	seq, err := tx.Apply(ctx, p.res, deviceLegacy)
 	if err != nil {
 		return false, err
 	}
@@ -453,8 +486,9 @@ func (s *service) importPending(ctx context.Context, tx domain.SyncStoreTx) (boo
 		return false, err
 	}
 	s.log.Info().
-		Int("manga", len(b.BackupManga)).Int("categories", len(b.BackupCategories)).
-		Int("items", len(items)).Int("written", len(res.Writes)).Dur("took", time.Since(start)).
+		Int("manga", len(p.backup.BackupManga)).Int("categories", len(p.backup.BackupCategories)).
+		Int("items", len(p.items)).Int("written", len(p.res.Writes)).
+		Dur("took", time.Since(p.start)).Dur("locked", time.Since(writeStart)).
 		Msg("imported v1 upload into the item store")
 	return true, nil
 }
@@ -467,7 +501,7 @@ func splitBackup(b *pb.Backup) ([]*merge.Item, error) {
 	return items, nil
 }
 
-func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreTx, items []*merge.Item, device string, deletedCategories []int64) (*merge.Result, error) {
+func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64) (*merge.Result, error) {
 	view, err := loadStoreView(ctx, tx, items)
 	if err != nil {
 		return nil, err
@@ -488,7 +522,7 @@ type storeView struct {
 	categories []*merge.Item
 }
 
-func loadStoreView(ctx context.Context, tx domain.SyncStoreTx, items []*merge.Item) (*storeView, error) {
+func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item) (*storeView, error) {
 	keys := map[merge.Kind][]string{}
 	for _, it := range items {
 		if it.Kind != merge.KindCategory {
@@ -517,7 +551,7 @@ func loadStoreView(ctx context.Context, tx domain.SyncStoreTx, items []*merge.It
 
 const fullScanMinKeys = 500
 
-func lookupItems(ctx context.Context, tx domain.SyncStoreTx, kind merge.Kind, keys []string) (map[string]*merge.Item, error) {
+func lookupItems(ctx context.Context, tx domain.SyncStoreReader, kind merge.Kind, keys []string) (map[string]*merge.Item, error) {
 	if len(keys) > fullScanMinKeys {
 		n, err := tx.CountOfKind(ctx, kind)
 		if err != nil {

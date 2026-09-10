@@ -59,7 +59,18 @@ The same view shows which devices have synced with the key, when they were last 
 - Large libraries: a v1 upload is answered in well under a second whatever its size. In
   1.3–1.5 the import ran inside the request and a library of a few thousand manga exceeded
   the 10 s timeout of Komikku's sync client on every sync (#225). Each import now logs
-  `imported v1 upload into the item store` with its duration.
+  `imported v1 upload into the item store` with its duration (`took`) and how long it
+  held the database write lock (`locked`).
+- Requests no longer wait for their own bookkeeping. Every v1 `GET`/`PUT` and every
+  `POST /api/sync/event` updates the device and status rows; those writes queue behind the
+  write lock, which a large import holds for seconds, and used to run before the response.
+  They now run in the background, in order, and are dropped with a warning if they cannot
+  get the lock within 5 s. The web UI may show a device's last activity a few seconds late.
+- The background import merges the upload against a read snapshot and only takes the write
+  lock to store the result, so a v1 fleet's own `PUT`s wait far less behind it.
+- SQLite logs `SQLite refused WAL mode` when the filesystem cannot provide WAL (network
+  mounts, some Docker volume drivers). Without WAL every read waits for the running import;
+  keep the database on a local filesystem.
 - The HTTP server has timeouts: 15 s to send request headers, 10 min per request, 2 min
   for an idle keep-alive connection. The event stream is exempt.
 - Schema: `sync_data` gains `raw_data`/`raw_etag`/`raw_seq`/`raw_pending`, `sync_item`
