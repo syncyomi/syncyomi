@@ -10,6 +10,9 @@ real SyncYomi server booted from this repo.
 - Android SDK at `~/Android/Sdk` (or `$ANDROID_SDK_ROOT`) with cmdline-tools
 - Go, JDK 17+ (Maestro), `adb` on PATH
 - A TachiyomiSY debug APK (`./gradlew :app:assembleDebug` in that repo)
+  - JitPack no longer serves `FlexibleAdapter:c8013533`; on a cold Gradle cache add
+    `--init-script <syncyomi>/e2e/gradle/fallback-repo.init.gradle.kts` with
+    `SYNCYOMI_M2_FALLBACK=<syncyomi>/e2e/gradle/m2` (what CI does)
 - For Suwayomi scenarios: a Suwayomi-Server shadowJar (`./gradlew :server:shadowJar`)
 
 ## Setup (once)
@@ -57,6 +60,8 @@ Env vars:
 - `flows/` — the few Maestro UI flows that can't be replaced by adb.
 - `scenarios/` — the tests (`//go:build e2e`), one fresh server per test,
   emulators booted once per run.
+- `scenarios/v1/` — the v1 protocol suite (`//go:build e2e_v1`): server only, no
+  emulators, run with `scripts/run-e2e-v1.sh`. Its clients carry the forks' 10 s timeout.
 - Failures dump logcat, prefs, server snapshot/devices into
   `artifacts/<run>/<test>/`.
 
@@ -81,6 +86,19 @@ Env vars:
 | S17 restore echo | Applying server data is not re-uploaded as a local change: a sync with no user changes writes nothing to the server and stamps no rows |
 | S18 one change, one write | One user change costs exactly one server write; the peer's follow-up syncs write nothing and skip the restore pass |
 | S19 Suwayomi restore echo | The same contract across Suwayomi and Android, in both directions |
+
+v1 suite (`scenarios/v1/`, server only):
+
+| Test | What it proves |
+|---|---|
+| V1 echo round trip | A v1 push comes back byte-identical with a `uuid=` etag; If-None-Match 304s; gzip uploads land |
+| V1 two devices | Two v1 devices exchange state through the blob; If-Match rejects a stale upload |
+| V1 legacy upgrade | A pre-1.3 `sync_data` row is served verbatim after upgrade, decodable or not |
+| V1 mixed fleet | A v2 write invalidates the echo (v1 gets a render with both sides); the next v1 upload resumes it |
+| V1 garbage tolerated | An undecodable upload is accepted and echoed, and a later valid one replaces it |
+| V1 large library | 3600 manga × 60 chapters: PUT, GET, second PUT and the post-v2 render all answer inside 10 s |
+| V1 responsive while locked | With the write lock held for 8 s, v1 GET/304/event answer within 2 s; their bookkeeping lands afterwards |
+| V1 responsive during import | While a v2 full merge imports the pending upload, v1 GET and event answer within 3 s every round |
 
 Device-originated *drag* reorder is a known gap: the drag handle has no
 accessibility label, so Maestro can't grip it; S11 covers reorder propagation

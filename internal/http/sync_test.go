@@ -128,6 +128,8 @@ func (m *mockSyncService) GetStatus(ctx context.Context, apiKey string) (*domain
 	return m.status, m.adminErr
 }
 
+func (m *mockSyncService) Flush() {}
+
 func newRouter(mock *mockSyncService, maxBody int64) *chi.Mux {
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {

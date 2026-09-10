@@ -259,6 +259,11 @@ jobs:
           flavor: |
             latest=auto
 
+      - name: Prepare platform slug
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4.3.0
 
@@ -281,8 +286,9 @@ jobs:
             BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # layer cache lives in ghcr, not the 10 GB Actions cache the e2e APK/jar caches share
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ env.PLATFORM_PAIR }}
+          cache-to: ${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && format('type=registry,ref={0}:buildcache-{1},mode=max,image-manifest=true,oci-mediatypes=true', env.REGISTRY_IMAGE, env.PLATFORM_PAIR) || '' }}
           provenance: false
 
       - name: Export digest

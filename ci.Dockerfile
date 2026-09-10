@@ -1,13 +1,6 @@
 # build app
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.23 AS app-builder
 
-ARG VERSION=dev
-ARG REVISION=dev
-ARG BUILDTIME
-ARG TARGETOS
-ARG TARGETARCH
-ARG TARGETVARIANT
-
 RUN apk add --no-cache git make build-base tzdata
 
 ENV SERVICE=syncyomi
@@ -18,6 +11,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . ./
+
+# Declared after the dependency layers: BUILDTIME changes every build, and an ARG
+# invalidates the cache of every RUN below it.
+ARG VERSION=dev
+ARG REVISION=dev
+ARG BUILDTIME
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
 
 # Cross-compile natively on the build host (CGO disabled) instead of under QEMU.
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \

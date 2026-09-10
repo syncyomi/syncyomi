@@ -9,3 +9,6 @@ web/node_modules
 # web-builder stage, so shipping it in the context is harmless.
 web/playwright-report
 web/test-results
+e2e/artifacts
+e2e/.tools
+.claude

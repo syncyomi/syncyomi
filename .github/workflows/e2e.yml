@@ -80,6 +80,13 @@ jobs:
           repository: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
           ref: ${{ needs.changes.outputs.tachiyomi_sha }}
 
+      # this repo's vendored fallback Maven repo, see e2e/gradle/fallback-repo.init.gradle.kts
+      - uses: actions/checkout@v7
+        if: steps.apk.outputs.cache-hit != 'true'
+        with:
+          path: .syncyomi
+          sparse-checkout: e2e/gradle
+
       - uses: actions/setup-java@v6
         if: steps.apk.outputs.cache-hit != 'true'
         with:
@@ -94,9 +101,21 @@ jobs:
       - name: Build debug APK
         if: steps.apk.outputs.cache-hit != 'true'
         run: |
-          ./gradlew :app:assembleDebug
+          # JitPack (host of ~10 catalog modules) intermittently 404s; Gradle remembers a
+          # missing module for 24h, so retries must refresh dependencies
+          gradle_retry() {
+            ./gradlew "$@" && return
+            for delay in 60 120; do
+              echo "::warning::gradle failed, retrying in ${delay}s"; sleep "$delay"
+              ./gradlew "$@" --refresh-dependencies && return
+            done
+            return 1
+          }
+          gradle_retry --init-script .syncyomi/e2e/gradle/fallback-repo.init.gradle.kts :app:assembleDebug
           mkdir -p /tmp/e2e-build
           cp app/build/outputs/apk/debug/app-x86_64-debug.apk /tmp/e2e-build/
+        env:
+          SYNCYOMI_M2_FALLBACK: ${{ github.workspace }}/.syncyomi/e2e/gradle/m2
 
       - uses: actions/cache/save@v6
         if: steps.apk.outputs.cache-hit != 'true'
@@ -149,7 +168,17 @@ jobs:
       - name: Build shadowJar
         if: steps.jar.outputs.cache-hit != 'true'
         run: |
-          ./gradlew :server:shadowJar
+          # JitPack (host of ~10 catalog modules) intermittently 404s; Gradle remembers a
+          # missing module for 24h, so retries must refresh dependencies
+          gradle_retry() {
+            ./gradlew "$@" && return
+            for delay in 60 120; do
+              echo "::warning::gradle failed, retrying in ${delay}s"; sleep "$delay"
+              ./gradlew "$@" --refresh-dependencies && return
+            done
+            return 1
+          }
+          gradle_retry :server:shadowJar
           mkdir -p /tmp/e2e-build/suwayomi
           cp server/build/Suwayomi-Server-*.jar /tmp/e2e-build/suwayomi/
 

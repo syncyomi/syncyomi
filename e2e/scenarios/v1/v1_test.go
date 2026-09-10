@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -253,30 +256,56 @@ func TestV1_GarbageTolerated(t *testing.T) {
 	}
 }
 
+// within runs fn with the forks' 10 s client deadline and fails the test when it takes
+// longer than budget.
+func within(t *testing.T, name string, budget time.Duration, fn func(ctx context.Context)) time.Duration {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), harness.LegacyClientTimeout)
+	defer cancel()
+	start := time.Now()
+	fn(ctx)
+	took := time.Since(start)
+	if took > budget {
+		t.Errorf("%s took %s, budget %s", name, took, budget)
+	} else {
+		t.Logf("%s: %s", name, took)
+	}
+	return took
+}
+
+// importTook reads the duration of the last v1 import from the server log, "" if none ran.
+func importTook(t *testing.T, srv *harness.SyncServer) string {
+	t.Helper()
+	log, err := os.ReadFile(srv.LogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := importTookRe.FindAllSubmatch(log, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return string(matches[len(matches)-1][1]) + "ms"
+}
+
+// the console logger colours the field name, so an escape sequence may sit before the value
+var importTookRe = regexp.MustCompile(`imported v1 upload into the item store.*took=(?:\x1b\[[0-9;]*m)?([0-9.]+)`)
+
 func TestV1_LargeLibraryUnderTimeout(t *testing.T) {
 	srv := startServer(t, 8801)
 	v1 := harness.NewSyntheticClient(srv, "")
 	v2 := harness.NewSyntheticClient(srv, "e2e-v2-device")
 	raw := encodeFixture(t, "s6", 3600, 60)
-
-	within := func(name string, fn func(ctx context.Context)) {
-		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		start := time.Now()
-		fn(ctx)
-		t.Logf("%s: %s for %d bytes", name, time.Since(start), len(raw))
-	}
+	t.Logf("payload %d bytes", len(raw))
 
 	var etag string
-	within("first put", func(ctx context.Context) {
+	within(t, "first put", harness.LegacyClientTimeout, func(ctx context.Context) {
 		tag, status, err := v1.PutV1(ctx, raw, "", false)
 		if err != nil || status != http.StatusOK {
 			t.Fatalf("put = %d, %v", status, err)
 		}
 		etag = tag
 	})
-	within("get", func(ctx context.Context) {
+	within(t, "get", harness.LegacyClientTimeout, func(ctx context.Context) {
 		data, tag, status, err := v1.GetV1(ctx, "")
 		if err != nil || status != http.StatusOK {
 			t.Fatalf("get = %d, %v", status, err)
@@ -285,7 +314,7 @@ func TestV1_LargeLibraryUnderTimeout(t *testing.T) {
 			t.Fatal("large upload not echoed")
 		}
 	})
-	within("second put", func(ctx context.Context) {
+	within(t, "second put", harness.LegacyClientTimeout, func(ctx context.Context) {
 		tag, status, err := v1.PutV1(ctx, raw, etag, false)
 		if err != nil || status != http.StatusOK {
 			t.Fatalf("second put = %d, %v", status, err)
@@ -300,13 +329,164 @@ func TestV1_LargeLibraryUnderTimeout(t *testing.T) {
 	if len(resp.BackupManga) != 3601 {
 		t.Fatalf("v2 sees %d manga, want 3601", len(resp.BackupManga))
 	}
-	within("get after v2 write", func(ctx context.Context) {
+	within(t, "get after v2 write", harness.LegacyClientTimeout, func(ctx context.Context) {
 		data, tag, status, err := v1.GetV1(ctx, etag)
 		if err != nil || status != http.StatusOK || !strings.HasPrefix(tag, "seq=") {
 			t.Fatalf("get after v2 write = %d %q, %v", status, tag, err)
 		}
 		if render, err := backup.Decode(data); err != nil || len(render.BackupManga) != 3601 {
 			t.Fatalf("render fallback = %d manga, %v", len(render.BackupManga), err)
+		}
+	})
+}
+
+// V1-S7: while something holds the database write lock for longer than a phone waits
+// (a large import does), v1 reads and event reports still answer at once; the device and
+// status bookkeeping they trigger lands once the lock is free.
+func TestV1_ResponsiveWhileStoreLocked(t *testing.T) {
+	srv := startServer(t, 8802)
+	ctx := context.Background()
+	c := harness.NewSyntheticClient(srv, "e2e-v1-phone")
+	raw := encodeFixture(t, "s7", 3600, 60)
+
+	etag, status, err := c.PutV1(ctx, raw, "", false)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("put = %d, %v", status, err)
+	}
+	if status, err := c.ReportEvent(ctx, "SYNC_STARTED", ""); err != nil || status != http.StatusNoContent {
+		t.Fatalf("event = %d, %v", status, err)
+	}
+
+	const hold = 8 * time.Second
+	release, err := harness.HoldWriteLock(filepath.Join(srv.DataDir, "syncyomi.db"), hold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	lockedAt := time.Now()
+
+	// a phone hangs up at 10 s; two bookkeeping writes waiting for the lock used to eat it all
+	const budget = 2 * time.Second
+	within(t, "get while locked", budget, func(ctx context.Context) {
+		data, tag, status, err := c.GetV1(ctx, "")
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("get = %d, %v", status, err)
+		}
+		if tag != etag || !bytes.Equal(data, raw) {
+			t.Fatal("upload not echoed")
+		}
+	})
+	within(t, "304 while locked", budget, func(ctx context.Context) {
+		if _, _, status, err := c.GetV1(ctx, etag); err != nil || status != http.StatusNotModified {
+			t.Fatalf("If-None-Match get = %d, %v", status, err)
+		}
+	})
+	within(t, "event while locked", budget, func(ctx context.Context) {
+		if status, err := c.ReportEvent(ctx, "SYNC_SUCCESS", ""); err != nil || status != http.StatusNoContent {
+			t.Fatalf("event = %d, %v", status, err)
+		}
+	})
+	if time.Since(lockedAt) >= hold {
+		t.Fatalf("the lock expired before the requests finished; raise hold")
+	}
+	release()
+
+	// writers legitimately waited; now they go through
+	within(t, "put after release", harness.LegacyClientTimeout, func(ctx context.Context) {
+		if _, status, err := c.PutV1(ctx, raw, etag, false); err != nil || status != http.StatusOK {
+			t.Fatalf("put after release = %d, %v", status, err)
+		}
+	})
+
+	// the bookkeeping the locked requests queued lands once the lock is free
+	err = harness.WaitFor(ctx, 15*time.Second, func() bool {
+		st, err := srv.Status(ctx)
+		if err != nil || st.LastProtocol != "v1" || st.LastEvent != "SYNC_SUCCESS" {
+			return false
+		}
+		devices, err := srv.Devices(ctx)
+		if err != nil {
+			return false
+		}
+		for _, d := range devices {
+			if d.DeviceID == c.DeviceID && d.LastEvent == "SYNC_SUCCESS" {
+				return true
+			}
+		}
+		return false
+	})
+	if err != nil {
+		st, _ := srv.Status(ctx)
+		devices, _ := srv.Devices(ctx)
+		t.Fatalf("bookkeeping never landed: %v (status %+v, devices %+v)", err, st, devices)
+	}
+}
+
+// V1-S8: the real thing — a v2 device's full merge imports the pending v1 upload under
+// the write lock while a v1 phone keeps polling and reporting; every one of its requests
+// answers well inside the phone's 10 s.
+func TestV1_ResponsiveDuringImport(t *testing.T) {
+	srv := startServer(t, 8803)
+	ctx := context.Background()
+	v1 := harness.NewSyntheticClient(srv, "e2e-v1-phone")
+	v2 := harness.NewSyntheticClient(srv, "e2e-v2-device")
+	raw := encodeFixture(t, "s8", 3600, 60)
+
+	etag, status, err := v1.PutV1(ctx, raw, "", false)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("put = %d, %v", status, err)
+	}
+
+	merged := make(chan error, 1)
+	go func() {
+		resp, err := v2.Merge(ctx, harness.FixtureBackup("s8v2", 1, 1), harness.MergeOptions{Full: true})
+		if err == nil && len(resp.BackupManga) != 3601 {
+			err = fmt.Errorf("v2 sees %d manga, want 3601", len(resp.BackupManga))
+		}
+		merged <- err
+	}()
+
+	const budget = 3 * time.Second
+	var rounds int
+	var maxGet, maxEvent time.Duration
+	for done := false; !done; {
+		select {
+		case err := <-merged:
+			if err != nil {
+				t.Fatalf("v2 full merge: %v", err)
+			}
+			done = true
+		default:
+		}
+		maxGet = max(maxGet, within(t, "get during import", budget, func(ctx context.Context) {
+			data, tag, status, err := v1.GetV1(ctx, "")
+			if err != nil || status != http.StatusOK {
+				t.Fatalf("get = %d, %v", status, err)
+			}
+			// the echo until the import commits, the render afterwards
+			if tag == etag && !bytes.Equal(data, raw) {
+				t.Fatal("upload not echoed")
+			}
+		}))
+		maxEvent = max(maxEvent, within(t, "event during import", budget, func(ctx context.Context) {
+			if status, err := v1.ReportEvent(ctx, "SYNC_STARTED", ""); err != nil || status != http.StatusNoContent {
+				t.Fatalf("event = %d, %v", status, err)
+			}
+		}))
+		rounds++
+		if !done {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	t.Logf("%d rounds while the import ran %s: max get %s, max event %s", rounds, importTook(t, srv), maxGet, maxEvent)
+
+	within(t, "get after import", harness.LegacyClientTimeout, func(ctx context.Context) {
+		data, tag, status, err := v1.GetV1(ctx, etag)
+		if err != nil || status != http.StatusOK || !strings.HasPrefix(tag, "seq=") {
+			t.Fatalf("get after import = %d %q, %v", status, tag, err)
+		}
+		if render, err := backup.Decode(data); err != nil || len(render.BackupManga) != 3601 {
+			t.Fatalf("render = %d manga, %v", len(render.BackupManga), err)
 		}
 	})
 }
