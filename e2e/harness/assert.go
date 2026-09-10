@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
@@ -36,6 +37,29 @@ func (s *SyncServer) Snapshot(ctx context.Context) (*pb.Backup, error) {
 		return nil, err
 	}
 	return backup.Decode(data)
+}
+
+// Seq returns the server's sequence number (0 before anything is stored) without writing.
+func (s *SyncServer) Seq(ctx context.Context) (int64, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+"/api/sync/v2/snapshot", nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("X-API-Token", s.APIKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return 0, nil
+	case http.StatusOK, http.StatusNotModified:
+		return strconv.ParseInt(resp.Header.Get("X-Sync-Cursor"), 10, 64)
+	default:
+		return 0, fmt.Errorf("snapshot: status %d", resp.StatusCode)
+	}
 }
 
 // Devices lists the devices the server has seen for the test API key.
@@ -144,6 +168,15 @@ func TableCounts(db *sql.DB) (mangas, chapters, categories int, err error) {
 	}
 	err = db.QueryRow(`SELECT COUNT(*) FROM categories`).Scan(&categories)
 	return
+}
+
+// MaxLastModifiedAt is the watermark the app's next delta upload is filtered by.
+func MaxLastModifiedAt(db *sql.DB) (int64, error) {
+	var v int64
+	err := db.QueryRow(`SELECT max(
+		coalesce((SELECT max(last_modified_at) FROM mangas), 0),
+		coalesce((SELECT max(last_modified_at) FROM chapters), 0))`).Scan(&v)
+	return v, err
 }
 
 // CategoryNames returns user categories (excluding the built-in default).
