@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.5](https://github.com/syncyomi/syncyomi/compare/v1.5.4...v1.5.5) (2026-09-11)
+
+
+### Dependencies
+
+* bump golang.org/x/crypto in the gomod-minor-patch group ([#246](https://github.com/syncyomi/syncyomi/issues/246)) ([bd31c62](https://github.com/syncyomi/syncyomi/commit/bd31c62cbf035f65edbbc3de8bf0f7b11c60440d))
+* bump the npm-minor-patch group in /web with 2 updates ([#244](https://github.com/syncyomi/syncyomi/issues/244)) ([7686e8b](https://github.com/syncyomi/syncyomi/commit/7686e8b88ba4facddc9a8e19024458a3cb63b00e))
+
 ## [1.5.4](https://github.com/syncyomi/syncyomi/compare/v1.5.3...v1.5.4) (2026-09-10)
 
 
