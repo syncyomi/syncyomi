@@ -62,8 +62,15 @@ Env vars:
   emulators booted once per run.
 - `scenarios/v1/` — the v1 protocol suite (`//go:build e2e_v1`): server only, no
   emulators, run with `scripts/run-e2e-v1.sh`. Its clients carry the forks' 10 s timeout.
-- Failures dump logcat, prefs, server snapshot/devices into
-  `artifacts/<run>/<test>/`.
+- Failures dump logcat, prefs, server snapshot/devices, the host adb server
+  log and `adb devices -l` into `artifacts/<run>/<test>/`.
+- Maestro output lands in `artifacts/<run>/maestro/<flow>-<avd>/attempt-N/`
+  (transcript in `maestro.log`, per-step status, screenshots and hierarchies
+  under `.maestro/`). The verdict is read from Maestro's `commands.json`, not
+  the exit status. A failure at or before `launchApp` (the adb server
+  occasionally drops its transport to an emulator for about a second, which
+  surfaces as "device offline") is retried up to three times once the device
+  answers again; a failure after `launchApp` is never retried.
 
 ## Scenarios
 
@@ -124,8 +131,9 @@ shards defined in `e2e/scripts/shards.sh` — `devices`, `categories`,
 a roll-up job named `e2e` is the required check. `shards.sh` fails the run if a
 scenario is not in exactly one shard, so a new `TestSnn_` must be added there.
 The emulator, system image, AVDs and Maestro are cached between runs. On
-failure each shard uploads `e2e/artifacts/` (logcat, Maestro screenshots,
-server logs) as `e2e-failure-artifacts-<shard>`. Expect ~12 min warm.
+failure each shard uploads `e2e/artifacts/` (logcat, Maestro debug output,
+server logs, the adb server log with transport tracing) as
+`e2e-failure-artifacts-<shard>`. Expect ~12 min warm.
 
 ## Ports
 

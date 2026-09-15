@@ -275,6 +275,8 @@ jobs:
         env:
           E2E_TACHIYOMI_APK: /tmp/e2e-artifacts/app-x86_64-debug.apk
         run: |
+          adb kill-server || true
+          ADB_TRACE=adb,transport adb start-server
           export E2E_SUWAYOMI_JAR="$(ls /tmp/e2e-artifacts/Suwayomi-Server-*.jar | head -1)"
           e2e/scripts/run-e2e.sh -run '${{ matrix.run }}'
 

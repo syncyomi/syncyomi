@@ -12,7 +12,6 @@ import (
 
 const bootTimeout = 180 * time.Second
 
-// Emulator is one headless AVD instance addressed by its adb serial.
 type Emulator struct {
 	AVD    string
 	Serial string
@@ -33,7 +32,6 @@ func sdkRoot() string {
 	return filepath.Join(home, "Android", "Sdk")
 }
 
-// StartEmulator boots an AVD headless and waits for full boot. wipeData forces a cold start.
 func StartEmulator(ctx context.Context, avd string, port int, artifactDir string, wipeData bool) (*Emulator, error) {
 	e := &Emulator{AVD: avd, Serial: fmt.Sprintf("emulator-%d", port), Port: port}
 
@@ -73,13 +71,11 @@ func StartEmulator(ctx context.Context, avd string, port int, artifactDir string
 	return e, nil
 }
 
-// settle disables animations and gives the freshly booted system a moment to
-// stop churning, which avoids "System UI isn't responding" dialogs under
-// software rendering.
 func (e *Emulator) settle(ctx context.Context) {
 	for _, key := range []string{"window_animation_scale", "transition_animation_scale", "animator_duration_scale"} {
 		_, _ = e.Adb(ctx, "shell", "settings", "put", "global", key, "0")
 	}
+	_, _ = e.Adb(ctx, "logcat", "-G", "32M")
 	time.Sleep(10 * time.Second)
 }
 
@@ -89,9 +85,9 @@ func (e *Emulator) waitBooted(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		booted, _ := e.Adb(ctx, "shell", "getprop", "sys.boot_completed")
+		booted, _ := e.adbOnce(ctx, "shell", "getprop", "sys.boot_completed")
 		if strings.TrimSpace(booted) == "1" {
-			if out, err := e.Adb(ctx, "shell", "pm", "path", "android"); err == nil && strings.Contains(out, "package:") {
+			if out, err := e.adbOnce(ctx, "shell", "pm", "path", "android"); err == nil && strings.Contains(out, "package:") {
 				return nil
 			}
 		}
@@ -104,8 +100,17 @@ func adbCommand(ctx context.Context, serial string, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, "adb", append([]string{"-s", serial}, args...)...)
 }
 
-// Adb runs an adb command against this emulator and returns combined output.
 func (e *Emulator) Adb(ctx context.Context, args ...string) (string, error) {
+	out, err := e.adbOnce(ctx, args...)
+	if err != nil && e.isTransportError(out) {
+		if werr := e.WaitForDevice(ctx); werr == nil {
+			out, err = e.adbOnce(ctx, args...)
+		}
+	}
+	return out, err
+}
+
+func (e *Emulator) adbOnce(ctx context.Context, args ...string) (string, error) {
 	out, err := adbCommand(ctx, e.Serial, args...).CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("adb %s: %w: %s", strings.Join(args, " "), err, out)
@@ -113,10 +118,40 @@ func (e *Emulator) Adb(ctx context.Context, args ...string) (string, error) {
 	return string(out), nil
 }
 
+func (e *Emulator) isTransportError(out string) bool {
+	return strings.Contains(out, "device offline") ||
+		strings.Contains(out, fmt.Sprintf("device '%s' not found", e.Serial))
+}
+
+const deviceReadyTimeout = 30 * time.Second
+
+func (e *Emulator) WaitForDevice(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, deviceReadyTimeout)
+	defer cancel()
+	_ = adbCommand(ctx, e.Serial, "wait-for-device").Run()
+	healthy := 0
+	for healthy < 2 {
+		if ctx.Err() != nil {
+			return fmt.Errorf("%s: adb transport did not recover within %s", e.AVD, deviceReadyTimeout)
+		}
+		state, _ := adbCommand(ctx, e.Serial, "get-state").CombinedOutput()
+		if strings.TrimSpace(string(state)) == "device" {
+			if err := adbCommand(ctx, e.Serial, "shell", "true").Run(); err == nil {
+				healthy++
+				time.Sleep(time.Second)
+				continue
+			}
+		}
+		healthy = 0
+		time.Sleep(time.Second)
+	}
+	return nil
+}
+
 func (e *Emulator) Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, _ = e.Adb(ctx, "emu", "kill")
+	_, _ = e.adbOnce(ctx, "emu", "kill")
 	if e.cmd != nil && e.cmd.Process != nil {
 		done := make(chan struct{})
 		go func() { _ = e.cmd.Wait(); close(done) }()

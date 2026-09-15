@@ -3,15 +3,14 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
-// CollectOnFailure registers a cleanup that, if the test failed, dumps logcat
-// from every emulator, the client prefs, and the decoded server snapshot into
-// artifactDir/<testName>/.
 func CollectOnFailure(t *testing.T, artifactDir string, server *SyncServer, emulators ...*Emulator) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -30,6 +29,12 @@ func CollectOnFailure(t *testing.T, artifactDir string, server *SyncServer, emul
 			if xml, err := e.ReadSyncPrefs(ctx); err == nil {
 				_ = os.WriteFile(filepath.Join(dir, "prefs-"+e.AVD+".xml"), []byte(xml), 0o644)
 			}
+		}
+		if data, err := os.ReadFile(filepath.Join(os.TempDir(), fmt.Sprintf("adb.%d.log", os.Getuid()))); err == nil {
+			_ = os.WriteFile(filepath.Join(dir, "adb-server.log"), data, 0o644)
+		}
+		if out, err := exec.CommandContext(ctx, "adb", "devices", "-l").CombinedOutput(); err == nil {
+			_ = os.WriteFile(filepath.Join(dir, "adb-devices.txt"), out, 0o644)
 		}
 		if server != nil {
 			if snap, err := server.Snapshot(ctx); err == nil {
