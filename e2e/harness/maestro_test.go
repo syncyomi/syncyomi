@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// Fixtures are real commands.json files: two adb "device offline" blips at
-// launchApp (nightlies 2026-09-12 and 2026-09-14), a passing flow, and a flow
-// cut off by `adb reconnect` while its first step was still running.
 func loadSteps(t *testing.T, name string) []flowStep {
 	t.Helper()
 	steps, err := parseFlowSteps(filepath.Join("testdata", name))
@@ -75,8 +72,6 @@ func TestParseFlowSteps(t *testing.T) {
 }
 
 func TestFlowTopLevelCommands(t *testing.T) {
-	// Every shipped flow must be countable, and the counts must match what
-	// Maestro records at depth 0 (see the fixtures: sync_now has 8, mark_read 7).
 	flows, err := filepath.Glob(FlowPath("*.yaml"))
 	if err != nil || len(flows) == 0 {
 		t.Fatalf("no flows found: %v", err)

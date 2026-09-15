@@ -12,7 +12,6 @@ import (
 
 const bootTimeout = 180 * time.Second
 
-// Emulator is one headless AVD instance addressed by its adb serial.
 type Emulator struct {
 	AVD    string
 	Serial string
@@ -33,7 +32,6 @@ func sdkRoot() string {
 	return filepath.Join(home, "Android", "Sdk")
 }
 
-// StartEmulator boots an AVD headless and waits for full boot. wipeData forces a cold start.
 func StartEmulator(ctx context.Context, avd string, port int, artifactDir string, wipeData bool) (*Emulator, error) {
 	e := &Emulator{AVD: avd, Serial: fmt.Sprintf("emulator-%d", port), Port: port}
 
@@ -73,15 +71,10 @@ func StartEmulator(ctx context.Context, avd string, port int, artifactDir string
 	return e, nil
 }
 
-// settle disables animations and gives the freshly booted system a moment to
-// stop churning, which avoids "System UI isn't responding" dialogs under
-// software rendering.
 func (e *Emulator) settle(ctx context.Context) {
 	for _, key := range []string{"window_animation_scale", "transition_animation_scale", "animator_duration_scale"} {
 		_, _ = e.Adb(ctx, "shell", "settings", "put", "global", key, "0")
 	}
-	// Maestro's driver floods logcat with hierarchy dumps; the default 2 MB
-	// buffer then covers only seconds, which is useless in failure artifacts.
 	_, _ = e.Adb(ctx, "logcat", "-G", "32M")
 	time.Sleep(10 * time.Second)
 }
@@ -107,10 +100,6 @@ func adbCommand(ctx context.Context, serial string, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, "adb", append([]string{"-s", serial}, args...)...)
 }
 
-// Adb runs an adb command against this emulator and returns combined output.
-// The adb server occasionally drops and re-opens its transport to an
-// emulator (about a second of "device offline"); such a failure is retried
-// once after the device is reachable again.
 func (e *Emulator) Adb(ctx context.Context, args ...string) (string, error) {
 	out, err := e.adbOnce(ctx, args...)
 	if err != nil && e.isTransportError(out) {
@@ -121,8 +110,6 @@ func (e *Emulator) Adb(ctx context.Context, args ...string) (string, error) {
 	return out, err
 }
 
-// adbOnce runs an adb command without the transport retry, for the boot poll
-// and shutdown where an absent device is expected.
 func (e *Emulator) adbOnce(ctx context.Context, args ...string) (string, error) {
 	out, err := adbCommand(ctx, e.Serial, args...).CombinedOutput()
 	if err != nil {
@@ -138,9 +125,6 @@ func (e *Emulator) isTransportError(out string) bool {
 
 const deviceReadyTimeout = 30 * time.Second
 
-// WaitForDevice blocks until adb reports the emulator online and a shell
-// command succeeds twice a second apart, so a transport that is still
-// flapping is not mistaken for a healthy one.
 func (e *Emulator) WaitForDevice(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, deviceReadyTimeout)
 	defer cancel()

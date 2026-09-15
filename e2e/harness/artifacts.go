@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// CollectOnFailure registers a cleanup that, if the test failed, dumps logcat
-// from every emulator, the client prefs, the decoded server snapshot and the
-// host adb server's state into artifactDir/<testName>/.
 func CollectOnFailure(t *testing.T, artifactDir string, server *SyncServer, emulators ...*Emulator) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -33,8 +30,6 @@ func CollectOnFailure(t *testing.T, artifactDir string, server *SyncServer, emul
 				_ = os.WriteFile(filepath.Join(dir, "prefs-"+e.AVD+".xml"), []byte(xml), 0o644)
 			}
 		}
-		// The adb server log is the only record of why a transport to an
-		// emulator was dropped; adb writes it to $TMPDIR/adb.<uid>.log.
 		if data, err := os.ReadFile(filepath.Join(os.TempDir(), fmt.Sprintf("adb.%d.log", os.Getuid()))); err == nil {
 			_ = os.WriteFile(filepath.Join(dir, "adb-server.log"), data, 0o644)
 		}
