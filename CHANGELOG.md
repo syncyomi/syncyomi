@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.5](https://github.com/syncyomi/syncyomi/compare/v1.5.4...v1.5.5) (2026-09-15)
+
+
+### Tests
+
+* **e2e:** survive adb transport drops in Maestro flows ([#248](https://github.com/syncyomi/syncyomi/issues/248)) ([c3de471](https://github.com/syncyomi/syncyomi/commit/c3de4719efa46503e2e416491ee4368eec4a032c))
+
+
+### Dependencies
+
+* bump golang.org/x/crypto in the gomod-minor-patch group ([#246](https://github.com/syncyomi/syncyomi/issues/246)) ([bd31c62](https://github.com/syncyomi/syncyomi/commit/bd31c62cbf035f65edbbc3de8bf0f7b11c60440d))
+* bump the npm-minor-patch group in /web with 2 updates ([#244](https://github.com/syncyomi/syncyomi/issues/244)) ([7686e8b](https://github.com/syncyomi/syncyomi/commit/7686e8b88ba4facddc9a8e19024458a3cb63b00e))
+* bump the npm-minor-patch group in /web with 4 updates ([#247](https://github.com/syncyomi/syncyomi/issues/247)) ([2b98b2b](https://github.com/syncyomi/syncyomi/commit/2b98b2b5b4b4c3ea0da06245a75cca4f023834d5))
+
 ## [1.5.4](https://github.com/syncyomi/syncyomi/compare/v1.5.3...v1.5.4) (2026-09-10)
 
 
