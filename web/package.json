@@ -31,7 +31,7 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.5.1",
     "@types/webfontloader": "^1.6.38",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@vitejs/plugin-vue": "^6.0.9",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.5.0",
     "eslint": "^10.10.0",
