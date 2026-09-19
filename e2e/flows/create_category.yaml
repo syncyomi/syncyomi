@@ -1,8 +1,3 @@
-# Creates a category via More -> Categories. Pass NAME via -e NAME=...
-# The Add FAB exposes no text/contentDescription to accessibility, so it is
-# tapped by position (stable on the fixed AVD geometry). Inside the dialog the
-# confirm button is also labeled "Add" — anchor it to "Cancel" so the tap can't
-# land on the FAB behind the scrim (which would dismiss the dialog).
 appId: eu.kanade.tachiyomi.sy.debug
 ---
 - runFlow:
@@ -31,8 +26,6 @@ appId: eu.kanade.tachiyomi.sy.debug
     text: "Add"
     rightOf:
       text: "Cancel"
-# The open screen's reactive category query doesn't refresh on insert (list
-# stays on the empty state until reopened), so verify by re-entering.
 - back
 - tapOn: "Categories"
 - extendedWaitUntil:
