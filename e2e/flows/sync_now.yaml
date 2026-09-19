@@ -5,7 +5,8 @@ appId: eu.kanade.tachiyomi.sy.debug
       visible: "Wait"
     commands:
       - tapOn: "Wait"
-- launchApp
+- launchApp:
+    permissions: {}
 - extendedWaitUntil:
     visible: "More"
     timeout: 30000
