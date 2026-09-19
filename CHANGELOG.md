@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.6](https://github.com/syncyomi/syncyomi/compare/v1.5.5...v1.5.6) (2026-09-19)
+
+
+### Bug Fixes
+
+* **e2e:** stop Maestro pulling the APK on launchApp ([#255](https://github.com/syncyomi/syncyomi/issues/255)) ([e92593d](https://github.com/syncyomi/syncyomi/commit/e92593d9caed79e1661c7319afcb67b7857420b5))
+
+
+### Dependencies
+
+* bump @vitejs/plugin-vue in /web in the npm-minor-patch group ([#249](https://github.com/syncyomi/syncyomi/issues/249)) ([1cd52d3](https://github.com/syncyomi/syncyomi/commit/1cd52d35975ac83a3b2b424897530b051ef0630f))
+* bump docker/setup-buildx-action from 4.3.0 to 4.4.0 ([#253](https://github.com/syncyomi/syncyomi/issues/253)) ([37ab6fe](https://github.com/syncyomi/syncyomi/commit/37ab6fea682bc48e10d780472f984eeced6bf882))
+* bump docker/setup-qemu-action from 4.3.0 to 4.4.0 ([#252](https://github.com/syncyomi/syncyomi/issues/252)) ([d1313c9](https://github.com/syncyomi/syncyomi/commit/d1313c934d86af3a85eb42f640a135f39003c972))
+* bump modernc.org/sqlite in the gomod-minor-patch group ([#251](https://github.com/syncyomi/syncyomi/issues/251)) ([c8cbb21](https://github.com/syncyomi/syncyomi/commit/c8cbb219c64363fbef40bafd5b675a9242e86996))
+* bump the npm-minor-patch group in /web with 2 updates ([#254](https://github.com/syncyomi/syncyomi/issues/254)) ([f3db9b8](https://github.com/syncyomi/syncyomi/commit/f3db9b812979ce39303354cff133a62b8e5d513b))
+
 ## [1.5.5](https://github.com/syncyomi/syncyomi/compare/v1.5.4...v1.5.5) (2026-09-15)
 
 
