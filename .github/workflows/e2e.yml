@@ -5,7 +5,6 @@ on:
     - cron: "0 16 * * *"
   workflow_dispatch:
     inputs:
-      # no defaults: a blank input falls through to the E2E_*_REF repo variable
       tachiyomi_ref:
         description: "TachiyomiSY ref to build (blank = repo variable)"
       suwayomi_ref:
@@ -45,8 +44,6 @@ jobs:
       - id: shards
         run: echo "shards=$(e2e/scripts/shards.sh)" >> "$GITHUB_OUTPUT"
 
-      # the upstream refs are branch names; the binaries are cached by the commit
-      # they point at, so an unchanged branch skips the Gradle builds entirely
       - id: refs
         run: |
           resolve() { git ls-remote "https://github.com/$1.git" "refs/heads/$2" "refs/tags/$2" | head -1 | cut -f1; }
@@ -55,9 +52,6 @@ jobs:
           sha=$(resolve "$SUWAYOMI_REPO" "$SUWAYOMI_REF")
           echo "suwayomi_sha=${sha:-$SUWAYOMI_REF}" >> "$GITHUB_OUTPUT"
         env:
-          # Post-upstream-merge: set repo variables E2E_TACHIYOMI_REPO/REF and
-          # E2E_SUWAYOMI_REPO/REF (e.g. jobobby04/TachiyomiSY + master) instead of
-          # editing this file
           TACHIYOMI_REPO: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
           TACHIYOMI_REF: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
           SUWAYOMI_REPO: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
@@ -80,7 +74,6 @@ jobs:
           repository: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
           ref: ${{ needs.changes.outputs.tachiyomi_sha }}
 
-      # this repo's vendored fallback Maven repo, see e2e/gradle/fallback-repo.init.gradle.kts
       - uses: actions/checkout@v7
         if: steps.apk.outputs.cache-hit != 'true'
         with:
@@ -101,8 +94,6 @@ jobs:
       - name: Build debug APK
         if: steps.apk.outputs.cache-hit != 'true'
         run: |
-          # JitPack (host of ~10 catalog modules) intermittently 404s; Gradle remembers a
-          # missing module for 24h, so retries must refresh dependencies
           gradle_retry() {
             ./gradlew "$@" && return
             for delay in 60 120; do
@@ -159,8 +150,6 @@ jobs:
 
       - name: Configure build memory
         if: steps.jar.outputs.cache-hit != 'true'
-        # The Kotlin daemon's default heap sizing OOMs on 16 GB runners; the
-        # setting must live in gradle.properties (a -D flag doesn't reach it)
         run: |
           echo "org.gradle.jvmargs=-Xmx2g" >> gradle.properties
           echo "kotlin.daemon.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m" >> gradle.properties
@@ -168,8 +157,6 @@ jobs:
       - name: Build shadowJar
         if: steps.jar.outputs.cache-hit != 'true'
         run: |
-          # JitPack (host of ~10 catalog modules) intermittently 404s; Gradle remembers a
-          # missing module for 24h, so retries must refresh dependencies
           gradle_retry() {
             ./gradlew "$@" && return
             for delay in 60 120; do
@@ -216,7 +203,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Maestro and the Suwayomi jar both need a modern JRE; the runner default is older
       - uses: actions/setup-java@v6
         with:
           distribution: zulu
@@ -291,11 +277,8 @@ jobs:
             !e2e/artifacts/**/suwayomi-data/webUI/**
             !e2e/artifacts/**/syncyomi-e2e
           retention-days: 7
-          # Maestro's detailed log and screenshots live under .maestro/
           include-hidden-files: true
 
-  # the required check: passes when the shards passed or were skipped on purpose,
-  # fails when the changes job or any shard failed
   e2e:
     needs: [changes, e2e-shard]
     if: always()
