@@ -285,7 +285,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts-${{ matrix.name }}
-          path: e2e/artifacts/
+          path: |
+            e2e/artifacts/
+            !e2e/artifacts/**/suwayomi-data/bin/**
+            !e2e/artifacts/**/suwayomi-data/webUI/**
+            !e2e/artifacts/**/syncyomi-e2e
           retention-days: 7
           # Maestro's detailed log and screenshots live under .maestro/
           include-hidden-files: true
