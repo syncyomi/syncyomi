@@ -14,8 +14,6 @@ import (
 
 const SuwayomiPort = 4568
 
-// Suwayomi is a headless Suwayomi-Server instance configured to sync against a
-// SyncYomi server.
 type Suwayomi struct {
 	BaseURL string
 	RootDir string
@@ -25,7 +23,6 @@ type Suwayomi struct {
 	logFile *os.File
 }
 
-// StartSuwayomi boots the shadowJar with a fresh root dir, sync enabled against srv.
 func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifactDir string) (*Suwayomi, error) {
 	rootDir := filepath.Join(artifactDir, "suwayomi-data")
 	if err := os.MkdirAll(rootDir, 0o755); err != nil {
@@ -90,7 +87,6 @@ func (s *Suwayomi) waitReady(ctx context.Context) error {
 	return fmt.Errorf("suwayomi not ready (log: %s)", s.LogPath)
 }
 
-// GraphQL posts a query; out receives the full {data,errors} envelope.
 func (s *Suwayomi) GraphQL(ctx context.Context, query string, variables map[string]any, out any) error {
 	payload, err := json.Marshal(map[string]any{"query": query, "variables": variables})
 	if err != nil {
@@ -112,7 +108,6 @@ func (s *Suwayomi) GraphQL(ctx context.Context, query string, variables map[stri
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// StartSync triggers a sync and returns the mutation result string.
 func (s *Suwayomi) StartSync(ctx context.Context) (string, error) {
 	var out struct {
 		Data struct {
@@ -134,7 +129,6 @@ func (s *Suwayomi) StartSync(ctx context.Context) (string, error) {
 	return out.Data.StartSync.Result, nil
 }
 
-// WaitForSyncSuccess polls lastSyncStatus until SUCCESS (or ERROR/timeout).
 func (s *Suwayomi) WaitForSyncSuccess(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -171,7 +165,6 @@ func (s *Suwayomi) WaitForSyncSuccess(ctx context.Context, timeout time.Duration
 	return fmt.Errorf("suwayomi sync not successful within %s", timeout)
 }
 
-// SuwayomiManga is one library entry with the relations the tests assert on.
 type SuwayomiManga struct {
 	ID         int
 	Title      string
@@ -180,7 +173,6 @@ type SuwayomiManga struct {
 	ChapterIDs []int
 }
 
-// Library returns the Suwayomi library with categories and chapter read state.
 func (s *Suwayomi) Library(ctx context.Context) ([]SuwayomiManga, error) {
 	var out struct {
 		Data struct {
@@ -234,7 +226,6 @@ func (s *Suwayomi) Library(ctx context.Context) ([]SuwayomiManga, error) {
 	return mangas, nil
 }
 
-// LibraryTitles returns the titles of manga in the Suwayomi library.
 func (s *Suwayomi) LibraryTitles(ctx context.Context) ([]string, error) {
 	library, err := s.Library(ctx)
 	if err != nil {
@@ -247,7 +238,6 @@ func (s *Suwayomi) LibraryTitles(ctx context.Context) ([]string, error) {
 	return titles, nil
 }
 
-// CategoryNames returns Suwayomi's categories by position (default included).
 func (s *Suwayomi) CategoryNames(ctx context.Context) ([]string, error) {
 	var out struct {
 		Data struct {
@@ -269,8 +259,6 @@ func (s *Suwayomi) CategoryNames(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-// CreateCategoryAt creates a category at the given 1-based position, shifting
-// existing categories down, and returns its id.
 func (s *Suwayomi) CreateCategoryAt(ctx context.Context, name string, position int) (int, error) {
 	var out struct {
 		Data struct {
@@ -296,7 +284,6 @@ func (s *Suwayomi) CreateCategoryAt(ctx context.Context, name string, position i
 	return out.Data.CreateCategory.Category.ID, nil
 }
 
-// AddMangaToCategory adds the manga with the given title to the named category.
 func (s *Suwayomi) AddMangaToCategory(ctx context.Context, title, category string) error {
 	library, err := s.Library(ctx)
 	if err != nil {
@@ -350,7 +337,6 @@ func (s *Suwayomi) AddMangaToCategory(ctx context.Context, title, category strin
 	return nil
 }
 
-// MarkChaptersRead flips all chapters of the given manga to read via GraphQL.
 func (s *Suwayomi) MarkChaptersRead(ctx context.Context, title string) error {
 	library, err := s.Library(ctx)
 	if err != nil {

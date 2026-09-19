@@ -9,9 +9,6 @@ import (
 
 var notificationWhenRe = regexp.MustCompile(`when=(\d+)`)
 
-// LastRestoreCompleteNotification returns the posting time of the newest "Library sync
-// complete" notification, 0 when none. Only a restore pass posts that title; a sync with
-// nothing to apply posts "Syncing library complete" under the same id.
 func (e *Emulator) LastRestoreCompleteNotification(ctx context.Context) (int64, error) {
 	out, err := e.AdbShellStdin(ctx, "", "dumpsys notification --noredact")
 	if err != nil {
