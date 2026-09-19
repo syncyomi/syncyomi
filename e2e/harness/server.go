@@ -21,7 +21,6 @@ const (
 	startupWait = 30 * time.Second
 )
 
-// SyncServer is a SyncYomi server booted from the repo source with a fresh data dir.
 type SyncServer struct {
 	BaseURL string
 	APIKey  string
@@ -45,8 +44,6 @@ databaseType = "sqlite"
 `, port)
 }
 
-// StartServer builds and boots the server on the given port, onboards the
-// admin user and provisions an API key.
 func StartServer(ctx context.Context, repoRoot, artifactDir string, port int) (*SyncServer, error) {
 	dataDir := filepath.Join(artifactDir, "server-data")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -56,7 +53,6 @@ func StartServer(ctx context.Context, repoRoot, artifactDir string, port int) (*
 		return nil, err
 	}
 
-	// A real binary (not `go run`) so Stop() kills the server itself, not a wrapper.
 	bin := filepath.Join(artifactDir, "syncyomi-e2e")
 	build := exec.CommandContext(ctx, "go", "build", "-o", bin, ".")
 	build.Dir = repoRoot
@@ -164,7 +160,6 @@ func (s *SyncServer) postJSON(ctx context.Context, path string, body any, out an
 	return nil
 }
 
-// AdminGet performs a session-authenticated GET and decodes the JSON response into out.
 func (s *SyncServer) AdminGet(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+path, nil)
 	if err != nil {
@@ -181,8 +176,6 @@ func (s *SyncServer) AdminGet(ctx context.Context, path string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// Restart boots the server again on the same data dir, e.g. after editing the database
-// directly to fabricate pre-upgrade state. The provisioned API key stays valid.
 func (s *SyncServer) Restart(ctx context.Context) error {
 	s.Stop()
 	logFile, err := os.OpenFile(s.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -200,7 +193,6 @@ func (s *SyncServer) Restart(ctx context.Context) error {
 	return s.waitReady(ctx)
 }
 
-// HostURLForEmulator is the server URL as seen from inside an emulator.
 func (s *SyncServer) HostURLForEmulator() string {
 	return fmt.Sprintf("http://10.0.2.2:%d", s.Port)
 }

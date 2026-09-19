@@ -1,5 +1,3 @@
-# Marks all chapters of one manga read via library selection mode.
-# Pass TITLE via -e TITLE=... The bottom-menu button needs a confirm tap.
 appId: eu.kanade.tachiyomi.sy.debug
 ---
 - runFlow:
@@ -7,7 +5,8 @@ appId: eu.kanade.tachiyomi.sy.debug
       visible: "Wait"
     commands:
       - tapOn: "Wait"
-- launchApp
+- launchApp:
+    permissions: {}
 - extendedWaitUntil:
     visible: "Library"
     timeout: 30000

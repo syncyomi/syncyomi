@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Prints the CI shard matrix for the Android e2e suite as JSON and fails if any
-# scenario in e2e/scenarios is not in exactly one shard.
 set -euo pipefail
 
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

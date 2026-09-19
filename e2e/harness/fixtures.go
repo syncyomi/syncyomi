@@ -9,14 +9,10 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
-// FixtureSource is a fake source id; restores work without it being installed.
 const FixtureSource int64 = 9999999999
 
-const fixtureEpochMillis int64 = 1756600000000 // fixed so generated fixtures are byte-stable
+const fixtureEpochMillis int64 = 1756600000000
 
-// FixtureBackup builds a backup with fully known content: manga titled
-// "<prefix> 01".."<prefix> NN" with chapterCount chapters each, in one category
-// named after the prefix.
 func FixtureBackup(prefix string, mangaCount, chapterCount int) *pb.Backup {
 	category := &pb.BackupCategory{
 		Name:  prefix,
@@ -56,7 +52,6 @@ func FixtureBackup(prefix string, mangaCount, chapterCount int) *pb.Backup {
 	return b
 }
 
-// FixtureCategoryUID returns the uid FixtureBackup assigns to its category.
 func FixtureCategoryUID(prefix string) int64 {
 	return hashUID(prefix)
 }
@@ -72,7 +67,6 @@ func hashUID(s string) int64 {
 	return h
 }
 
-// FixtureTitles returns the titles FixtureBackup generates, for assertions.
 func FixtureTitles(prefix string, mangaCount int) []string {
 	titles := make([]string, 0, mangaCount)
 	for i := 1; i <= mangaCount; i++ {
@@ -100,8 +94,6 @@ func ReadFixture(path string) (*pb.Backup, error) {
 	return backup.Decode(data)
 }
 
-// MarkChaptersRead flips the first n chapters of the given manga title to read,
-// bumping versions the way a client edit would.
 func MarkChaptersRead(b *pb.Backup, title string, n int) {
 	for _, m := range b.BackupManga {
 		if m.Title != title {

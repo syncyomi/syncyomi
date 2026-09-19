@@ -29,13 +29,11 @@ func encodeFixture(t *testing.T, prefix string, mangaCount, chapterCount int) []
 	return raw
 }
 
-// V1-S1: a v1 push comes back byte-identical with a uuid= etag, and If-None-Match 304s.
 func TestV1_EchoRoundTrip(t *testing.T) {
 	srv := startServer(t, 8795)
 	ctx := context.Background()
 	c := harness.NewSyntheticClient(srv, "")
 
-	// empty key: nothing to fetch yet
 	if _, _, status, err := c.GetV1(ctx, ""); err != nil || status != http.StatusNotFound {
 		t.Fatalf("initial get = %d, %v; want 404", status, err)
 	}
@@ -64,7 +62,6 @@ func TestV1_EchoRoundTrip(t *testing.T) {
 		t.Errorf("If-None-Match get = %d, %v; want 304", status, err)
 	}
 
-	// gzip-encoded upload lands identically
 	raw2 := encodeFixture(t, "s1b", 2, 1)
 	etag2, status, err := c.PutV1(ctx, raw2, etag, true)
 	if err != nil || status != http.StatusOK {
@@ -76,7 +73,6 @@ func TestV1_EchoRoundTrip(t *testing.T) {
 	}
 }
 
-// V1-S2: two v1 devices exchange state through the blob; If-Match protects against races.
 func TestV1_TwoDevices(t *testing.T) {
 	srv := startServer(t, 8796)
 	ctx := context.Background()
@@ -89,7 +85,6 @@ func TestV1_TwoDevices(t *testing.T) {
 		t.Fatalf("A put = %d, %v", status, err)
 	}
 
-	// B pulls A's exact bytes, merges locally (simulated), pushes the union
 	got, gotTag, _, err := b.GetV1(ctx, "")
 	if err != nil || !bytes.Equal(got, rawA) || gotTag != etagA {
 		t.Fatalf("B pull mismatch: etag=%q err=%v", gotTag, err)
@@ -102,7 +97,6 @@ func TestV1_TwoDevices(t *testing.T) {
 		t.Fatalf("B put = %d, %v", status, err)
 	}
 
-	// A pushing with its stale etag must 412, then pull B's bytes verbatim
 	if _, status, err = a.PutV1(ctx, rawA, etagA, false); err != nil || status != http.StatusPreconditionFailed {
 		t.Fatalf("stale If-Match = %d, %v; want 412", status, err)
 	}
@@ -112,8 +106,6 @@ func TestV1_TwoDevices(t *testing.T) {
 	}
 }
 
-// V1-S3: a database written by a pre-1.3 server keeps serving its blob after the upgrade,
-// even when the blob cannot be decoded, and a later valid upload takes over cleanly.
 func TestV1_LegacyUpgrade(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -133,7 +125,6 @@ func TestV1_LegacyUpgrade(t *testing.T) {
 				blob = encodeFixture(t, "s3", 6, 2)
 			}
 
-			// fabricate 1.1.14 state: a bare sync_data row, no rendered_seq, no item store
 			srv.Stop()
 			db, err := sql.Open("sqlite", "file:"+filepath.Join(srv.DataDir, "syncyomi.db"))
 			if err != nil {
@@ -159,7 +150,6 @@ func TestV1_LegacyUpgrade(t *testing.T) {
 				t.Fatal("legacy blob not served verbatim with its original etag")
 			}
 
-			// a valid upload replaces it without ever having destroyed it
 			raw := encodeFixture(t, "s3new", 2, 1)
 			newTag, status, err := c.PutV1(ctx, raw, etag, false)
 			if err != nil || status != http.StatusOK {
@@ -173,8 +163,6 @@ func TestV1_LegacyUpgrade(t *testing.T) {
 	}
 }
 
-// V1-S4: a v2 write invalidates the raw blob (v1 falls back to a render containing both
-// sides), and the next v1 upload resumes the echo.
 func TestV1_MixedFleet(t *testing.T) {
 	srv := startServer(t, 8799)
 	ctx := context.Background()
@@ -187,7 +175,6 @@ func TestV1_MixedFleet(t *testing.T) {
 		t.Fatalf("v1 put = %d, %v", status, err)
 	}
 
-	// v2 device merges its own library in
 	if _, err := v2.Merge(ctx, harness.FixtureBackup("s4v2", 2, 1), harness.MergeOptions{Full: true}); err != nil {
 		t.Fatalf("v2 merge: %v", err)
 	}
@@ -207,7 +194,6 @@ func TestV1_MixedFleet(t *testing.T) {
 		t.Errorf("render has %d manga, want 5 (3 v1 + 2 v2)", len(render.BackupManga))
 	}
 
-	// v1 pushes its client-merged state: echo resumes
 	rawMerged, _ := backup.Encode(render)
 	newTag, status, err := v1.PutV1(ctx, rawMerged, gotTag, false)
 	if err != nil || status != http.StatusOK {
@@ -218,7 +204,6 @@ func TestV1_MixedFleet(t *testing.T) {
 		t.Fatal("echo did not resume after v1 upload")
 	}
 
-	// and the v2 device sees the v1 upload through the item store
 	resp, err := v2.Merge(ctx, nil, harness.MergeOptions{Full: true})
 	if err != nil {
 		t.Fatalf("v2 refetch: %v", err)
@@ -228,8 +213,6 @@ func TestV1_MixedFleet(t *testing.T) {
 	}
 }
 
-// V1-S5: the error surface v1 clients depend on — garbage is accepted and echoed
-// (1.1.14 behaviour), never imported, and never served to v2.
 func TestV1_GarbageTolerated(t *testing.T) {
 	srv := startServer(t, 8800)
 	ctx := context.Background()
@@ -245,7 +228,6 @@ func TestV1_GarbageTolerated(t *testing.T) {
 		t.Fatal("garbage not echoed verbatim")
 	}
 
-	// a later valid upload recovers the key
 	raw := encodeFixture(t, "s5", 2, 1)
 	if _, status, err = c.PutV1(ctx, raw, gotTag, false); err != nil || status != http.StatusOK {
 		t.Fatalf("recovery put = %d, %v", status, err)
@@ -256,8 +238,6 @@ func TestV1_GarbageTolerated(t *testing.T) {
 	}
 }
 
-// within runs fn with the forks' 10 s client deadline and fails the test when it takes
-// longer than budget.
 func within(t *testing.T, name string, budget time.Duration, fn func(ctx context.Context)) time.Duration {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), harness.LegacyClientTimeout)
@@ -273,7 +253,6 @@ func within(t *testing.T, name string, budget time.Duration, fn func(ctx context
 	return took
 }
 
-// importTook reads the duration of the last v1 import from the server log, "" if none ran.
 func importTook(t *testing.T, srv *harness.SyncServer) string {
 	t.Helper()
 	log, err := os.ReadFile(srv.LogPath)
@@ -287,7 +266,6 @@ func importTook(t *testing.T, srv *harness.SyncServer) string {
 	return string(matches[len(matches)-1][1]) + "ms"
 }
 
-// the console logger colours the field name, so an escape sequence may sit before the value
 var importTookRe = regexp.MustCompile(`imported v1 upload into the item store.*took=(?:\x1b\[[0-9;]*m)?([0-9.]+)`)
 
 func TestV1_LargeLibraryUnderTimeout(t *testing.T) {
@@ -340,9 +318,6 @@ func TestV1_LargeLibraryUnderTimeout(t *testing.T) {
 	})
 }
 
-// V1-S7: while something holds the database write lock for longer than a phone waits
-// (a large import does), v1 reads and event reports still answer at once; the device and
-// status bookkeeping they trigger lands once the lock is free.
 func TestV1_ResponsiveWhileStoreLocked(t *testing.T) {
 	srv := startServer(t, 8802)
 	ctx := context.Background()
@@ -365,7 +340,6 @@ func TestV1_ResponsiveWhileStoreLocked(t *testing.T) {
 	defer release()
 	lockedAt := time.Now()
 
-	// a phone hangs up at 10 s; two bookkeeping writes waiting for the lock used to eat it all
 	const budget = 2 * time.Second
 	within(t, "get while locked", budget, func(ctx context.Context) {
 		data, tag, status, err := c.GetV1(ctx, "")
@@ -391,14 +365,12 @@ func TestV1_ResponsiveWhileStoreLocked(t *testing.T) {
 	}
 	release()
 
-	// writers legitimately waited; now they go through
 	within(t, "put after release", harness.LegacyClientTimeout, func(ctx context.Context) {
 		if _, status, err := c.PutV1(ctx, raw, etag, false); err != nil || status != http.StatusOK {
 			t.Fatalf("put after release = %d, %v", status, err)
 		}
 	})
 
-	// the bookkeeping the locked requests queued lands once the lock is free
 	err = harness.WaitFor(ctx, 15*time.Second, func() bool {
 		st, err := srv.Status(ctx)
 		if err != nil || st.LastProtocol != "v1" || st.LastEvent != "SYNC_SUCCESS" {
@@ -422,9 +394,6 @@ func TestV1_ResponsiveWhileStoreLocked(t *testing.T) {
 	}
 }
 
-// V1-S8: the real thing — a v2 device's full merge imports the pending v1 upload under
-// the write lock while a v1 phone keeps polling and reporting; every one of its requests
-// answers well inside the phone's 10 s.
 func TestV1_ResponsiveDuringImport(t *testing.T) {
 	srv := startServer(t, 8803)
 	ctx := context.Background()
@@ -463,7 +432,6 @@ func TestV1_ResponsiveDuringImport(t *testing.T) {
 			if err != nil || status != http.StatusOK {
 				t.Fatalf("get = %d, %v", status, err)
 			}
-			// the echo until the import commits, the render afterwards
 			if tag == etag && !bytes.Equal(data, raw) {
 				t.Fatal("upload not echoed")
 			}

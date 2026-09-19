@@ -1,7 +1,7 @@
-# Smoke-asserts one manga title is visible in the library. Pass TITLE via -e TITLE=...
 appId: eu.kanade.tachiyomi.sy.debug
 ---
-- launchApp
+- launchApp:
+    permissions: {}
 - extendedWaitUntil:
     visible: "Library"
     timeout: 30000

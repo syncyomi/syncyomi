@@ -20,8 +20,6 @@ const (
 	stagePortB = 8792
 )
 
-// TestS1_FirstSyncPairingUI: the server holds a seeded library; devices A and B
-// pair with it through the real settings UI and both end up with that library.
 func TestS1_FirstSyncPairingUI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
@@ -78,8 +76,6 @@ func TestS1_FirstSyncPairingUI(t *testing.T) {
 	}
 }
 
-// TestS2_BidirectionalMerge: A and B build disjoint libraries against separate
-// staging servers, then meet on one server and converge to the union.
 func TestS2_BidirectionalMerge(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -132,9 +128,6 @@ func TestS2_BidirectionalMerge(t *testing.T) {
 	}
 }
 
-// syncViaUI drives the Sync now button, then waits for the server to record the
-// sync AND for the app to finish applying the response (the pref write is the
-// last step of a client sync — stopping the app before it lands loses data).
 func syncViaUI(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
 	prev, _ := e.LastSyncTimestamp(ctx)
@@ -145,7 +138,6 @@ func syncViaUI(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harn
 	awaitSync(t, ctx, e, srv, prev, start)
 }
 
-// syncViaBroadcast triggers sync via the debug receiver (no UI).
 func syncViaBroadcast(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
 	if err := e.LaunchApp(ctx); err != nil {

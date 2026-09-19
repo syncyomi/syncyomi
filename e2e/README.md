@@ -67,10 +67,15 @@ Env vars:
 - Maestro output lands in `artifacts/<run>/maestro/<flow>-<avd>/attempt-N/`
   (transcript in `maestro.log`, per-step status, screenshots and hierarchies
   under `.maestro/`). The verdict is read from Maestro's `commands.json`, not
-  the exit status. A failure at or before `launchApp` (the adb server
-  occasionally drops its transport to an emulator for about a second, which
-  surfaces as "device offline") is retried up to three times once the device
-  answers again; a failure after `launchApp` is never retried.
+  the exit status. A failure at or before `launchApp` is retried up to three
+  times once the device answers again; a failure after `launchApp` is never
+  retried.
+- Every `launchApp` in `flows/` carries `permissions: {}`. Maestro's default
+  (`all: allow`) pulls the installed APK off the device over adb `sync:` to read
+  its manifest, and that pull kills the emulator's adb transport about half the
+  time ("device offline" on the next command). The APK is installed with `-g`
+  and the harness grants what the flows need, so there is nothing for Maestro
+  to grant.
 
 ## Scenarios
 

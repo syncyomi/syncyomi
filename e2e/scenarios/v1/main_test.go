@@ -1,8 +1,5 @@
 //go:build e2e_v1
 
-// Package v1 exercises the deprecated v1 sync protocol over real HTTP against a freshly
-// built server. Unlike the main e2e suite it needs no emulators, APKs or Suwayomi, so it
-// runs in minutes and lives behind its own build tag and CI workflow.
 package v1
 
 import (
@@ -28,7 +25,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// startServer boots a fresh SyncYomi server for one test and registers cleanup.
 func startServer(t *testing.T, port int) *harness.SyncServer {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())

@@ -17,7 +17,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Snapshot fetches and decodes the server's rendered library for the test API key.
 func (s *SyncServer) Snapshot(ctx context.Context) (*pb.Backup, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+"/api/sync/v2/snapshot", nil)
 	if err != nil {
@@ -39,7 +38,6 @@ func (s *SyncServer) Snapshot(ctx context.Context) (*pb.Backup, error) {
 	return backup.Decode(data)
 }
 
-// Seq returns the server's sequence number (0 before anything is stored) without writing.
 func (s *SyncServer) Seq(ctx context.Context) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+"/api/sync/v2/snapshot", nil)
 	if err != nil {
@@ -62,14 +60,12 @@ func (s *SyncServer) Seq(ctx context.Context) (int64, error) {
 	}
 }
 
-// Devices lists the devices the server has seen for the test API key.
 func (s *SyncServer) Devices(ctx context.Context) ([]domain.SyncDevice, error) {
 	var devices []domain.SyncDevice
 	err := s.AdminGet(ctx, "/api/sync/admin/"+s.APIKey+"/devices", &devices)
 	return devices, err
 }
 
-// Status fetches the per-key sync status the web UI shows.
 func (s *SyncServer) Status(ctx context.Context) (*domain.SyncStatus, error) {
 	var st domain.SyncStatus
 	if err := s.AdminGet(ctx, "/api/sync/admin/"+s.APIKey+"/status", &st); err != nil {
@@ -78,7 +74,6 @@ func (s *SyncServer) Status(ctx context.Context) (*domain.SyncStatus, error) {
 	return &st, nil
 }
 
-// WaitFor polls cond every 200 ms until it returns true or timeout passes.
 func WaitFor(ctx context.Context, timeout time.Duration, cond func() bool) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -93,8 +88,6 @@ func WaitFor(ctx context.Context, timeout time.Duration, cond func() bool) error
 	return fmt.Errorf("condition not met within %s", timeout)
 }
 
-// WaitForDeviceSync polls until some device's last_seen passes since and its
-// cursor is positive — i.e. a v2 merge completed after the trigger.
 func (s *SyncServer) WaitForDeviceSync(ctx context.Context, since time.Time, timeout time.Duration) (*domain.SyncDevice, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -115,7 +108,6 @@ func (s *SyncServer) WaitForDeviceSync(ctx context.Context, since time.Time, tim
 	return nil, fmt.Errorf("no device completed a sync within %s", timeout)
 }
 
-// SnapshotTitles returns the sorted favorite manga titles in a backup.
 func SnapshotTitles(b *pb.Backup) []string {
 	var titles []string
 	for _, m := range b.BackupManga {
@@ -127,12 +119,10 @@ func SnapshotTitles(b *pb.Backup) []string {
 	return titles
 }
 
-// OpenAppDB opens a pulled tachiyomi.db read-only.
 func OpenAppDB(path string) (*sql.DB, error) {
 	return sql.Open("sqlite", "file:"+path+"?mode=ro")
 }
 
-// LibraryTitles returns the sorted titles of favorited manga in a pulled app DB.
 func LibraryTitles(db *sql.DB) ([]string, error) {
 	rows, err := db.Query(`SELECT title FROM mangas WHERE favorite = 1 ORDER BY title`)
 	if err != nil {
@@ -150,7 +140,6 @@ func LibraryTitles(db *sql.DB) ([]string, error) {
 	return titles, rows.Err()
 }
 
-// ReadChapterCount returns how many chapters of the given manga are marked read.
 func ReadChapterCount(db *sql.DB, mangaTitle string) (int, error) {
 	var n int
 	err := db.QueryRow(`
@@ -160,7 +149,6 @@ func ReadChapterCount(db *sql.DB, mangaTitle string) (int, error) {
 	return n, err
 }
 
-// MangaCategoryNames returns the names of the categories a manga belongs to.
 func MangaCategoryNames(db *sql.DB, mangaTitle string) ([]string, error) {
 	rows, err := db.Query(`
 		SELECT c.name FROM categories c
@@ -182,7 +170,6 @@ func MangaCategoryNames(db *sql.DB, mangaTitle string) ([]string, error) {
 	return names, rows.Err()
 }
 
-// TableCounts returns row counts for the tables sync writes to.
 func TableCounts(db *sql.DB) (mangas, chapters, categories int, err error) {
 	if err = db.QueryRow(`SELECT COUNT(*) FROM mangas`).Scan(&mangas); err != nil {
 		return
@@ -194,7 +181,6 @@ func TableCounts(db *sql.DB) (mangas, chapters, categories int, err error) {
 	return
 }
 
-// MaxLastModifiedAt is the watermark the app's next delta upload is filtered by.
 func MaxLastModifiedAt(db *sql.DB) (int64, error) {
 	var v int64
 	err := db.QueryRow(`SELECT max(
@@ -203,7 +189,6 @@ func MaxLastModifiedAt(db *sql.DB) (int64, error) {
 	return v, err
 }
 
-// CategoryNames returns user categories (excluding the built-in default).
 func CategoryNames(db *sql.DB) ([]string, error) {
 	rows, err := db.Query(`SELECT name FROM categories ORDER BY sort`)
 	if err != nil {
@@ -221,13 +206,11 @@ func CategoryNames(db *sql.DB) ([]string, error) {
 	return names, rows.Err()
 }
 
-// CategorySort is one user category's position in the app DB.
 type CategorySort struct {
 	Name string
 	Sort int64
 }
 
-// CategorySorts returns user categories (system category excluded) by position.
 func CategorySorts(db *sql.DB) ([]CategorySort, error) {
 	rows, err := db.Query(`SELECT name, sort FROM categories WHERE _id != 0 ORDER BY sort`)
 	if err != nil {

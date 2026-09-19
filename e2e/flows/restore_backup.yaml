@@ -1,4 +1,3 @@
-# Assumes the restore screen is already open (VIEW intent on a .tachibk fired via adb).
 appId: eu.kanade.tachiyomi.sy.debug
 ---
 - runFlow:

@@ -16,7 +16,6 @@ const (
 	deviceDBDir = "databases"
 )
 
-// SyncPrefs is everything the app needs to sync without touching the UI.
 type SyncPrefs struct {
 	Host   string
 	APIKey string
@@ -38,13 +37,11 @@ func prefsXML(p SyncPrefs) string {
 `, p.Host, p.APIKey)
 }
 
-// InstallApp installs (replacing) the APK on the emulator.
 func (e *Emulator) InstallApp(ctx context.Context, apkPath string) error {
 	_, err := e.Adb(ctx, "install", "-r", "-g", apkPath)
 	return err
 }
 
-// ResetApp wipes app data and seeds sync preferences; the app is left stopped.
 func (e *Emulator) ResetApp(ctx context.Context, p SyncPrefs) error {
 	if out, err := e.Adb(ctx, "shell", "pm", "clear", AppPackage); err != nil || !strings.Contains(out, "Success") {
 		return fmt.Errorf("pm clear: %v %s", err, out)
@@ -52,18 +49,11 @@ func (e *Emulator) ResetApp(ctx context.Context, p SyncPrefs) error {
 	if err := e.WriteSyncPrefs(ctx, p); err != nil {
 		return err
 	}
-	// Notifications permission so no runtime prompt blocks UI flows on API 33+.
 	_, _ = e.Adb(ctx, "shell", "pm", "grant", AppPackage, "android.permission.POST_NOTIFICATIONS")
-	// Storage access the app would normally get during onboarding; needed to read
-	// pushed backup files from /sdcard.
 	_, _ = e.Adb(ctx, "shell", "appops", "set", AppPackage, "MANAGE_EXTERNAL_STORAGE", "allow")
 	return nil
 }
 
-// WriteSyncPrefs force-stops the app and replaces its preferences, keeping the
-// library DB — used to re-point a device at a different server mid-scenario.
-// Replacing the whole file also drops v2 cursor/probe app-state, so the next
-// sync against the new host starts from scratch, as a fresh pairing would.
 func (e *Emulator) WriteSyncPrefs(ctx context.Context, p SyncPrefs) error {
 	if err := e.ForceStopApp(ctx); err != nil {
 		return err
@@ -75,7 +65,6 @@ func (e *Emulator) WriteSyncPrefs(ctx context.Context, p SyncPrefs) error {
 	return nil
 }
 
-// AdbShellStdin runs a shell command with the given stdin content.
 func (e *Emulator) AdbShellStdin(ctx context.Context, stdin, command string) (string, error) {
 	cmd := adbCommand(ctx, e.Serial, "shell", command)
 	cmd.Stdin = strings.NewReader(stdin)
@@ -86,7 +75,6 @@ func (e *Emulator) AdbShellStdin(ctx context.Context, stdin, command string) (st
 	return string(out), nil
 }
 
-// LaunchApp starts the main activity and waits briefly for it to settle.
 func (e *Emulator) LaunchApp(ctx context.Context) error {
 	if _, err := e.Adb(ctx, "shell", "am", "start", "-n", mainAct); err != nil {
 		return err
@@ -100,7 +88,6 @@ func (e *Emulator) ForceStopApp(ctx context.Context) error {
 	return err
 }
 
-// TriggerSyncBroadcast fires the debug-only sync receiver (Phase 2 app hook).
 func (e *Emulator) TriggerSyncBroadcast(ctx context.Context) error {
 	out, err := e.Adb(ctx, "shell", "am", "broadcast",
 		"-a", AppPackage+".TRIGGER_SYNC", "-p", AppPackage)
@@ -113,7 +100,6 @@ func (e *Emulator) TriggerSyncBroadcast(ctx context.Context) error {
 	return nil
 }
 
-// PushBackup copies a .tachibk fixture to the device and returns its device path.
 func (e *Emulator) PushBackup(ctx context.Context, localPath string) (string, error) {
 	remote := "/sdcard/Download/" + filepath.Base(localPath)
 	if _, err := e.Adb(ctx, "push", localPath, remote); err != nil {
@@ -122,7 +108,6 @@ func (e *Emulator) PushBackup(ctx context.Context, localPath string) (string, er
 	return remote, nil
 }
 
-// OpenBackupFile fires a VIEW intent so the app opens its restore screen.
 func (e *Emulator) OpenBackupFile(ctx context.Context, devicePath string) error {
 	out, err := e.Adb(ctx, "shell", "am", "start",
 		"-a", "android.intent.action.VIEW",
@@ -138,8 +123,6 @@ func (e *Emulator) OpenBackupFile(ctx context.Context, devicePath string) error 
 	return nil
 }
 
-// PullAppDB force-stops the app and pulls tachiyomi.db (+wal/shm) into destDir,
-// returning the local db path.
 func (e *Emulator) PullAppDB(ctx context.Context, destDir string) (string, error) {
 	if err := e.ForceStopApp(ctx); err != nil {
 		return "", err
@@ -147,8 +130,6 @@ func (e *Emulator) PullAppDB(ctx context.Context, destDir string) (string, error
 	return e.pullAppDBFiles(ctx, destDir)
 }
 
-// PullAppDBLive pulls the db files without stopping the app. The copy can be
-// mid-write and unreadable — callers must treat failures as "not yet" and retry.
 func (e *Emulator) PullAppDBLive(ctx context.Context, destDir string) (string, error) {
 	return e.pullAppDBFiles(ctx, destDir)
 }
@@ -166,7 +147,7 @@ func (e *Emulator) pullAppDBFiles(ctx context.Context, destDir string) (string, 
 			if name == "tachiyomi.db" {
 				return "", fmt.Errorf("pull %s: %w", name, err)
 			}
-			continue // wal/shm may not exist after clean close
+			continue
 		}
 		if err := os.WriteFile(local, data, 0o644); err != nil {
 			return "", err
@@ -178,12 +159,10 @@ func (e *Emulator) pullAppDBFiles(ctx context.Context, destDir string) (string, 
 	return dbPath, nil
 }
 
-// ReadSyncPrefs returns the raw preferences XML currently on the device.
 func (e *Emulator) ReadSyncPrefs(ctx context.Context) (string, error) {
 	return e.Adb(ctx, "shell", "run-as", AppPackage, "cat", "shared_prefs/"+prefsFile)
 }
 
-// LastSyncTimestamp parses __APP_STATE_last_sync_timestamp from the prefs XML (0 if absent).
 func (e *Emulator) LastSyncTimestamp(ctx context.Context) (int64, error) {
 	xml, err := e.ReadSyncPrefs(ctx)
 	if err != nil {
@@ -192,11 +171,6 @@ func (e *Emulator) LastSyncTimestamp(ctx context.Context) (int64, error) {
 	return parseLongPref(xml, "__APP_STATE_last_sync_timestamp"), nil
 }
 
-// WaitForClientSync polls until the app's last-sync pref advances past prev
-// (its value before the trigger). The app writes this pref only once it has
-// fully applied the server response, so this — not the server-side device
-// record — is the safe point to stop or inspect the app. Compared against the
-// previous pref value rather than host wall time to sidestep clock skew.
 func (e *Emulator) WaitForClientSync(ctx context.Context, prev int64, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

@@ -12,9 +12,6 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
-// TestS10_CategoryRename: A renames the shared category through the real UI;
-// the server keeps the same uid under the new name (no duplicate), B converges,
-// and re-syncing A does not resurrect the old name.
 func TestS10_CategoryRename(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -51,8 +48,6 @@ func TestS10_CategoryRename(t *testing.T) {
 	awaitCategoryPresent(t, ctx, emuA, "E2E Renamed")
 }
 
-// TestS11_CategoryReorder: a remote reorder (swapped positions, bumped versions)
-// lands on the device and survives the device's next push unchanged.
 func TestS11_CategoryReorder(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -64,7 +59,6 @@ func TestS11_CategoryReorder(t *testing.T) {
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitLibrary(t, ctx, emuA, fixtureAManga)
 
-	// Remote adds a second category, then swaps the two positions.
 	reorder := &pb.Backup{
 		BackupCategories: []*pb.BackupCategory{
 			{Name: "E2E Alpha", Order: 1, Id: 1, Uid: harness.FixtureCategoryUID("E2E Alpha"), Version: 1},
@@ -81,7 +75,6 @@ func TestS11_CategoryReorder(t *testing.T) {
 	wantOrder := []string{"E2E Zeta", "E2E Alpha"}
 	awaitCategoryOrder(t, ctx, emuA, wantOrder)
 
-	// The device's own push must not churn the order back.
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitCategoryOrder(t, ctx, emuA, wantOrder)
 	snap, err := srv.Snapshot(ctx)
@@ -93,8 +86,6 @@ func TestS11_CategoryReorder(t *testing.T) {
 	}
 }
 
-// TestS12_CreateAndAssignCategory: A creates a category and assigns a manga to
-// it through the real UI; server and B converge.
 func TestS12_CreateAndAssignCategory(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -110,9 +101,6 @@ func TestS12_CreateAndAssignCategory(t *testing.T) {
 	awaitMangaInCategory(t, ctx, emuB, "E2E Alpha 03", "E2E Zeta")
 }
 
-// TestS13_DeviceOriginatedCategoryTombstone: A deletes its category through the
-// real UI, which must send the deleted-uid tombstone; the category disappears
-// everywhere and never resurrects, while the manga survives.
 func TestS13_DeviceOriginatedCategoryTombstone(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
@@ -125,7 +113,6 @@ func TestS13_DeviceOriginatedCategoryTombstone(t *testing.T) {
 	syncViaBroadcast(t, ctx, emuB, srv)
 	awaitCategoryPresent(t, ctx, emuB, "E2E Zeta")
 
-	// Rows sort by position: "E2E Alpha" at 0, "E2E Zeta" at 1.
 	if err := emuA.RunFlow(ctx, harness.FlowPath("delete_category.yaml"), artifactDir,
 		map[string]string{"INDEX": "1", "NAME": "E2E Zeta"}); err != nil {
 		t.Fatalf("delete flow: %v", err)
@@ -143,7 +130,6 @@ func TestS13_DeviceOriginatedCategoryTombstone(t *testing.T) {
 	syncViaBroadcast(t, ctx, emuB, srv)
 	awaitCategoryGone(t, ctx, emuB, "E2E Zeta")
 
-	// No resurrection on further syncs, and the manga survives everywhere.
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitCategoryGone(t, ctx, emuA, "E2E Zeta")
 	syncViaBroadcast(t, ctx, emuB, srv)
@@ -159,9 +145,6 @@ func TestS13_DeviceOriginatedCategoryTombstone(t *testing.T) {
 	}
 }
 
-// renameCategory drives the rename dialog. The pre-filled field opens with the
-// cursor at position 0, so the flow is split around an adb KEYCODE_MOVE_END to
-// get the cursor behind the old name before erasing it.
 func renameCategory(t *testing.T, ctx context.Context, e *harness.Emulator, oldName, newName string) {
 	t.Helper()
 	if err := e.RunFlow(ctx, harness.FlowPath("rename_category_open.yaml"), artifactDir,
@@ -177,8 +160,6 @@ func renameCategory(t *testing.T, ctx context.Context, e *harness.Emulator, oldN
 	}
 }
 
-// createAndAssign drives the create-category and set-categories UI on A and
-// syncs the result up, asserting the server holds both.
 func createAndAssign(t *testing.T, ctx context.Context, srv *harness.SyncServer, category, title string) {
 	t.Helper()
 	if err := emuA.RunFlow(ctx, harness.FlowPath("create_category.yaml"), artifactDir,
@@ -217,8 +198,6 @@ func awaitCategoryPresent(t *testing.T, ctx context.Context, e *harness.Emulator
 	})
 }
 
-// awaitCategoryOrder waits until the user categories appear exactly in the
-// given position order.
 func awaitCategoryOrder(t *testing.T, ctx context.Context, e *harness.Emulator, want []string) {
 	t.Helper()
 	pollLiveDB(t, ctx, e, 60*time.Second, "category order", func(dbPath string) bool {
@@ -248,7 +227,6 @@ func categoryNames(cats []*pb.BackupCategory) []string {
 	return names
 }
 
-// snapshotCategoryOrder returns the server's category names by ascending order value.
 func snapshotCategoryOrder(snap *pb.Backup) []string {
 	cats := slices.Clone(snap.BackupCategories)
 	slices.SortFunc(cats, func(a, b *pb.BackupCategory) int {

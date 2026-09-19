@@ -16,16 +16,10 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
-// LegacyClientTimeout is what the v1 forks give the server: TachiyomiSY and Komikku use
-// a bare OkHttpClient() for the download and the event report, whose read timeout is 10 s.
 const LegacyClientTimeout = 10 * time.Second
 
-// legacyClient carries that timeout so the v1 helpers fail exactly when a phone would.
 var legacyClient = &http.Client{Timeout: LegacyClientTimeout}
 
-// SyntheticClient speaks SyncYomi v2 directly, acting as an extra "device" so
-// tests can seed server state or inject precise conflict/cursor situations
-// without an emulator round-trip.
 type SyntheticClient struct {
 	Server     *SyncServer
 	DeviceID   string
@@ -42,8 +36,6 @@ type MergeOptions struct {
 	DeletedCategories []int64
 }
 
-// Merge posts a backup (nil = "nothing changed") and returns what the server
-// says this device lacks. The client's cursor advances from the response.
 func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOptions) (*pb.Backup, error) {
 	var body []byte
 	if b != nil {
@@ -97,9 +89,6 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 	return backup.Decode(data)
 }
 
-// PutV1 uploads raw bytes through the deprecated v1 endpoint exactly as legacy clients
-// do: no device headers, optional If-Match, optionally gzip-encoded. Non-2xx statuses
-// are returned, not treated as errors, so tests can assert on them.
 func (c *SyntheticClient) PutV1(ctx context.Context, raw []byte, ifMatch string, gzipBody bool) (etag string, status int, err error) {
 	body := raw
 	if gzipBody {
@@ -135,7 +124,6 @@ func (c *SyntheticClient) PutV1(ctx context.Context, raw []byte, ifMatch string,
 	return resp.Header.Get("ETag"), resp.StatusCode, nil
 }
 
-// GetV1 fetches the v1 payload with an optional If-None-Match. The body is nil on 304/404.
 func (c *SyntheticClient) GetV1(ctx context.Context, ifNoneMatch string) (data []byte, etag string, status int, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		c.Server.BaseURL+"/api/sync/content", nil)
@@ -162,9 +150,6 @@ func (c *SyntheticClient) GetV1(ctx context.Context, ifNoneMatch string) (data [
 	return data, resp.Header.Get("ETag"), resp.StatusCode, nil
 }
 
-// ReportEvent posts a sync event the way the forks do after each phase (SYNC_STARTED,
-// SYNC_SUCCESS, SYNC_FAILED, ...): device identity in the JSON body, not in headers.
-// Non-2xx statuses are returned, not treated as errors.
 func (c *SyntheticClient) ReportEvent(ctx context.Context, event, message string) (status int, err error) {
 	body, err := json.Marshal(map[string]string{
 		"event":       event,

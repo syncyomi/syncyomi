@@ -14,7 +14,6 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
-// suwayomiJar locates the Suwayomi shadowJar, skipping the test when absent.
 func suwayomiJar(t *testing.T) string {
 	t.Helper()
 	jar := os.Getenv("E2E_SUWAYOMI_JAR")
@@ -41,7 +40,6 @@ func startSuwayomi(t *testing.T, ctx context.Context, srv *harness.SyncServer) *
 	return suwa
 }
 
-// suwaSync triggers a Suwayomi sync and waits for it to succeed.
 func suwaSync(t *testing.T, ctx context.Context, suwa *harness.Suwayomi) {
 	t.Helper()
 	start := time.Now()
@@ -56,8 +54,6 @@ func suwaSync(t *testing.T, ctx context.Context, suwa *harness.Suwayomi) {
 	t.Logf("suwayomi sync took %s", time.Since(start).Round(time.Millisecond))
 }
 
-// TestS7_AndroidSuwayomiBothDirections: Android app syncs its library up, the
-// Suwayomi server pulls it in, and Android picks up a Suwayomi-side sync back.
 func TestS7_AndroidSuwayomiBothDirections(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -90,8 +86,6 @@ func TestS7_AndroidSuwayomiBothDirections(t *testing.T) {
 		t.Errorf("suwayomi library = %v, want %v", got, want)
 	}
 
-	// Reverse direction: another Suwayomi sync then an Android sync should both
-	// succeed and leave every side converged on the same library.
 	if _, err := suwa.StartSync(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -109,9 +103,6 @@ func TestS7_AndroidSuwayomiBothDirections(t *testing.T) {
 	}
 }
 
-// TestS14_SuwayomiCoreConvergence: Suwayomi applies the same core edits the
-// Android scenarios cover — read progress, category rename, membership moves,
-// and deletion tombstones — and pushes its own edits back, all over GraphQL.
 func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
@@ -124,8 +115,6 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	suwaSync(t, ctx, suwa)
 	assertSuwaLibrarySize(t, ctx, suwa, fixtureAManga)
 
-	// Remote core edits: chapters read, category rename (same uid), a new
-	// category with a membership move.
 	edits := harness.FixtureBackup("E2E Alpha", fixtureAManga, fixtureAChapters)
 	harness.MarkChaptersRead(edits, "E2E Alpha 01", fixtureAChapters)
 	edits.BackupCategories[0].Name = "E2E Renamed"
@@ -165,13 +154,10 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	if !slices.Contains(cats, "E2E Renamed") || slices.Contains(cats, "E2E Alpha") {
 		t.Errorf("suwayomi categories = %v, want rename E2E Alpha -> E2E Renamed applied", cats)
 	}
-	// Server orders: Renamed=0, Zeta=1 — Suwayomi ranks them 1-based after
-	// Default but must keep the same relative positions.
 	if ri, zi := slices.Index(cats, "E2E Renamed"), slices.Index(cats, "E2E Zeta"); ri > zi {
 		t.Errorf("suwayomi category order = %v, want E2E Renamed before E2E Zeta", cats)
 	}
 
-	// Reverse direction: Suwayomi marks another manga read and pushes it.
 	if err := suwa.MarkChaptersRead(ctx, "E2E Alpha 03"); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +170,6 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 		t.Errorf("server read count for Alpha 03 after suwayomi push = %d, want %d", got, fixtureAChapters)
 	}
 
-	// Tombstone: the category deletion reaches Suwayomi without taking manga along.
 	if _, err := c.Merge(ctx, nil, harness.MergeOptions{DeletedCategories: []int64{zeta.Uid}}); err != nil {
 		t.Fatalf("tombstone merge: %v", err)
 	}
@@ -198,9 +183,6 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	}
 	assertSuwaLibrarySize(t, ctx, suwa, fixtureAManga)
 
-	// Send side: a category created on Suwayomi above E2E Renamed (position 1,
-	// after Default) must reach the server as 0-based contiguous wire orders
-	// with manga refs remapped through the same rebase.
 	if _, err := suwa.CreateCategoryAt(ctx, "E2E Suwa", 1); err != nil {
 		t.Fatal(err)
 	}
@@ -231,11 +213,8 @@ func TestS14_SuwayomiCoreConvergence(t *testing.T) {
 	}
 }
 
-// TestS15_CrossPlatformDeepSync: edits made on Android through the real UI
-// (read progress, category create + assign) reach Suwayomi, and a
-// Suwayomi-side edit comes back to Android.
 func TestS15_CrossPlatformDeepSync(t *testing.T) {
-	suwayomiJar(t) // skip early when no jar is available
+	suwayomiJar(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
@@ -247,14 +226,12 @@ func TestS15_CrossPlatformDeepSync(t *testing.T) {
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitLibrary(t, ctx, emuA, fixtureAManga)
 
-	// Android-side edits through the real UI.
 	if err := emuA.RunFlow(ctx, harness.FlowPath("mark_read.yaml"), artifactDir,
 		map[string]string{"TITLE": "E2E Alpha 01"}); err != nil {
 		t.Fatalf("mark_read flow: %v", err)
 	}
 	awaitReadCount(t, ctx, emuA, "E2E Alpha 01", fixtureAChapters)
 
-	// True category MOVE through the real UI: check Zeta, uncheck Alpha.
 	if err := emuA.RunFlow(ctx, harness.FlowPath("create_category.yaml"), artifactDir,
 		map[string]string{"NAME": "E2E Zeta"}); err != nil {
 		t.Fatalf("create category flow: %v", err)
@@ -284,7 +261,6 @@ func TestS15_CrossPlatformDeepSync(t *testing.T) {
 		t.Errorf("suwayomi Alpha 03 categories = %v, want a MOVE to E2E Zeta (E2E Alpha removed)", got)
 	}
 
-	// Suwayomi-side edit back to Android.
 	if err := suwa.MarkChaptersRead(ctx, "E2E Alpha 05"); err != nil {
 		t.Fatal(err)
 	}

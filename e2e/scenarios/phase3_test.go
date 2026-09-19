@@ -14,7 +14,6 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
-// pairBoth gives A and B the seeded Alpha library on a fresh server.
 func pairBoth(t *testing.T, ctx context.Context, srv *harness.SyncServer) {
 	t.Helper()
 	seedServer(t, ctx, srv, "E2E Alpha")
@@ -26,8 +25,6 @@ func pairBoth(t *testing.T, ctx context.Context, srv *harness.SyncServer) {
 	awaitLibrary(t, ctx, emuB, fixtureAManga)
 }
 
-// TestS3_ReadProgressPropagation: A marks a manga read through the real UI, the
-// state reaches the server and B, and re-syncing A does not regress it.
 func TestS3_ReadProgressPropagation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -59,8 +56,6 @@ func TestS3_ReadProgressPropagation(t *testing.T) {
 	awaitReadCount(t, ctx, emuA, title, fixtureAChapters)
 }
 
-// TestS4_CategoryDeletionTombstone: a deleted-category tombstone removes the
-// category on every device and it does not resurrect on later syncs.
 func TestS4_CategoryDeletionTombstone(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -79,8 +74,6 @@ func TestS4_CategoryDeletionTombstone(t *testing.T) {
 		syncViaBroadcast(t, ctx, e, srv)
 		awaitCategoryGone(t, ctx, e, "E2E Alpha")
 	}
-	// The category lived only on the devices' own backups now; a re-sync must
-	// not bring it back.
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitCategoryGone(t, ctx, emuA, "E2E Alpha")
 	for _, e := range []*harness.Emulator{emuA, emuB} {
@@ -94,9 +87,6 @@ func TestS4_CategoryDeletionTombstone(t *testing.T) {
 	}
 }
 
-// TestS5_ConflictBothEditsSurvive: A marks chapters read while another device
-// recategorizes the same manga with a higher version; after syncing, A holds
-// both edits and so does the server.
 func TestS5_ConflictBothEditsSurvive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -109,14 +99,12 @@ func TestS5_ConflictBothEditsSurvive(t *testing.T) {
 	awaitLibrary(t, ctx, emuA, fixtureAManga)
 
 	const title = "E2E Alpha 02"
-	// Local edit on A, not yet synced.
 	if err := emuA.RunFlow(ctx, harness.FlowPath("mark_read.yaml"), artifactDir,
 		map[string]string{"TITLE": title}); err != nil {
 		t.Fatalf("mark_read flow: %v", err)
 	}
 	awaitReadCount(t, ctx, emuA, title, fixtureAChapters)
 
-	// Concurrent remote edit: same manga moved to a new category, higher version.
 	remote := harness.FixtureBackup("E2E Alpha", fixtureAManga, fixtureAChapters)
 	conflictCat := &pb.BackupCategory{Name: "E2E Conflict", Order: 1, Id: 2, Uid: harness.FixtureCategoryUID("E2E Conflict")}
 	remote.BackupCategories = append(remote.BackupCategories, conflictCat)
@@ -128,7 +116,7 @@ func TestS5_ConflictBothEditsSurvive(t *testing.T) {
 	}
 	moved.Categories = []int64{conflictCat.Order}
 	moved.Version = 2
-	remote.BackupManga = []*pb.BackupManga{moved} // delta: just the contested manga
+	remote.BackupManga = []*pb.BackupManga{moved}
 	c := harness.NewSyntheticClient(srv, "e2e-conflict")
 	if _, err := c.Merge(ctx, remote, harness.MergeOptions{}); err != nil {
 		t.Fatalf("conflict merge: %v", err)
@@ -139,7 +127,6 @@ func TestS5_ConflictBothEditsSurvive(t *testing.T) {
 	awaitMangaNotInCategory(t, ctx, emuA, title, "E2E Alpha")
 	awaitReadCount(t, ctx, emuA, title, fixtureAChapters)
 
-	// One more sync so A pushes its merged state; server must hold both edits.
 	syncViaBroadcast(t, ctx, emuA, srv)
 	snap, err := srv.Snapshot(ctx)
 	if err != nil {
@@ -153,8 +140,6 @@ func TestS5_ConflictBothEditsSurvive(t *testing.T) {
 	}
 }
 
-// TestS6_StaleCursorConvergence: the server advances several generations while
-// A is away; A's next delta sync converges without duplicates.
 func TestS6_StaleCursorConvergence(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -188,8 +173,6 @@ func TestS6_StaleCursorConvergence(t *testing.T) {
 	}
 }
 
-// TestS8_DedupeIdempotencySoak: a realistic scrubbed library syncs down, then
-// repeated syncs leave every row count and the server snapshot stable.
 func TestS8_DedupeIdempotencySoak(t *testing.T) {
 	if testing.Short() {
 		t.Skip("soak test skipped with -short")
@@ -257,8 +240,6 @@ func TestS8_DedupeIdempotencySoak(t *testing.T) {
 	}
 }
 
-// --- polling helpers on the live app DB ---
-
 func awaitReadCount(t *testing.T, ctx context.Context, e *harness.Emulator, title string, want int) {
 	t.Helper()
 	pollLiveDB(t, ctx, e, 60*time.Second, "read count", func(dbPath string) bool {
@@ -298,8 +279,6 @@ func awaitMangaInCategory(t *testing.T, ctx context.Context, e *harness.Emulator
 	})
 }
 
-// awaitMangaNotInCategory verifies a move removed the old membership — a move
-// that merely adds must fail this.
 func awaitMangaNotInCategory(t *testing.T, ctx context.Context, e *harness.Emulator, title, category string) {
 	t.Helper()
 	pollLiveDB(t, ctx, e, 60*time.Second, "category removal from manga", func(dbPath string) bool {
@@ -338,8 +317,6 @@ func pollLiveDB(t *testing.T, ctx context.Context, e *harness.Emulator, timeout 
 	}
 	t.Fatalf("%s: %s never reached expected state within %s", e.AVD, what, timeout)
 }
-
-// --- server snapshot helpers ---
 
 func snapshotReadCount(snap *pb.Backup, title string) int {
 	for _, m := range snap.BackupManga {
