@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Runs the E2E suite. Usage: run-e2e.sh [-run <pattern>] [extra go test args...]
 set -euo pipefail
 
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,5 +11,4 @@ fi
 
 "$E2E_DIR/scripts/doctor.sh" || { echo "[run-e2e] doctor failed"; exit 1; }
 
-# -count=1 so a green run is always a real run, never Go's cached result
 exec go test -C "$REPO_DIR" -tags e2e -count=1 ./e2e/scenarios/... -v -timeout 60m "$@"

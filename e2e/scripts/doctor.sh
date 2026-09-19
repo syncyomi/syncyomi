@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Verifies the E2E environment. Exit 0 = ready to run.
 set -uo pipefail
 
 SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
