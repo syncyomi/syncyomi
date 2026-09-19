@@ -38,8 +38,6 @@ func deviceWatermark(t *testing.T, ctx context.Context, e *harness.Emulator) int
 	return v
 }
 
-// TestS17_RestoreEchoChurn: applying server data must not look like a local change, or the
-// next delta uploads it straight back.
 func TestS17_RestoreEchoChurn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -52,7 +50,6 @@ func TestS17_RestoreEchoChurn(t *testing.T) {
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitLibrary(t, ctx, emuA, fixtureAManga)
 
-	// the seed carries no timestamps, so a recent watermark was stamped by the restore itself
 	if wm := deviceWatermark(t, ctx, emuA); wm >= before {
 		t.Errorf("restore stamped rows as locally modified: watermark %d (sync began at %d)", wm, before)
 	}
@@ -70,8 +67,6 @@ func TestS17_RestoreEchoChurn(t *testing.T) {
 	}
 }
 
-// TestS18_OneChangeOneWrite: one user change on A costs one server write; B applying it and
-// A syncing again write nothing and run no restore pass.
 func TestS18_OneChangeOneWrite(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
@@ -79,7 +74,6 @@ func TestS18_OneChangeOneWrite(t *testing.T) {
 	srv := startServer(t, mainPort)
 	harness.CollectOnFailure(t, artifactDir, srv, emuA, emuB)
 	pairBoth(t, ctx, srv)
-	// an idle sync each so a first-sync echo, if any, is not charged to the budget
 	syncViaBroadcast(t, ctx, emuA, srv)
 	syncViaBroadcast(t, ctx, emuB, srv)
 	s0 := serverSeq(t, ctx, srv)
@@ -130,7 +124,6 @@ func TestS18_OneChangeOneWrite(t *testing.T) {
 	}
 }
 
-// TestS19_SuwayomiRestoreEcho: the same contract between Suwayomi and Android, both ways.
 func TestS19_SuwayomiRestoreEcho(t *testing.T) {
 	suwayomiJar(t)
 
@@ -147,8 +140,6 @@ func TestS19_SuwayomiRestoreEcho(t *testing.T) {
 	suwa := startSuwayomi(t, ctx, srv)
 	suwaSync(t, ctx, suwa)
 	assertSuwaLibrarySize(t, ctx, suwa, fixtureAManga)
-	// Suwayomi's first sync is a one-time converging sync that bumps every version, so the
-	// following sync writes the library once; that is not the echo measured here
 	suwaSync(t, ctx, suwa)
 
 	s0 := serverSeq(t, ctx, srv)
@@ -158,7 +149,6 @@ func TestS19_SuwayomiRestoreEcho(t *testing.T) {
 		t.Errorf("Suwayomi's no-change syncs rewrote the server store: seq %d -> %d", s0, s1)
 	}
 
-	// Android -> Suwayomi
 	const fromAndroid = "E2E Alpha 01"
 	if err := emuA.RunFlow(ctx, harness.FlowPath("mark_read.yaml"), artifactDir,
 		map[string]string{"TITLE": fromAndroid}); err != nil {
@@ -176,7 +166,6 @@ func TestS19_SuwayomiRestoreEcho(t *testing.T) {
 		t.Errorf("Suwayomi wrote Android's change back (restore echo): seq %d -> %d", s2, s3)
 	}
 
-	// Suwayomi -> Android
 	const fromSuwayomi = "E2E Alpha 05"
 	if err := suwa.MarkChaptersRead(ctx, fromSuwayomi); err != nil {
 		t.Fatal(err)

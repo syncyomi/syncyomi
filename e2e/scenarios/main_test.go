@@ -87,8 +87,6 @@ func run(m *testing.M) int {
 	return m.Run()
 }
 
-// startServer boots a fresh SyncYomi server on the given port for one test and
-// registers cleanup. Multiple servers per test get distinct ports and data dirs.
 func startServer(t *testing.T, port int) *harness.SyncServer {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -102,10 +100,6 @@ func startServer(t *testing.T, port int) *harness.SyncServer {
 	return srv
 }
 
-// seedServer pushes a backup into the server through the v2 protocol, acting as
-// a synthetic device. This is the library-seeding path: the app pulls it down on
-// its first sync. (In-app backup restore is unusable until jobobby04/TachiyomiSY#1634
-// is fixed — restores die with SQLITE_BUSY on current builds.)
 func seedServer(t *testing.T, ctx context.Context, srv *harness.SyncServer, prefix string) {
 	t.Helper()
 	c := harness.NewSyntheticClient(srv, "e2e-seed-"+prefix)
@@ -114,8 +108,6 @@ func seedServer(t *testing.T, ctx context.Context, srv *harness.SyncServer, pref
 	}
 }
 
-// repoint aims a device at a different server without wiping its library, so
-// locally divergent state can be built up before devices meet on one server.
 func repoint(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
 	err := e.WriteSyncPrefs(ctx, harness.SyncPrefs{Host: srv.HostURLForEmulator(), APIKey: srv.APIKey})
@@ -124,7 +116,6 @@ func repoint(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harnes
 	}
 }
 
-// resetApp wipes app state on the emulator and seeds sync prefs for the server.
 func resetApp(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
 	err := e.ResetApp(ctx, harness.SyncPrefs{Host: srv.HostURLForEmulator(), APIKey: srv.APIKey})
@@ -147,10 +138,6 @@ func libraryTitles(t *testing.T, ctx context.Context, e *harness.Emulator) ([]st
 	return harness.LibraryTitles(db)
 }
 
-// awaitLibrary polls the app DB (without stopping the app) until the library
-// holds want favorites. The sync's apply step runs as a separate WorkManager
-// job after SyncDataJob reports success, so server records and the last-sync
-// pref both fire before data lands — the DB itself is the only honest signal.
 func awaitLibrary(t *testing.T, ctx context.Context, e *harness.Emulator, want int) {
 	t.Helper()
 	awaitLibraryFor(t, ctx, e, want, 60*time.Second)
