@@ -190,7 +190,7 @@
                       href="https://ntfy.sh"
                       target="_blank"
                     >
-                      htfy.sh
+                      ntfy.sh
                     </a>
                   </v-list-item-subtitle>
                 </v-list-subheader>
