@@ -7,7 +7,7 @@ replace github.com/r3labs/sse/v2 => github.com/autobrr/sse/v2 v2.0.0-20230520125
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/render v1.0.3
