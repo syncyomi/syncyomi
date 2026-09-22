@@ -61,6 +61,13 @@ only their changed chapters), **all** categories (the server needs them to map c
 numbers), and settings only when they changed. A manga without chapters in the body means
 "nothing to say about chapters", never "no chapters".
 
+The body may be sent with chunked transfer encoding, and repeated fields may arrive as
+separate records: a client can write each `backup_manga` element as its own field record and
+the rest of the backup after them, and protobuf merges the records into one message. This is
+how the Android clients stream a large library without ever holding the encoded backup in
+memory. A connection dropped mid-body fails the chunked read and the request is rejected with
+400, so a partial upload is never merged.
+
 ## Response
 
 Body: a backup with everything the client is missing:
