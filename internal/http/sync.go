@@ -103,6 +103,7 @@ func (h syncHandler) getContent(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("ETag", snap.ETag)
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(snap.Data)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(snap.Data); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write sync data response")
