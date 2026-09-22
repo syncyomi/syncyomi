@@ -272,3 +272,46 @@ func TestEmptyPreferencePayloadIsPreserved(t *testing.T) {
 		t.Error("scrub dropped the preference payload")
 	}
 }
+
+func TestDecodeSplitManga(t *testing.T) {
+	b := &pb.Backup{
+		BackupManga: []*pb.BackupManga{
+			{Source: 1, Url: "/m/1", Title: "one"},
+			{Source: 1, Url: "/m/2", Title: "two"},
+		},
+		BackupCategories: []*pb.BackupCategory{{Name: "Reading", Order: 1}},
+		BackupSources:    []*pb.BackupSource{{Name: "Source", SourceId: 1}},
+	}
+	whole, err := Encode(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var split []byte
+	for _, m := range b.BackupManga {
+		raw, err := proto.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		split = protowire.AppendTag(split, 1, protowire.BytesType)
+		split = protowire.AppendBytes(split, raw)
+	}
+	meta := proto.Clone(b).(*pb.Backup)
+	meta.BackupManga = nil
+	rest, err := Encode(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	split = append(split, rest...)
+
+	got, err := Decode(split)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(got, b) {
+		t.Error("split manga records did not merge into the whole backup")
+	}
+	if !bytes.Equal(split, whole) {
+		t.Errorf("split encoding differs from whole encoding:\n%x\n%x", split, whole)
+	}
+}
