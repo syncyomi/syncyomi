@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -109,6 +111,25 @@ func (s *Suwayomi) GraphQL(ctx context.Context, query string, variables map[stri
 		return fmt.Errorf("graphql: status %d", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func (s *Suwayomi) ImportBackup(ctx context.Context, gz []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/api/v1/backup/import", bytes.NewReader(gz))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("import backup: status %d: %s", resp.StatusCode, payload)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }
 
 func (s *Suwayomi) StartSync(ctx context.Context) (string, error) {
@@ -227,6 +248,83 @@ func (s *Suwayomi) Library(ctx context.Context) ([]SuwayomiManga, error) {
 		mangas = append(mangas, m)
 	}
 	return mangas, nil
+}
+
+func (s *Suwayomi) LibraryMangaCount(ctx context.Context) (int, error) {
+	var out struct {
+		Data struct {
+			Mangas struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"mangas"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	query := `{ mangas(condition: {inLibrary: true}) { totalCount } }`
+	if err := s.GraphQL(ctx, query, nil, &out); err != nil {
+		return 0, err
+	}
+	if len(out.Errors) > 0 {
+		return 0, fmt.Errorf("manga count query: %s", out.Errors[0].Message)
+	}
+	return out.Data.Mangas.TotalCount, nil
+}
+
+func (s *Suwayomi) SampleMangaIDs(ctx context.Context, n int) ([]int, error) {
+	var out struct {
+		Data struct {
+			Mangas struct {
+				Nodes []struct {
+					ID int `json:"id"`
+				} `json:"nodes"`
+			} `json:"mangas"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	query := `query($n: Int!) { mangas(condition: {inLibrary: true}, first: $n) { nodes { id } } }`
+	if err := s.GraphQL(ctx, query, map[string]any{"n": n}, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Errors) > 0 {
+		return nil, fmt.Errorf("manga sample query: %s", out.Errors[0].Message)
+	}
+	ids := make([]int, 0, len(out.Data.Mangas.Nodes))
+	for _, m := range out.Data.Mangas.Nodes {
+		ids = append(ids, m.ID)
+	}
+	return ids, nil
+}
+
+func (s *Suwayomi) ChapterCount(ctx context.Context, mangaID int) (int, error) {
+	var out struct {
+		Data struct {
+			Chapters struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"chapters"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	query := `query($id: Int!) { chapters(condition: {mangaId: $id}) { totalCount } }`
+	if err := s.GraphQL(ctx, query, map[string]any{"id": mangaID}, &out); err != nil {
+		return 0, err
+	}
+	if len(out.Errors) > 0 {
+		return 0, fmt.Errorf("chapter count query: %s", out.Errors[0].Message)
+	}
+	return out.Data.Chapters.TotalCount, nil
+}
+
+func (s *Suwayomi) OOMCount() int {
+	data, err := os.ReadFile(s.LogPath)
+	if err != nil {
+		return 0
+	}
+	return strings.Count(string(data), "OutOfMemoryError")
 }
 
 func (s *Suwayomi) LibraryTitles(ctx context.Context) ([]string, error) {
