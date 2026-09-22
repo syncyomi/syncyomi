@@ -98,6 +98,8 @@ Env vars:
 | S17 restore echo | Applying server data is not re-uploaded as a local change: a sync with no user changes writes nothing to the server and stamps no rows |
 | S18 one change, one write | One user change costs exactly one server write; the peer's follow-up syncs write nothing and skip the restore pass |
 | S19 Suwayomi restore echo | The same contract across Suwayomi and Android, in both directions |
+| S20 streamed large library | 3600 manga × 60 chapters sent as a chunked, gzipped stream of one manga record at a time (v2 merge and v1 PUT) land intact, and a streamed delta adds no duplicates |
+| S21 device large library first push | A device holding the scrubbed real library pushes all of it to an empty server on its first sync |
 
 v1 suite (`scenarios/v1/`, server only):
 
