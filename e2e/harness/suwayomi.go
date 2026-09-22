@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -23,7 +24,7 @@ type Suwayomi struct {
 	logFile *os.File
 }
 
-func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifactDir string) (*Suwayomi, error) {
+func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifactDir string, jvmArgs ...string) (*Suwayomi, error) {
 	rootDir := filepath.Join(artifactDir, "suwayomi-data")
 	if err := os.MkdirAll(rootDir, 0o755); err != nil {
 		return nil, err
@@ -35,7 +36,7 @@ func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifac
 	}
 
 	prop := func(k, v string) string { return "-Dsuwayomi.tachidesk.config.server." + k + "=" + v }
-	cmd := exec.CommandContext(ctx, "java",
+	args := []string{
 		prop("rootDir", rootDir),
 		prop("port", fmt.Sprint(SuwayomiPort)),
 		prop("systemTrayEnabled", "false"),
@@ -44,8 +45,10 @@ func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifac
 		prop("syncYomiHost", srv.BaseURL),
 		prop("syncYomiApiKey", srv.APIKey),
 		prop("syncInterval", "0s"),
-		"-jar", jarPath,
-	)
+	}
+	args = append(args, jvmArgs...)
+	args = append(args, "-jar", jarPath)
+	cmd := exec.CommandContext(ctx, "java", args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
@@ -370,8 +373,18 @@ func (s *Suwayomi) MarkChaptersRead(ctx context.Context, title string) error {
 
 func (s *Suwayomi) Stop() {
 	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-		_ = s.cmd.Wait()
+		_ = s.cmd.Process.Signal(syscall.SIGTERM)
+		done := make(chan struct{})
+		go func() {
+			_ = s.cmd.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+			_ = s.cmd.Process.Kill()
+			<-done
+		}
 	}
 	if s.logFile != nil {
 		s.logFile.Close()
