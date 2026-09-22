@@ -6,7 +6,7 @@ E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 shards='{"include":[
   {"name":"devices",    "run":"TestS13_|TestS3_|TestS4_|TestS6_|TestS8_|TestS17_|TestS18_|TestS20_"},
   {"name":"categories", "run":"TestS10_|TestS12_|TestS11_|TestS2_|TestS21_"},
-  {"name":"suwayomi",   "run":"TestS15_|TestS7_|TestS14_|TestS1_|TestS5_|TestS19_"}
+  {"name":"suwayomi",   "run":"TestS15_|TestS7_|TestS14_|TestS1_|TestS5_|TestS19_|TestS22_|TestS23_"}
 ]}'
 
 status=0

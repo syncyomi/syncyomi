@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
@@ -50,6 +51,16 @@ func FixtureBackup(prefix string, mangaCount, chapterCount int) *pb.Backup {
 		b.BackupManga = append(b.BackupManga, m)
 	}
 	return b
+}
+
+func PadFixtureChapterNames(b *pb.Backup, length int) {
+	for _, m := range b.BackupManga {
+		for _, c := range m.Chapters {
+			if len(c.Name) < length {
+				c.Name += strings.Repeat("x", length-len(c.Name))
+			}
+		}
+	}
 }
 
 func FixtureCategoryUID(prefix string) int64 {

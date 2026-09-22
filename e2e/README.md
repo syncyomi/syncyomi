@@ -100,6 +100,8 @@ Env vars:
 | S19 Suwayomi restore echo | The same contract across Suwayomi and Android, in both directions |
 | S20 streamed large library | 3600 manga × 60 chapters sent as a chunked, gzipped stream of one manga record at a time (v2 merge and v1 PUT) land intact, and a streamed delta adds no duplicates |
 | S21 device large library first push | A device holding the scrubbed real library pushes all of it to an empty server on its first sync |
+| S22 Suwayomi large library first push | Suwayomi, running under a small heap, imports a large library and pushes all of it to an empty server on its first sync |
+| S23 Suwayomi large library restore | Suwayomi, running under a small heap, restores a large library from a seeded server |
 
 v1 suite (`scenarios/v1/`, server only):
 
