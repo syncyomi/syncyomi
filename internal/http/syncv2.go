@@ -98,6 +98,7 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("ETag", "seq="+strconv.FormatInt(resp.Cursor, 10))
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(out); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write merge response")
@@ -131,6 +132,7 @@ func (h syncHandler) snapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(snap.Data)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(snap.Data); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write snapshot response")

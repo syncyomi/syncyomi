@@ -32,6 +32,11 @@ server-rendered backup — that is the one case where the zero-default warning b
    when the last response carried `X-Sync-Full-Requested`, and occasionally (once a day) as a
    safety net.
 
+   Stream the upload rather than encoding the whole backup into one buffer: write each manga
+   as its own `backup_manga` field record, then the rest of the backup, gzip the stream and
+   send it chunked with `Content-Encoding: gzip`. Encoding a large library into a single byte
+   array is what runs Android clients out of memory.
+
 4. **Track deletions**: when the user deletes a category, remember its `uid` and send the
    pending uids in `X-Sync-Deleted-Categories`; clear them after a 200.
 5. **`POST /api/sync/v2/merge`** with `X-Sync-Cursor` = the cursor from the last response.
