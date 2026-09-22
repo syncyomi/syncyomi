@@ -42,13 +42,18 @@ func startSuwayomi(t *testing.T, ctx context.Context, srv *harness.SyncServer) *
 
 func suwaSync(t *testing.T, ctx context.Context, suwa *harness.Suwayomi) {
 	t.Helper()
+	suwaSyncWithin(t, ctx, suwa, 2*time.Minute)
+}
+
+func suwaSyncWithin(t *testing.T, ctx context.Context, suwa *harness.Suwayomi, timeout time.Duration) {
+	t.Helper()
 	start := time.Now()
 	if result, err := suwa.StartSync(ctx); err != nil {
 		t.Fatalf("startSync: %v", err)
 	} else if result != "SUCCESS" {
 		t.Fatalf("startSync result = %s", result)
 	}
-	if err := suwa.WaitForSyncSuccess(ctx, 2*time.Minute); err != nil {
+	if err := suwa.WaitForSyncSuccess(ctx, timeout); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("suwayomi sync took %s", time.Since(start).Round(time.Millisecond))
