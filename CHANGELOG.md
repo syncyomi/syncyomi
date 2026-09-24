@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.7](https://github.com/syncyomi/syncyomi/compare/v1.5.6...v1.5.7) (2026-09-24)
+
+
+### Tests
+
+* **e2e:** cover a large library through Suwayomi under a small heap ([#262](https://github.com/syncyomi/syncyomi/issues/262)) ([b7aaf53](https://github.com/syncyomi/syncyomi/commit/b7aaf531df4207da63d1704c47ce5de37616b409))
+* **e2e:** cover a streamed large library and a device's first push ([#261](https://github.com/syncyomi/syncyomi/issues/261)) ([5cae083](https://github.com/syncyomi/syncyomi/commit/5cae083e6d69db9afc66aa7220760dd212dfd31a))
+
+
+### Dependencies
+
+* bump @tanstack/vue-query in /web in the npm-minor-patch group ([#263](https://github.com/syncyomi/syncyomi/issues/263)) ([2dc26ce](https://github.com/syncyomi/syncyomi/commit/2dc26cedeb54e588e7a0f9e0e4484c00f8ec5c11))
+* bump docker/setup-buildx-action from 4.4.0 to 4.4.1 ([#257](https://github.com/syncyomi/syncyomi/issues/257)) ([7708fc4](https://github.com/syncyomi/syncyomi/commit/7708fc492e532faa89e9a7202b08cf5e07402662))
+* bump github.com/dustin/go-humanize in the gomod-minor-patch group ([#256](https://github.com/syncyomi/syncyomi/issues/256)) ([6ea32a5](https://github.com/syncyomi/syncyomi/commit/6ea32a5544eebdc3ef309f9c77dbb8b7d770f9be))
+* bump the npm-minor-patch group in /web with 6 updates ([#258](https://github.com/syncyomi/syncyomi/issues/258)) ([5f88075](https://github.com/syncyomi/syncyomi/commit/5f88075570712ec4a3798aa8791e88444d8377cc))
+
 ## [1.5.6](https://github.com/syncyomi/syncyomi/compare/v1.5.5...v1.5.6) (2026-09-19)
 
 
