@@ -29,6 +29,7 @@ func CollectOnFailure(t *testing.T, artifactDir string, server *SyncServer, emul
 			if xml, err := e.ReadSyncPrefs(ctx); err == nil {
 				_ = os.WriteFile(filepath.Join(dir, "prefs-"+e.AVD+".xml"), []byte(xml), 0o644)
 			}
+			_ = os.WriteFile(filepath.Join(dir, "network-"+e.AVD+".txt"), []byte(e.networkReport(ctx)), 0o644)
 		}
 		if data, err := os.ReadFile(filepath.Join(os.TempDir(), fmt.Sprintf("adb.%d.log", os.Getuid()))); err == nil {
 			_ = os.WriteFile(filepath.Join(dir, "adb-server.log"), data, 0o644)
