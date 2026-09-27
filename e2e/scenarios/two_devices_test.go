@@ -130,6 +130,7 @@ func TestS2_BidirectionalMerge(t *testing.T) {
 
 func syncViaUI(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
+	ensureHostReachable(t, ctx, e, srv)
 	prev, _ := e.LastSyncTimestamp(ctx)
 	start := time.Now()
 	if err := e.RunFlow(ctx, harness.FlowPath("sync_now.yaml"), artifactDir, nil); err != nil {
@@ -140,6 +141,7 @@ func syncViaUI(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harn
 
 func syncViaBroadcast(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
+	ensureHostReachable(t, ctx, e, srv)
 	if err := e.LaunchApp(ctx); err != nil {
 		t.Fatalf("launch app on %s: %v", e.AVD, err)
 	}
@@ -149,6 +151,13 @@ func syncViaBroadcast(t *testing.T, ctx context.Context, e *harness.Emulator, sr
 		t.Fatalf("trigger sync on %s: %v", e.AVD, err)
 	}
 	awaitSync(t, ctx, e, srv, prev, start)
+}
+
+func ensureHostReachable(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
+	t.Helper()
+	if err := e.EnsureHostReachable(ctx, srv.Port, t.Logf); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func awaitSync(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer, prevClientTS int64, start time.Time) {
