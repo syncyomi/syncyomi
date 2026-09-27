@@ -4,6 +4,7 @@ package scenarios
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -128,45 +129,63 @@ func TestS2_BidirectionalMerge(t *testing.T) {
 	}
 }
 
+const (
+	syncAttempts    = 3
+	syncWaitTimeout = 150 * time.Second
+	serverSeenWait  = 10 * time.Second
+)
+
 func syncViaUI(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
-	ensureHostReachable(t, ctx, e, srv)
-	prev, _ := e.LastSyncTimestamp(ctx)
-	start := time.Now()
-	if err := e.RunFlow(ctx, harness.FlowPath("sync_now.yaml"), artifactDir, nil); err != nil {
-		t.Fatalf("sync_now flow on %s: %v", e.AVD, err)
-	}
-	awaitSync(t, ctx, e, srv, prev, start)
+	syncWith(t, ctx, e, srv, func() error {
+		return e.RunFlow(ctx, harness.FlowPath("sync_now.yaml"), artifactDir, nil)
+	})
 }
 
 func syncViaBroadcast(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
-	ensureHostReachable(t, ctx, e, srv)
-	if err := e.LaunchApp(ctx); err != nil {
-		t.Fatalf("launch app on %s: %v", e.AVD, err)
+	syncWith(t, ctx, e, srv, func() error {
+		if err := e.LaunchApp(ctx); err != nil {
+			return err
+		}
+		return e.TriggerSyncBroadcast(ctx)
+	})
+}
+
+func syncWith(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer, trigger func() error) {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		ensureHostReachable(t, ctx, e, srv)
+		base, err := e.SyncBaseline(ctx)
+		if err != nil {
+			t.Fatalf("read sync state on %s: %v", e.AVD, err)
+		}
+		start := time.Now()
+		if err := trigger(); err != nil {
+			t.Fatalf("trigger sync on %s: %v", e.AVD, err)
+		}
+		err = e.WaitForSyncResult(ctx, base, syncWaitTimeout)
+		if err == nil {
+			if _, err := srv.WaitForDeviceSync(ctx, start, serverSeenWait); err != nil {
+				t.Fatalf("sync on %s finished but the server saw no device: %v", e.AVD, err)
+			}
+			return
+		}
+		failed, ok := errors.AsType[*harness.SyncFailedError](err)
+		if !ok || !failed.Transient() || attempt == syncAttempts {
+			t.Fatalf("sync on %s, attempt %d: %v", e.AVD, attempt, err)
+		}
+		t.Logf("%s: sync attempt %d never reached the server (%s), retrying", e.AVD, attempt, failed.Text)
+		if err := e.ForceStopApp(ctx); err != nil {
+			t.Fatalf("stop app on %s: %v", e.AVD, err)
+		}
 	}
-	prev, _ := e.LastSyncTimestamp(ctx)
-	start := time.Now()
-	if err := e.TriggerSyncBroadcast(ctx); err != nil {
-		t.Fatalf("trigger sync on %s: %v", e.AVD, err)
-	}
-	awaitSync(t, ctx, e, srv, prev, start)
 }
 
 func ensureHostReachable(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer) {
 	t.Helper()
 	if err := e.EnsureHostReachable(ctx, srv.Port, t.Logf); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func awaitSync(t *testing.T, ctx context.Context, e *harness.Emulator, srv *harness.SyncServer, prevClientTS int64, start time.Time) {
-	t.Helper()
-	if _, err := srv.WaitForDeviceSync(ctx, start, 90*time.Second); err != nil {
-		t.Fatalf("sync from %s never reached the server: %v", e.AVD, err)
-	}
-	if err := e.WaitForClientSync(ctx, prevClientTS, 60*time.Second); err != nil {
-		t.Fatalf("sync on %s never finished applying: %v", e.AVD, err)
 	}
 }
 

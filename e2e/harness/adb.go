@@ -171,18 +171,46 @@ func (e *Emulator) LastSyncTimestamp(ctx context.Context) (int64, error) {
 	return parseLongPref(xml, "__APP_STATE_last_sync_timestamp"), nil
 }
 
-func (e *Emulator) WaitForClientSync(ctx context.Context, prev int64, timeout time.Duration) error {
+type SyncBaseline struct {
+	SyncedAt    int64
+	LastErrorAt int64
+}
+
+func (e *Emulator) SyncBaseline(ctx context.Context) (SyncBaseline, error) {
+	syncedAt, err := e.LastSyncTimestamp(ctx)
+	if err != nil {
+		return SyncBaseline{}, err
+	}
+	lastError, err := e.LastSyncError(ctx)
+	if err != nil {
+		return SyncBaseline{}, err
+	}
+	return SyncBaseline{SyncedAt: syncedAt, LastErrorAt: lastError.When}, nil
+}
+
+type SyncFailedError struct {
+	SyncError
+}
+
+func (f *SyncFailedError) Error() string {
+	return "the app reported a failed sync: " + f.Text
+}
+
+func (e *Emulator) WaitForSyncResult(ctx context.Context, base SyncBaseline, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if ts, err := e.LastSyncTimestamp(ctx); err == nil && ts > prev {
+		if ts, err := e.LastSyncTimestamp(ctx); err == nil && ts > base.SyncedAt {
 			return nil
+		}
+		if failed, err := e.LastSyncError(ctx); err == nil && failed.When > base.LastErrorAt {
+			return &SyncFailedError{failed}
 		}
 		time.Sleep(time.Second)
 	}
-	return fmt.Errorf("%s: client never recorded a sync within %s", e.AVD, timeout)
+	return fmt.Errorf("%s: no sync finished or failed within %s", e.AVD, timeout)
 }
 
 func parseLongPref(xml, name string) int64 {
