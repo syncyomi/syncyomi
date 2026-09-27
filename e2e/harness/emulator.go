@@ -47,6 +47,8 @@ func StartEmulator(ctx context.Context, avd string, port int, artifactDir string
 		"-port", fmt.Sprint(port),
 		"-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot",
 		"-gpu", "swiftshader_indirect",
+		"-logcat", "*:v",
+		"-logcat-output", filepath.Join(artifactDir, fmt.Sprintf("emulator-%s-logcat.txt", avd)),
 	}
 	if wipeData {
 		args = append(args, "-wipe-data")
@@ -75,7 +77,6 @@ func (e *Emulator) settle(ctx context.Context) {
 	for _, key := range []string{"window_animation_scale", "transition_animation_scale", "animator_duration_scale"} {
 		_, _ = e.Adb(ctx, "shell", "settings", "put", "global", key, "0")
 	}
-	_, _ = e.Adb(ctx, "logcat", "-G", "32M")
 	time.Sleep(10 * time.Second)
 }
 
