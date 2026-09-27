@@ -266,6 +266,10 @@ jobs:
           export E2E_SUWAYOMI_JAR="$(ls /tmp/e2e-artifacts/Suwayomi-Server-*.jar | head -1)"
           e2e/scripts/run-e2e.sh -run '${{ matrix.run }}'
 
+      - name: Keep netsim logs
+        if: failure()
+        run: cp -r "${TMPDIR:-/tmp}/android-$(id -un)/netsimd" e2e/artifacts/ || true
+
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
