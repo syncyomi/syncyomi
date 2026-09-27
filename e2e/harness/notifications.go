@@ -7,7 +7,13 @@ import (
 	"strings"
 )
 
-var notificationWhenRe = regexp.MustCompile(`when=(\d+)`)
+const syncFailedTitle = "android.title=String (Syncing library failed)"
+
+var (
+	notificationWhenRe = regexp.MustCompile(`when=(\d+)`)
+	notificationTextRe = regexp.MustCompile(`(?m)android\.text=String \((.*)\)\s*$`)
+	connectFailureRe   = regexp.MustCompile(`(?i)^failed to connect to `)
+)
 
 func (e *Emulator) LastRestoreCompleteNotification(ctx context.Context) (int64, error) {
 	dump, err := e.notificationDump(ctx)
@@ -39,4 +45,39 @@ func latestWhen(record string) int64 {
 		}
 	}
 	return latest
+}
+
+type SyncError struct {
+	When int64
+	Text string
+}
+
+func (s SyncError) Transient() bool {
+	return connectFailureRe.MatchString(s.Text)
+}
+
+func (e *Emulator) LastSyncError(ctx context.Context) (SyncError, error) {
+	dump, err := e.notificationDump(ctx)
+	if err != nil {
+		return SyncError{}, err
+	}
+	return parseSyncError(dump), nil
+}
+
+func parseSyncError(dump string) SyncError {
+	var last SyncError
+	for _, record := range splitNotificationRecords(dump) {
+		if !strings.Contains(record, syncFailedTitle) {
+			continue
+		}
+		when := latestWhen(record)
+		if when <= last.When {
+			continue
+		}
+		last = SyncError{When: when}
+		if m := notificationTextRe.FindStringSubmatch(record); m != nil {
+			last.Text = m[1]
+		}
+	}
+	return last
 }
