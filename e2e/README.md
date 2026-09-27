@@ -62,8 +62,20 @@ Env vars:
   emulators booted once per run.
 - `scenarios/v1/` — the v1 protocol suite (`//go:build e2e_v1`): server only, no
   emulators, run with `scripts/run-e2e-v1.sh`. Its clients carry the forks' 10 s timeout.
-- Failures dump logcat, prefs, server snapshot/devices, the host adb server
-  log and `adb devices -l` into `artifacts/<run>/<test>/`.
+- Before every device sync the harness asks the device to fetch the server's
+  `/api/healthz/liveness` over `nc` on `10.0.2.2`. If the guest has lost its
+  route to the host it waits, then toggles Wi-Fi, then airplane mode, logging
+  each step; a refused connection fails at once, since only the server is
+  missing. The app swallows a failed sync (it posts "Syncing library failed"
+  and the job reports success), so the harness also watches that notification:
+  a `Failed to connect to …` means the request never reached the server, so
+  the sync is retried (force-stop, check the host again, trigger again, three
+  attempts in all). Any other failure is fatal, since the merge may have landed.
+- Each emulator streams its whole logcat, from boot, into
+  `artifacts/<run>/emulator-<avd>-logcat.txt`. Failures also dump logcat,
+  prefs, the device's network state (`network-<avd>.txt`: addresses, rules,
+  routes, Wi-Fi and connectivity state), server snapshot/devices, the host adb
+  server log and `adb devices -l` into `artifacts/<run>/<test>/`.
 - Maestro output lands in `artifacts/<run>/maestro/<flow>-<avd>/attempt-N/`
   (transcript in `maestro.log`, per-step status, screenshots and hierarchies
   under `.maestro/`). The verdict is read from Maestro's `commands.json`, not
@@ -139,9 +151,12 @@ shards defined in `e2e/scripts/shards.sh` — `devices`, `categories`,
 `suwayomi`, each roughly six minutes of tests plus its own emulator boot — and
 a roll-up job named `e2e` is the required check. `shards.sh` fails the run if a
 scenario is not in exactly one shard, so a new `TestSnn_` must be added there.
-The emulator, system image, AVDs and Maestro are cached between runs. On
-failure each shard uploads `e2e/artifacts/` (logcat, Maestro debug output,
-server logs, the adb server log with transport tracing) as
+The emulator, system image, AVDs and Maestro are cached between runs. The
+emulator is pinned in `scripts/setup-env.sh` (version, build and sha1), so a
+cache eviction or a runner image update can't swap it; on CI its Wi-Fi goes
+through a single `netsimd` shared by both emulators. On failure each shard
+uploads `e2e/artifacts/` (logcat, network state, Maestro debug output, server
+logs, the adb server log with transport tracing, and the `netsimd` logs) as
 `e2e-failure-artifacts-<shard>`. Expect ~12 min warm.
 
 ## Ports
