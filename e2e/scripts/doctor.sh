@@ -16,7 +16,7 @@ echo "SyncYomi E2E doctor"
 
 [ -r /dev/kvm ] && [ -w /dev/kvm ] && ok "/dev/kvm accessible" || bad "/dev/kvm not accessible"
 command -v adb >/dev/null && ok "adb: $(adb --version | head -1)" || bad "adb not on PATH"
-[ -x "$SDK/emulator/emulator" ] && ok "emulator: $("$SDK/emulator/emulator" -version 2>/dev/null | head -1)" || bad "emulator not installed (run setup-env.sh)"
+[ -x "$SDK/emulator/emulator" ] && ok "emulator: $(grep -s '^Pkg.Revision=' "$SDK/emulator/source.properties" | cut -d= -f2)" || bad "emulator not installed (run setup-env.sh)"
 [ -d "$SDK/system-images/android-35/google_apis/x86_64" ] && ok "system image android-35 google_apis x86_64" || bad "system image missing (run setup-env.sh)"
 AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
 for avd in syncE2E-a syncE2E-b; do
