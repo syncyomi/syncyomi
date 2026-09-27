@@ -8,6 +8,9 @@ SYSIMG="system-images;android-35;google_apis;x86_64"
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS_DIR="$E2E_DIR/.tools"
 MAESTRO_VERSION="2.9.0"
+EMULATOR_VERSION="37.1.11"
+EMULATOR_BUILD="15917651"
+EMULATOR_SHA1="1b1f78891abf8ec268264356e1365c25519e8379"
 
 log() { printf '\e[1;34m[setup]\e[0m %s\n' "$*"; }
 die() { printf '\e[1;31m[setup] ERROR:\e[0m %s\n' "$*" >&2; exit 1; }
@@ -19,18 +22,26 @@ die() { printf '\e[1;31m[setup] ERROR:\e[0m %s\n' "$*" >&2; exit 1; }
 log "accepting SDK licenses"
 yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
 
-if [ ! -x "$SDK/emulator/emulator" ]; then
-    log "installing emulator package"
-    "$SDKMANAGER" "emulator"
-else
-    log "emulator already installed"
-fi
-
 if [ ! -d "$SDK/system-images/android-35/google_apis/x86_64" ]; then
     log "installing $SYSIMG (large download)"
     "$SDKMANAGER" "$SYSIMG"
 else
     log "system image already installed"
+fi
+
+emulator_revision() { grep -s '^Pkg.Revision=' "$SDK/emulator/source.properties" | cut -d= -f2; }
+if [ "$(emulator_revision)" = "$EMULATOR_VERSION" ]; then
+    log "emulator $EMULATOR_VERSION already installed"
+else
+    log "installing emulator $EMULATOR_VERSION (build $EMULATOR_BUILD)"
+    tmp="$(mktemp -d)"
+    curl -fsSL -o "$tmp/emulator.zip" "https://dl.google.com/android/repository/emulator-linux_x64-$EMULATOR_BUILD.zip"
+    echo "$EMULATOR_SHA1  $tmp/emulator.zip" | sha1sum -c --quiet || die "emulator download does not match $EMULATOR_SHA1"
+    unzip -q "$tmp/emulator.zip" -d "$tmp"
+    rm -rf "$SDK/emulator"
+    mv "$tmp/emulator" "$SDK/emulator"
+    rm -rf "$tmp"
+    [ "$(emulator_revision)" = "$EMULATOR_VERSION" ] || die "emulator $EMULATOR_VERSION did not install"
 fi
 
 export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
