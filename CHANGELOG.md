@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.9](https://github.com/syncyomi/syncyomi/compare/v1.5.8...v1.5.9) (2026-10-01)
+
+
+### Dependencies
+
+* bump modernc.org/sqlite ([#268](https://github.com/syncyomi/syncyomi/issues/268)) ([ffa7580](https://github.com/syncyomi/syncyomi/commit/ffa7580be9889c761f7f5f9d2e0d63e2aa9fc9bb))
+* bump the npm-minor-patch group in /web with 7 updates ([#266](https://github.com/syncyomi/syncyomi/issues/266)) ([5a36e68](https://github.com/syncyomi/syncyomi/commit/5a36e682fa12f5a8338e9e6e5a28289d24ef390d))
+
 ## [1.5.8](https://github.com/syncyomi/syncyomi/compare/v1.5.7...v1.5.8) (2026-09-27)
 
 
