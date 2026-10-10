@@ -12,7 +12,7 @@ flowchart LR
         HTTP[HTTP API\ninternal/http]
         SVC[Services\ninternal/sync, internal/api, ...]
         DB[(SQLite or PostgreSQL\ninternal/database)]
-        NOTIF[Notifications\nDiscord, Telegram, ntfy, Notifiarr]
+        NOTIF[Notifications\nDiscord, Telegram, ntfy, Notifiarr, custom webhook]
         WEB[Web UI\nVue + Vuetify, embedded]
     end
     SY -- "X-API-Token" --> HTTP

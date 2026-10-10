@@ -39,6 +39,34 @@ Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web U
 
 The same view shows which devices have synced with the key, when they were last seen and the last status they reported. Devices appear once they report sync events or send the `X-Device-ID`/`X-Device-Name` headers.
 
+## Notifications
+
+Notification targets are managed under *Settings → Notifications*. Discord, Telegram, ntfy and Notifiarr have fixed formats; the *Webhook* type delivers to any HTTP endpoint you control.
+
+For a webhook target SyncYomi sends one `POST` per selected event:
+
+```
+POST <webhook>
+Content-Type: application/json
+User-Agent: SyncYomi
+Authorization: Bearer <token>        (only when a token is set)
+
+{
+  "event": "SYNC_SUCCESS",
+  "subject": "Sync Completed Successfully!",
+  "message": "Sync Completed BETWEEN DEVICE **Pixel 8** AND SERVER **home**",
+  "timestamp": "2026-10-10T12:30:00Z"
+}
+```
+
+- Any `2xx` response counts as delivered; anything else is logged with the status and up to 4 KiB of the response body, and *Test* reports it in the UI.
+- Requests time out after 30 seconds.
+- TLS certificates are verified, so a self-signed target on the LAN must be reached over `http://`.
+- `message` carries the same text as the other senders and may contain `**bold**` markdown.
+- `timestamp` is RFC 3339 in UTC.
+- The URL must use `http` or `https` and include a host; anything else is rejected when the target is saved or tested. Private and loopback addresses are allowed on purpose so local automation (Home Assistant, n8n, a script) can receive events.
+- Like the Discord and ntfy senders, the webhook target can point at any address the server can reach, and any API-key holder or logged-in user can configure one. Treat notification access as trusted.
+
 ## Upgrade notes
 
 ### 1.6.0

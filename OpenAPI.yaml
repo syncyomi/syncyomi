@@ -952,6 +952,8 @@ components:
             - ROCKETCHAT
             - SLACK
             - TELEGRAM
+            - NTFY
+            - WEBHOOK
         enabled:
           type: boolean
         events:
@@ -968,7 +970,7 @@ components:
               - TEST
         token:
           type: string
-        apiKey:
+        api_key:
           type: string
         webhook:
           type: string
@@ -990,10 +992,10 @@ components:
           type: string
         devices:
           type: string
-        createdAt:
+        created_at:
           type: string
           format: date-time
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
     Release:

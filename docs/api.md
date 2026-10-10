@@ -86,7 +86,7 @@ Report sync progress; drives notifications and the status shown in the web UI.
 | `GET /auth/onboard`, `POST /auth/onboard` | first-run admin user creation |
 | `GET /keys`, `POST /keys`, `DELETE /keys/{apikey}` | API key management (deleting a key removes everything stored under it) |
 | `GET /config`, `PATCH /config` | server configuration |
-| `GET /notification`, `POST /notification`, `POST /notification/test`, `PUT /notification/{id}`, `DELETE /notification/{id}` | notification targets |
+| `GET /notification`, `POST /notification`, `POST /notification/test`, `PUT /notification/{id}`, `DELETE /notification/{id}` | notification targets; type `WEBHOOK` posts JSON to `webhook` and sends `token` as a bearer token when set, and a rejected URL answers `500 {"message": …}` |
 | `GET /logs/files`, `GET /logs/files/{file}` | log files |
 | `GET /updates/latest`, `GET /updates/check` | release check |
 | `GET /events?stream=logs` | server-sent log stream |

@@ -212,6 +212,44 @@
                 </v-list-item>
               </v-list>
             </div>
+
+            <div v-if="initialValuesRef.type === 'WEBHOOK'">
+              <v-divider></v-divider>
+              <v-list subheader>
+                <v-list-subheader>
+                  Webhook
+                  <v-list-item-subtitle>
+                    SyncYomi sends a POST with a JSON body (event, subject,
+                    message, timestamp) to this URL on each selected event.
+                  </v-list-item-subtitle>
+                </v-list-subheader>
+                <v-list-item>
+                  <v-text-field
+                    v-model="initialValuesRef.webhook"
+                    :rules="[rules.required, rules.httpUrl]"
+                    aria-required="true"
+                    dense
+                    label="Webhook URL"
+                    placeholder="https://example.com/hooks/syncyomi"
+                    prepend-inner-icon="mdi-webhook"
+                    type="url"
+                    variant="filled"
+                  ></v-text-field>
+
+                  <v-text-field
+                    v-model="initialValuesRef.token"
+                    dense
+                    label="Bearer token (optional)"
+                    variant="filled"
+                    :type="showPassword ? 'text' : 'password'"
+                    :append-inner-icon="
+                      showPassword ? 'mdi-eye' : 'mdi-eye-off'
+                    "
+                    @click:append-inner="showPassword = !showPassword"
+                  ></v-text-field>
+                </v-list-item>
+              </v-list>
+            </div>
           </v-form>
           <v-card-actions>
             <v-spacer></v-spacer>
@@ -226,6 +264,15 @@
         </v-card>
       </v-dialog>
     </v-row>
+
+    <v-snackbar
+      v-model="snackbarVisible"
+      color="error"
+      :timeout="4000"
+      variant="elevated"
+    >
+      {{ snackbarMessage }}
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -291,8 +338,35 @@ const initialValuesRef: Ref<InitialValues> = ref({
   eventStates: {},
 });
 
+const snackbarVisible: Ref<boolean> = ref(false);
+const snackbarMessage: Ref<string> = ref("");
+
 const rules = {
   required: (value: string) => !!value || "Required.",
+  httpUrl: (value: string) =>
+    /^https?:\/\/\S+$/.test(value) || "Must start with http:// or https://",
+};
+
+const serverMessage = (error: Error): string => {
+  try {
+    const parsed: unknown = JSON.parse(error.message);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
+    ) {
+      return parsed.message;
+    }
+  } catch {
+    return error.message;
+  }
+  return error.message;
+};
+
+const showError = (error: Error) => {
+  snackbarMessage.value = serverMessage(error);
+  snackbarVisible.value = true;
 };
 
 const resetSelectedNotifications = () => {
@@ -313,9 +387,7 @@ const createNotificationMutation = useMutation({
     resetSelectedNotifications();
     queryClient.invalidateQueries({queryKey: ["notifications"]});
   },
-  onError: (error) => {
-    console.log("createMutation error", error);
-  },
+  onError: showError,
 });
 
 // test notification
@@ -329,19 +401,18 @@ const testNotificationMutation = useMutation({
     resetSelectedNotifications();
     queryClient.invalidateQueries({queryKey: ["notifications"]});
   },
-  onError: (error) => {
-    console.log("createMutation error", error);
-  },
+  onError: showError,
 });
 
-// Disable test button if required fields are not filled
+const webhookTypes: NotificationType[] = ["DISCORD", "NTFY", "WEBHOOK"];
+
 const isTestButtonDisabled = computed(() => {
   if (initialValuesRef.value.type === ("" as NotificationType)) {
     return true;
   }
   if (
-    initialValuesRef.value.type === "DISCORD" &&
-    (!initialValuesRef.value.webhook || initialValuesRef.value.webhook === "")
+    webhookTypes.includes(initialValuesRef.value.type) &&
+    !initialValuesRef.value.webhook
   ) {
     return true;
   }

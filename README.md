@@ -19,7 +19,7 @@ Architecture, API reference, operations and development notes live in [`docs/`](
 - Developed using Go and Vue, making SyncYomi lightweight and versatile, suitable for various platforms (Linux, FreeBSD, Windows, macOS) and architectures (e.g., x86, ARM).
 - Excellent container support (Docker, k8s/Kubernetes).
 - Compatible with both PostgreSQL and SQLite database engines.
-- Notifications supported via Discord, Telegram, ntfy, and Notifiarr.
+- Notifications supported via Discord, Telegram, ntfy, Notifiarr, or any custom webhook.
 - Base path/subfolder (and subdomain) support for easy reverse-proxy integration.
 
 ## Installation
