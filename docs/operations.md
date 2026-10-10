@@ -9,7 +9,7 @@
 | `host` | `localhost` | listen address; use `0.0.0.0` when clients connect directly without a reverse proxy |
 | `port` | `8282` | listen port |
 | `baseUrl` | `/` | path prefix when served under a sub-directory of a reverse proxy |
-| `sessionSecret` | generated | secret for the web UI session cookie |
+| `sessionSecret` | generated | signs the web UI session cookie; generated and written to `config.toml` on start when the key is missing or still the old placeholder |
 | `secureCookie` | `false` | mark the session cookie `Secure`; enable only behind HTTPS |
 | `logLevel` | `DEBUG` | `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE` |
 | `logPath` | empty | log file path; empty logs to stdout only |
@@ -43,6 +43,15 @@ The same view shows which devices have synced with the key, when they were last 
 
 ### 1.6.0
 
+- `sessionSecret` is no longer defaulted to the built-in placeholder `secret-session-key`,
+  which signed valid web UI session cookies on any instance whose `config.toml` lacked the
+  key or kept that value. On start the server now generates a random 64-character secret
+  and writes it to `config.toml` when the key is missing or still the placeholder, logging
+  `sessionSecret was missing or the placeholder in <file>; generated a new one and saved it`.
+  Those instances sign everyone out once. If the config directory is read-only the server
+  logs `... could not be saved ...; using a one-off secret` and uses a secret that changes on
+  every restart: make `config.toml` writable or set `sessionSecret` yourself. Operator-set
+  secrets are not touched.
 - The v1 endpoints store and serve client uploads byte-for-byte again, as before 1.3.0:
   `PUT /api/sync/content` keeps the exact bytes and answers at once; the import into the
   item store follows in the background, or when a v2 device next needs it. `GET` echoes
