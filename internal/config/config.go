@@ -275,7 +275,7 @@ func (c *AppConfig) defaults() {
 		LogMaxSize:       50,
 		LogMaxBackups:    3,
 		BaseURL:          "/",
-		SessionSecret:    "secret-session-key",
+		SessionSecret:    "",
 		SecureCookie:     false,
 		CheckForUpdates:  true,
 		DatabaseType:     "sqlite",
@@ -317,6 +317,32 @@ func (c *AppConfig) load(configPath string) {
 	if err := viper.Unmarshal(&c.Config); err != nil {
 		log.Fatalf("Could not unmarshal config file: %v", viper.ConfigFileUsed())
 	}
+
+	if c.ensureSessionSecret() {
+		c.persistGeneratedSessionSecret()
+	}
+}
+
+const (
+	legacySessionSecret = "secret-session-key"
+	sessionSecretBytes  = 32
+)
+
+func (c *AppConfig) ensureSessionSecret() bool {
+	if c.Config.SessionSecret != "" && c.Config.SessionSecret != legacySessionSecret {
+		return false
+	}
+	c.Config.SessionSecret = api.GenerateSecureToken(sessionSecretBytes)
+	return true
+}
+
+func (c *AppConfig) persistGeneratedSessionSecret() {
+	file := c.configFile()
+	if err := c.UpdateConfig(); err != nil {
+		log.Printf("sessionSecret was missing or the placeholder in %s and could not be saved (%v); using a one-off secret, web sessions will not survive a restart", file, err)
+		return
+	}
+	log.Printf("sessionSecret was missing or the placeholder in %s; generated a new one and saved it", file)
 }
 
 func (c *AppConfig) DynamicReload(log logger.Logger) {
