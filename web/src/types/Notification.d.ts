@@ -1,4 +1,9 @@
-export type NotificationType = "DISCORD" | "NOTIFIARR" | "TELEGRAM" | "NTFY";
+export type NotificationType =
+  | "DISCORD"
+  | "NOTIFIARR"
+  | "TELEGRAM"
+  | "NTFY"
+  | "WEBHOOK";
 export type NotificationEvent =
   | "SYNC_STARTED"
   | "SYNC_SUCCESS"

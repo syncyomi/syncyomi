@@ -29,6 +29,10 @@ export const NotificationTypeOptions: OptionBasicTyped<NotificationType>[] = [
   {
     title: "ntfy",
     value: "NTFY"
+  },
+  {
+    title: "Webhook",
+    value: "WEBHOOK"
   }
 ];
 
