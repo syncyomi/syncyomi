@@ -290,22 +290,11 @@ func (c *AppConfig) defaults() {
 }
 
 func (c *AppConfig) load(configPath string) {
-	// or use viper.SetDefault(val, def)
-	//viper.SetDefault("host", config.Host)
-	//viper.SetDefault("port", config.Port)
-	//viper.SetDefault("logLevel", config.LogLevel)
-	//viper.SetDefault("logPath", config.LogPath)
-
 	viper.SetConfigType("toml")
 
-	// clean trailing slash from configPath
 	configPath = path.Clean(configPath)
 
 	if configPath != "" {
-		//viper.SetConfigName("config")
-
-		// check if path and file exists
-		// if not, create path and file
 		if err := writeConfig(configPath, "config.toml"); err != nil {
 			log.Printf("write error: %q", err)
 		}
@@ -314,13 +303,11 @@ func (c *AppConfig) load(configPath string) {
 	} else {
 		viper.SetConfigName("config")
 
-		// Search config in directories
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("$HOME/.config/syncyomi")
 		viper.AddConfigPath("$HOME/.syncyomi")
 	}
 
-	// read config
 	if err := viper.ReadInConfig(); err != nil {
 		log.Printf("config read error: %q", err)
 	}
@@ -373,7 +360,6 @@ func (c *AppConfig) UpdateConfig() error {
 }
 
 func (c *AppConfig) processLines(lines []string) []string {
-	// keep track of not found values to append at bottom
 	var (
 		foundLineUpdate   = false
 		foundLineLogLevel = false
@@ -381,7 +367,6 @@ func (c *AppConfig) processLines(lines []string) []string {
 	)
 
 	for i, line := range lines {
-		// set checkForUpdates
 		if !foundLineUpdate && strings.Contains(line, "checkForUpdates =") {
 			lines[i] = fmt.Sprintf("checkForUpdates = %t", c.Config.CheckForUpdates)
 			foundLineUpdate = true
@@ -400,7 +385,6 @@ func (c *AppConfig) processLines(lines []string) []string {
 		}
 	}
 
-	// append missing vars to bottom
 	if !foundLineUpdate {
 		lines = append(lines, "# Check for updates")
 		lines = append(lines, "#")

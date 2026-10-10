@@ -15,10 +15,8 @@ func TestAppConfig_defaults(t *testing.T) {
 		t.Fatal("defaults() left Config nil")
 	}
 
-	// SecureCookie must default to false: the server has no TLS, and a Secure
-	// cookie is dropped by browsers on plain HTTP everywhere except localhost.
 	if c.Config.SecureCookie {
-		t.Error("defaults() SecureCookie = true, want false")
+		t.Error("defaults() SecureCookie = true, want false: browsers drop a Secure cookie on plain HTTP everywhere except localhost")
 	}
 	if c.Config.BaseURL != "/" {
 		t.Errorf("defaults() BaseURL = %q, want %q", c.Config.BaseURL, "/")
@@ -59,7 +57,6 @@ func TestAppConfig_processLines(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// processLines never touches c.m, so the zero-value mutex is fine here.
 			c := &AppConfig{Config: tt.config}
 
 			got := c.processLines(tt.lines)
