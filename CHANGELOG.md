@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.6.0](https://github.com/syncyomi/syncyomi/compare/v1.5.8...v1.6.0) (2026-10-10)
+
+
+### New Features
+
+* **notification:** add a custom webhook notification type ([#278](https://github.com/syncyomi/syncyomi/issues/278)) ([c96f05e](https://github.com/syncyomi/syncyomi/commit/c96f05ef815d6aaa9d66cb99721604f0f6b3a406))
+
+
+### Bug Fixes
+
+* **config:** generate the session secret when missing or placeholder ([#277](https://github.com/syncyomi/syncyomi/issues/277)) ([9a582f6](https://github.com/syncyomi/syncyomi/commit/9a582f6576fa5c6409c6cd52416d95fd17ee6ae4))
+* **e2e:** register the pinned emulator with avdmanager ([#273](https://github.com/syncyomi/syncyomi/issues/273)) ([90e2450](https://github.com/syncyomi/syncyomi/commit/90e24506044af0b4a58c0cb4c7150188a6e3efd0))
+* patch CVE-2026-78669, CVE-2026-78667 and CVE-2026-97031 ([#274](https://github.com/syncyomi/syncyomi/issues/274)) ([d91b697](https://github.com/syncyomi/syncyomi/commit/d91b697e1f2be332021f2bdebfc6025177c8f86e))
+
+
+### Other Changes
+
+* add govulncheck and a daily Trivy scan of the published image ([#275](https://github.com/syncyomi/syncyomi/issues/275)) ([51d38b1](https://github.com/syncyomi/syncyomi/commit/51d38b19d50ead70046179ab832a2643f68685b6))
+
+
+### Dependencies
+
+* bump modernc.org/sqlite ([#268](https://github.com/syncyomi/syncyomi/issues/268)) ([ffa7580](https://github.com/syncyomi/syncyomi/commit/ffa7580be9889c761f7f5f9d2e0d63e2aa9fc9bb))
+* bump modernc.org/sqlite ([#269](https://github.com/syncyomi/syncyomi/issues/269)) ([4d8e84b](https://github.com/syncyomi/syncyomi/commit/4d8e84b1b4b30da2dc837e40b4e8a484118dfa0d))
+* bump the npm-minor-patch group in /web with 3 updates ([#272](https://github.com/syncyomi/syncyomi/issues/272)) ([bed361f](https://github.com/syncyomi/syncyomi/commit/bed361f952a87adc17f0c67f1e8d6b4fadfa923b))
+* bump the npm-minor-patch group in /web with 7 updates ([#266](https://github.com/syncyomi/syncyomi/issues/266)) ([5a36e68](https://github.com/syncyomi/syncyomi/commit/5a36e682fa12f5a8338e9e6e5a28289d24ef390d))
+* bump the npm-minor-patch group in /web with 8 updates ([#271](https://github.com/syncyomi/syncyomi/issues/271)) ([fee597e](https://github.com/syncyomi/syncyomi/commit/fee597e9e07f006fb97badd7b06bdbfea42245bd))
+
 ## [1.5.8](https://github.com/syncyomi/syncyomi/compare/v1.5.7...v1.5.8) (2026-09-27)
 
 
