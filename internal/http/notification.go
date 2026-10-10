@@ -57,13 +57,13 @@ func (h notificationHandler) store(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		// encode error
+		h.encoder.Error(w, err)
 		return
 	}
 
 	filter, err := h.service.Store(ctx, data)
 	if err != nil {
-		// encode error
+		h.encoder.Error(w, err)
 		return
 	}
 
@@ -77,13 +77,13 @@ func (h notificationHandler) update(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		// encode error
+		h.encoder.Error(w, err)
 		return
 	}
 
 	filter, err := h.service.Update(ctx, data)
 	if err != nil {
-		// encode error
+		h.encoder.Error(w, err)
 		return
 	}
 
@@ -99,7 +99,8 @@ func (h notificationHandler) delete(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(notificationID)
 
 	if err := h.service.Delete(ctx, id); err != nil {
-		// return err
+		h.encoder.Error(w, err)
+		return
 	}
 
 	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
@@ -112,7 +113,6 @@ func (h notificationHandler) test(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		// encode error
 		h.encoder.Error(w, err)
 		return
 	}
