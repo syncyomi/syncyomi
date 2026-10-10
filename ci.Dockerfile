@@ -1,5 +1,5 @@
 # build app
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.23 AS app-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine3.23 AS app-builder
 
 RUN apk add --no-cache git make build-base tzdata
 
