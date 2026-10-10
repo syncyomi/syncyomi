@@ -39,6 +39,14 @@ type MergeRequest struct {
 	DeletedCategories []int64
 }
 
+// DeleteChaptersRequest is a standalone submission of chapter tombstones, sent ahead of a merge
+// (POST /api/sync/v2/deletions) so deletions never need to fit in a request header.
+type DeleteChaptersRequest struct {
+	APIKey          string
+	Device          domain.DeviceInfo
+	DeletedChapters []string // chapter keys (backup.ChapterKey) the client deleted
+}
+
 type MergeResponse struct {
 	Backup        *pb.Backup
 	Cursor        int64
@@ -121,7 +129,8 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		}
 		full := req.Full || cursor == 0
 
-		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories)
+		// chapter tombstones arrive through DeleteChapters, not the merge request
+		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories, nil)
 		if err != nil {
 			return err
 		}
@@ -164,6 +173,44 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		return nil
 	})
 	return resp, err
+}
+
+// DeleteChapters applies the chapter tombstones a client reported ahead of its merge. The whole
+// submission is one transaction, so success means every key was processed; unknown and
+// already-deleted keys are no-ops, so a retry is safe. Returns the keys acknowledged.
+func (s *service) DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error) {
+	unlock, err := s.locks.lock(ctx, req.APIKey)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+
+	var applied int
+	err = s.store.Tx(ctx, req.APIKey, func(tx domain.SyncStoreTx) error {
+		if err := s.promoteLegacy(ctx, tx); err != nil {
+			return err
+		}
+		if _, err := s.importPending(ctx, tx); err != nil {
+			return err
+		}
+		startSeq := tx.Seq()
+
+		res, err := s.mergeBackup(ctx, tx, nil, req.Device.Key(), nil, req.DeletedChapters)
+		if err != nil {
+			return err
+		}
+		newSeq, err := tx.Apply(ctx, res, req.Device.Key())
+		if err != nil {
+			return err
+		}
+		applied = len(req.DeletedChapters)
+
+		if newSeq != startSeq {
+			return s.refreshRenderCache(ctx, tx, false, nil)
+		}
+		return nil
+	})
+	return applied, err
 }
 
 // Snapshot renders the whole store for v2 clients. ErrNoData when nothing was ever stored.
@@ -382,7 +429,7 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		if err := tx.Clear(ctx); err != nil {
 			return err
 		}
-		res, err := s.mergeBackup(ctx, tx, items, deviceRestore, nil)
+		res, err := s.mergeBackup(ctx, tx, items, deviceRestore, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -465,7 +512,7 @@ func (s *service) prepareImport(ctx context.Context, tx domain.SyncStoreReader) 
 		p.garbage = true
 		return p, nil
 	}
-	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil)
+	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -502,8 +549,8 @@ func splitBackup(b *pb.Backup) ([]*merge.Item, error) {
 	return items, nil
 }
 
-func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64) (*merge.Result, error) {
-	view, err := loadStoreView(ctx, tx, items)
+func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64, deletedChapters []string) (*merge.Result, error) {
+	view, err := loadStoreView(ctx, tx, items, deletedChapters)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +560,12 @@ func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, it
 		deleted = append(deleted, "uid:"+strconv.FormatInt(uid, 10))
 	}
 
-	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, DeletedCategories: deleted}), nil
+	return merge.Merge(view, merge.Request{
+		DeviceID:          device,
+		Items:             items,
+		DeletedCategories: deleted,
+		DeletedChapters:   deletedChapters,
+	}), nil
 }
 
 // storeView is the merge's window on the server state: the stored items matching the
@@ -523,12 +575,16 @@ type storeView struct {
 	categories []*merge.Item
 }
 
-func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item) (*storeView, error) {
+func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, deletedChapters []string) (*storeView, error) {
 	keys := map[merge.Kind][]string{}
 	for _, it := range items {
 		if it.Kind != merge.KindCategory {
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
 		}
+	}
+	// the merge needs the stored rows for tombstoned chapters to know whether they exist
+	if len(deletedChapters) > 0 {
+		keys[merge.KindChapter] = append(keys[merge.KindChapter], deletedChapters...)
 	}
 	view := &storeView{items: map[merge.Kind]map[string]*merge.Item{}}
 	for kind, ks := range keys {

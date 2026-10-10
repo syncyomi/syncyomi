@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -20,6 +21,13 @@ const (
 	headerDeletedCategories = "X-Sync-Deleted-Categories"
 	maxDeviceIDLen          = 128
 )
+
+// deletionsRequest is the body of POST /api/sync/v2/deletions: chapter keys the client deleted,
+// sent ahead of its merge. Keys are the raw backup.ChapterKey values, so the 0x1f separator and
+// control characters inside urls are JSON-escaped instead of needing base64 to fit in a header.
+type deletionsRequest struct {
+	DeletedChapters []string `json:"deletedChapters"`
+}
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, map[string]any{
@@ -103,6 +111,50 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(out); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write merge response")
 	}
+}
+
+// deletions applies the chapter tombstones a client reported ahead of its merge, so the merge
+// itself never needs to carry bulk deletions in a header. This route is what makes the feature
+// detectable: an older server has no such route and answers 404, which keeps the client's
+// deletions pending instead of silently dropping them.
+func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	bad := func(msg string) {
+		h.encoder.StatusResponse(ctx, w, map[string]string{"message": msg}, http.StatusBadRequest)
+	}
+
+	dev := deviceFromRequest(r)
+	if dev.ID == "" || len(dev.ID) > maxDeviceIDLen {
+		bad("missing or invalid " + headerDeviceID)
+		return
+	}
+
+	data, ok := h.readBody(w, r)
+	if !ok {
+		return
+	}
+	var req deletionsRequest
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &req); err != nil {
+			bad("body is not a valid deletions request")
+			return
+		}
+	}
+
+	// a key the merge cannot resolve is a no-op there, so there is no key-level validation: a
+	// client bug that produces garbage keys never wedges its pending set
+	count, err := h.syncService.DeleteChapters(ctx, sync.DeleteChaptersRequest{
+		APIKey:          r.Header.Get("X-API-Token"),
+		Device:          dev,
+		DeletedChapters: req.DeletedChapters,
+	})
+	if err != nil {
+		h.log.Error().Err(err).Msg("failed to apply deleted chapters")
+		h.encoder.StatusInternalError(w)
+		return
+	}
+
+	render.JSON(w, r, map[string]int{"acknowledged": count})
 }
 
 func (h syncHandler) snapshot(w http.ResponseWriter, r *http.Request) {

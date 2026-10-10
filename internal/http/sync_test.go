@@ -32,6 +32,9 @@ type mockSyncService struct {
 	mergeResp      *sync.MergeResponse
 	mergeErr       error
 	mergeReq       *sync.MergeRequest
+	deleteCount    int
+	deleteErr      error
+	deleteReq      *sync.DeleteChaptersRequest
 	reportEventErr error
 
 	reportedDevice domain.DeviceInfo
@@ -55,6 +58,14 @@ func (m *mockSyncService) Merge(ctx context.Context, req sync.MergeRequest) (*sy
 		return nil, m.mergeErr
 	}
 	return m.mergeResp, nil
+}
+
+func (m *mockSyncService) DeleteChapters(ctx context.Context, req sync.DeleteChaptersRequest) (int, error) {
+	m.deleteReq = &req
+	if m.deleteErr != nil {
+		return 0, m.deleteErr
+	}
+	return m.deleteCount, nil
 }
 
 func (m *mockSyncService) Snapshot(ctx context.Context, apiKey string, cursor int64) (*sync.Snapshot, error) {

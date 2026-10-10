@@ -47,8 +47,8 @@ func (s *memStore) apply(res *Result, device string) {
 		}
 		s.items[it.Kind][it.Key] = &cp
 	}
-	for _, key := range res.Tombstones {
-		it := s.items[KindCategory][key]
+	for _, tb := range res.Tombstones {
+		it := s.items[tb.Kind][tb.Key]
 		it.Deleted, it.Seq, it.OriginDevice = true, s.seq, device
 	}
 }
@@ -254,6 +254,37 @@ func TestCategoryTombstoneAndResurrect(t *testing.T) {
 	res = Merge(s, Request{DeviceID: "B", DeletedCategories: []string{"uid:404"}})
 	if len(res.Tombstones) != 0 {
 		t.Errorf("tombstones = %v", res.Tombstones)
+	}
+}
+
+func TestChapterTombstoneAndResurrect(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", manga("1|/m", 1, "m"), chapter("1|/m", "1|/m\x1f/c1", 1, "c1"))
+
+	res := Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/c1"}})
+	if len(res.Tombstones) != 1 || res.Tombstones[0].Kind != KindChapter || res.Tombstones[0].Key != "1|/m\x1f/c1" {
+		t.Fatalf("tombstones = %+v", res.Tombstones)
+	}
+	s.apply(res, "B")
+	if !s.Get(KindChapter, "1|/m\x1f/c1").Deleted {
+		t.Fatal("not tombstoned")
+	}
+
+	// A resends the chapter unchanged: the tombstone stands and A is told to change
+	res = s.merge("A", manga("1|/m", 1, "m"), chapter("1|/m", "1|/m\x1f/c1", 1, "c1"))
+	if len(res.Writes) != 0 || !res.ChangedForClient {
+		t.Errorf("stale resend must not resurrect: %+v", res)
+	}
+	// A updated it after the delete (version bump): resurrect
+	res = s.merge("A", chapter("1|/m", "1|/m\x1f/c1", 2, "c1b"))
+	if len(res.Writes) != 1 || s.Get(KindChapter, "1|/m\x1f/c1").Deleted {
+		t.Errorf("edit after delete must resurrect: %+v", res)
+	}
+
+	// deleting an unknown or already deleted chapter is a no-op
+	res = Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/nope"}})
+	if len(res.Tombstones) != 0 {
+		t.Errorf("tombstones = %+v", res.Tombstones)
 	}
 }
 

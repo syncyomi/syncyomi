@@ -37,6 +37,9 @@ sequenceDiagram
     participant S as Server (v2)
     C->>S: GET /api/sync/v2/capabilities
     S-->>C: 200 (404 on an old server: fall back to v1)
+    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"deletedChapters":[...]}<br/>(only when there are pending deletions)
+    S->>S: tombstone each key (idempotent)
+    S-->>C: 200 {"acknowledged":n} — 404 on an old server: keep them pending
     C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full], [X-Sync-Deleted-Categories]<br/>body: backup with changed items (or everything)
     S->>S: merge item by item, assign seq
     S-->>C: 200 backup with missing items<br/>X-Sync-Cursor, X-Sync-Changed, [X-Sync-Full-Requested]
@@ -87,7 +90,27 @@ Body: a backup with everything the client is missing:
 | `ETag` | `seq=<cursor>`, the same value v1 clients see |
 
 Clients apply the response with their normal restore (upsert). Deleted categories are
-detected by their absence from the response's category list, which is complete.
+detected by their absence from the response's category list, which is complete. Deleted
+chapters are detected the same way: the manga arrives with its complete (remaining) chapter
+list, so a client can drop the chapters it no longer sees.
+
+## Chapter deletions
+
+`POST /api/sync/v2/deletions` takes the chapter keys a client deleted since its last sync, as
+`{"deletedChapters": ["<key>", ...]}`, and tombstones them before the client's merge. Keys are
+the raw `<source id>|<manga url>` + `0x1f` + `<chapter url>` values, so the separator and any
+control characters inside urls are JSON-escaped here instead of needing base64 to fit in a
+request header — and a body has no header size limits, so a batch of thousands is fine.
+
+The submission is one transaction, so success (`200 {"acknowledged": n}`) means every key was
+processed: unknown and already-deleted keys are no-ops, so a retry is safe. A chapter tombstone
+is dropped from every sync response (the manga is still returned, with its remaining chapters),
+so a chapter a source removed stops reappearing on the other devices.
+
+Older servers have no such route and answer `404`. Clients therefore only call it when they have
+pending deletions and keep a deletion pending until the call succeeds, so the header never
+silently swallows a deletion: an older server queues it, and it is applied as soon as the server
+is upgraded.
 
 ## Merge rules
 
@@ -100,6 +123,7 @@ flowchart TD
     V -- equal --> KEEP[server keeps, nothing returned]
     V -- lower --> R[server copy returned to client]
     T[category uid in X-Sync-Deleted-Categories] --> TB[tombstone]
+    C[chapter key in /v2/deletions] --> TB
     TB --> RES{later edit with higher version?}
     RES -- yes --> RESURRECT[resurrect]
     RES -- no --> STAY[stays deleted, dropped from responses]
@@ -108,10 +132,14 @@ flowchart TD
 - Manga are keyed by `source|url`, chapters by their url within the manga, categories by
   `uid` (falling back to name for uid-less categories). Category membership is stored as
   references to categories, so it survives different category orders on different devices.
+- A chapter key is `<source id>|<manga url>` + `0x1f` + `<chapter url>`, sent to
+  `POST /api/sync/v2/deletions` as a raw string (JSON-escaped). A chapter tombstone is dropped
+  from every response (the manga is still returned, with its remaining chapters), so a chapter a
+  source removed stops reappearing on the other devices.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
   changes); the server stores the winning copy and never bumps it.
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a
-  deletion. Chapters are never deleted by sync.
+  deletion.
 - Settings (sources, preferences, source preferences, extension repos, saved searches) have
   no version: the client copy wins.
 - Every write gets the key's next `seq`; the cursor is the current `seq`. "Changed since
@@ -119,7 +147,8 @@ flowchart TD
 
 ## Idempotency and concurrency
 
-- Retrying a request is safe: identical items produce no writes and the cursor does not move.
+- Retrying a request is safe: identical items produce no writes and the cursor does not move,
+  and `/v2/deletions` tombstones are idempotent.
 - Merges for one API key run one at a time (in-process lock plus a row lock on Postgres).
 - A cursor ahead of the server's (database restored from an older backup) is treated as 0
   and `X-Sync-Full-Requested` is returned.

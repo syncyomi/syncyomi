@@ -156,6 +156,21 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
+func TestRenderSkipsTombstonedChapters(t *testing.T) {
+	items := []*merge.Item{
+		{Kind: merge.KindManga, Key: "3|/m", Payload: mustEncode(t, &pb.BackupManga{Source: 3, Url: "/m"})},
+		{Kind: merge.KindChapter, Key: ChapterKey("3|/m", "/c1"), ParentKey: "3|/m", Payload: mustEncode(t, &pb.BackupChapter{Url: "/c1"})},
+		{Kind: merge.KindChapter, Key: ChapterKey("3|/m", "/c2"), ParentKey: "3|/m", Deleted: true, Payload: mustEncode(t, &pb.BackupChapter{Url: "/c2"})},
+	}
+	b, err := Render(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupManga) != 1 || len(b.BackupManga[0].Chapters) != 1 || b.BackupManga[0].Chapters[0].Url != "/c1" {
+		t.Fatalf("tombstoned chapter leaked into render: %v", b.BackupManga)
+	}
+}
+
 func TestSplitKeepsUnknownTopLevelFields(t *testing.T) {
 	b := &pb.Backup{}
 	b.ProtoReflect().SetUnknown([]byte{0xc2, 0xb2, 0x04, 0x01, 0x41}) // field 9000 bytes "A"

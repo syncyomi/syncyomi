@@ -526,7 +526,7 @@ paths:
         client's full library or only what changed since its last successful upload. Items
         present are merged item by item (higher `version` wins, ties keep the server copy);
         items absent are left untouched. Only explicit tombstones delete: category uids listed
-        in `X-Sync-Deleted-Categories`.
+        in `X-Sync-Deleted-Categories`, and chapter keys reported to `sync/v2/deletions`.
 
         The response is a backup with everything the client is missing: all live categories
         plus manga, chapters and settings changed since `X-Sync-Cursor` by other devices and
@@ -603,6 +603,72 @@ paths:
                 format: binary
         '400':
           description: Missing device id, invalid cursor or category list, or body is not a backup
+        '401':
+          description: Unauthorized
+        '413':
+          description: Body larger than the configured limit
+        '500':
+          description: Internal server error
+  /sync/v2/deletions:
+    post:
+      tags:
+        - Sync v2
+      summary: Report the chapters the client deleted
+      description: |
+        The client reports chapter keys it deleted since its last successful sync, before it
+        merges, so the server tombstones them and the other devices stop receiving them. Each key
+        is `<source id>|<manga url>` + `0x1f` + `<chapter url>` (the same key the server stores),
+        sent unencoded so the separator and control characters are JSON-escaped instead of needing
+        base64 in a request header.
+
+        The whole submission is one transaction, so a 200 means every key was processed: unknown
+        and already-deleted keys are no-ops, which makes a retry safe. An older server has no such
+        route and answers 404; a client must keep its deletions pending in that case and apply them
+        once the server is upgraded.
+      operationId: syncV2Deletions
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: X-Device-ID
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+          description: Stable identifier of the device
+        - $ref: '#/components/parameters/DeviceName'
+        - name: Content-Encoding
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [gzip]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deletedChapters]
+              properties:
+                deletedChapters:
+                  type: array
+                  items:
+                    type: string
+                  description: Chapter keys (backup.ChapterKey) deleted since the client's last sync
+      responses:
+        '200':
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  acknowledged:
+                    type: integer
+                    description: Number of keys the server processed
+        '400':
+          description: Missing device id or body is not the expected JSON
         '401':
           description: Unauthorized
         '413':

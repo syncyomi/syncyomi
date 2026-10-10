@@ -77,6 +77,78 @@ func TestSyncV2_merge(t *testing.T) {
 	}
 }
 
+func TestSyncV2_deletions(t *testing.T) {
+	keys := []string{"1|/m\x1f/c1", "1|/m\x1f/c2"}
+	body, err := json.Marshal(map[string][]string{"deletedChapters": keys})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name       string
+		headers    map[string]string
+		body       []byte
+		mock       *mockSyncService
+		wantStatus int
+		wantAck    int
+		wantKeys   []string
+	}{
+		{name: "missing device id", body: body, mock: &mockSyncService{}, wantStatus: http.StatusBadRequest},
+		{name: "not json", headers: map[string]string{"X-Device-ID": "d"}, body: []byte{0xff}, mock: &mockSyncService{}, wantStatus: http.StatusBadRequest},
+		{name: "empty body", headers: map[string]string{"X-Device-ID": "d"}, body: nil, mock: &mockSyncService{}, wantStatus: http.StatusOK},
+		{name: "service error", headers: map[string]string{"X-Device-ID": "d"}, body: body, mock: &mockSyncService{deleteErr: errors.New("db")}, wantStatus: http.StatusInternalServerError},
+		{name: "ok", headers: map[string]string{"X-Device-ID": "d", "X-Device-Name": "Phone"}, body: body, mock: &mockSyncService{deleteCount: 2}, wantStatus: http.StatusOK, wantAck: 2, wantKeys: keys},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v2/deletions", bytes.NewReader(tt.body))
+			req.Header.Set("X-API-Token", "key1")
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			rec := httptest.NewRecorder()
+			newRouter(tt.mock, 0).ServeHTTP(rec, req)
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %v, want %v (%s)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got map[string]int
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["acknowledged"] != tt.wantAck {
+				t.Errorf("body = %v err = %v", rec.Body.String(), err)
+			}
+			req0 := tt.mock.deleteReq
+			if req0 == nil || len(req0.DeletedChapters) != len(tt.wantKeys) {
+				t.Fatalf("request = %+v", req0)
+			}
+			for i, want := range tt.wantKeys {
+				if req0.DeletedChapters[i] != want {
+					t.Errorf("key[%d] = %q, want %q", i, req0.DeletedChapters[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestSyncV2_deletionsAcceptsGzip(t *testing.T) {
+	keys := []string{backup.ChapterKey("1|/m", "/c1"), backup.ChapterKey("1|/m", "/c2")}
+	body, err := json.Marshal(map[string][]string{"deletedChapters": keys})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock := &mockSyncService{deleteCount: 2}
+	req := httptest.NewRequest(http.MethodPost, "/v2/deletions", bytes.NewReader(gzipBytes(t, body)))
+	req.Header.Set("X-API-Token", "key1")
+	req.Header.Set("X-Device-ID", "d")
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	newRouter(mock, 0).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || mock.deleteReq == nil || len(mock.deleteReq.DeletedChapters) != 2 {
+		t.Errorf("status = %v req = %+v", rec.Code, mock.deleteReq)
+	}
+}
+
 func TestSyncV2_mergeAcceptsGzip(t *testing.T) {
 	mock := &mockSyncService{mergeResp: &sync.MergeResponse{Backup: &pb.Backup{}}}
 	req := httptest.NewRequest(http.MethodPost, "/v2/merge", bytes.NewReader(gzipBytes(t, encodedBackup(t, "/m"))))
