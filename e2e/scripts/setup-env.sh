@@ -30,7 +30,14 @@ else
 fi
 
 emulator_revision() { grep -s '^Pkg.Revision=' "$SDK/emulator/source.properties" | cut -d= -f2; }
-if [ "$(emulator_revision)" = "$EMULATOR_VERSION" ]; then
+emulator_registered() { [ "$(emulator_revision)" = "$EMULATOR_VERSION" ] && [ -f "$SDK/emulator/package.xml" ]; }
+write_emulator_package_xml() {
+    IFS=. read -r major minor micro <<<"$EMULATOR_VERSION"
+    cat > "$SDK/emulator/package.xml" <<EOF
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02" xmlns:ns5="http://schemas.android.com/repository/android/generic/02"><localPackage path="emulator" obsolete="false"><type-details xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns5:genericDetailsType"/><revision><major>$major</major><minor>$minor</minor><micro>$micro</micro></revision><display-name>Android Emulator</display-name></localPackage></ns2:repository>
+EOF
+}
+if emulator_registered; then
     log "emulator $EMULATOR_VERSION already installed"
 else
     log "installing emulator $EMULATOR_VERSION (build $EMULATOR_BUILD)"
@@ -41,7 +48,8 @@ else
     rm -rf "$SDK/emulator"
     mv "$tmp/emulator" "$SDK/emulator"
     rm -rf "$tmp"
-    [ "$(emulator_revision)" = "$EMULATOR_VERSION" ] || die "emulator $EMULATOR_VERSION did not install"
+    write_emulator_package_xml
+    emulator_registered || die "emulator $EMULATOR_VERSION did not install"
 fi
 
 export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
