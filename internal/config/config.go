@@ -147,6 +147,9 @@ checkForUpdates = true
 
 # Session secret
 #
+# Signs the web UI session cookie. Generated on first start; a missing or
+# placeholder value is replaced and written here on the next start.
+#
 sessionSecret = "{{ .sessionSecret }}"
 
 # Secure cookie
@@ -215,7 +218,7 @@ func writeConfig(configPath string, configFile string) error {
 		}(f)
 
 		// generate default sessionSecret
-		sessionSecret := api.GenerateSecureToken(16)
+		sessionSecret := api.GenerateSecureToken(sessionSecretBytes)
 
 		// setup text template to inject variables into
 		tmpl, err := template.New("config").Parse(configTemplate)

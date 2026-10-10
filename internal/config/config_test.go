@@ -145,6 +145,23 @@ func TestNew_sessionSecret(t *testing.T) {
 		}
 	})
 
+	t.Run("creates config.toml with a 64-hex-char secret in an empty dir", func(t *testing.T) {
+		dir := t.TempDir()
+
+		c, logs := loadConfig(t, dir)
+
+		secret := c.Config.SessionSecret
+		if !hex64.MatchString(secret) {
+			t.Errorf("SessionSecret = %q, want 64 hex chars", secret)
+		}
+		if got := readConfigFile(t, filepath.Join(dir, "config.toml")); !strings.Contains(got, `sessionSecret = "`+secret+`"`) {
+			t.Errorf("config.toml = %q, want it to contain the generated sessionSecret line", got)
+		}
+		if strings.Contains(logs, "sessionSecret") {
+			t.Errorf("log = %q, want no sessionSecret notice on a fresh config", logs)
+		}
+	})
+
 	t.Run("replaces the placeholder in the file", func(t *testing.T) {
 		dir := t.TempDir()
 		file := writeConfigFile(t, dir, hostOnly+`sessionSecret = "`+legacySessionSecret+"\"\n")
