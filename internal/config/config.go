@@ -13,6 +13,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -145,6 +147,9 @@ checkForUpdates = true
 
 # Session secret
 #
+# Signs the web UI session cookie. Generated on first start; a missing or
+# placeholder value is replaced and written here on the next start.
+#
 sessionSecret = "{{ .sessionSecret }}"
 
 # Secure cookie
@@ -213,7 +218,7 @@ func writeConfig(configPath string, configFile string) error {
 		}(f)
 
 		// generate default sessionSecret
-		sessionSecret := api.GenerateSecureToken(16)
+		sessionSecret := api.GenerateSecureToken(sessionSecretBytes)
 
 		// setup text template to inject variables into
 		tmpl, err := template.New("config").Parse(configTemplate)
@@ -273,7 +278,7 @@ func (c *AppConfig) defaults() {
 		LogMaxSize:       50,
 		LogMaxBackups:    3,
 		BaseURL:          "/",
-		SessionSecret:    "secret-session-key",
+		SessionSecret:    "",
 		SecureCookie:     false,
 		CheckForUpdates:  true,
 		DatabaseType:     "sqlite",
@@ -290,22 +295,11 @@ func (c *AppConfig) defaults() {
 }
 
 func (c *AppConfig) load(configPath string) {
-	// or use viper.SetDefault(val, def)
-	//viper.SetDefault("host", config.Host)
-	//viper.SetDefault("port", config.Port)
-	//viper.SetDefault("logLevel", config.LogLevel)
-	//viper.SetDefault("logPath", config.LogPath)
-
 	viper.SetConfigType("toml")
 
-	// clean trailing slash from configPath
 	configPath = path.Clean(configPath)
 
 	if configPath != "" {
-		//viper.SetConfigName("config")
-
-		// check if path and file exists
-		// if not, create path and file
 		if err := writeConfig(configPath, "config.toml"); err != nil {
 			log.Printf("write error: %q", err)
 		}
@@ -314,13 +308,11 @@ func (c *AppConfig) load(configPath string) {
 	} else {
 		viper.SetConfigName("config")
 
-		// Search config in directories
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("$HOME/.config/syncyomi")
 		viper.AddConfigPath("$HOME/.syncyomi")
 	}
 
-	// read config
 	if err := viper.ReadInConfig(); err != nil {
 		log.Printf("config read error: %q", err)
 	}
@@ -328,6 +320,32 @@ func (c *AppConfig) load(configPath string) {
 	if err := viper.Unmarshal(&c.Config); err != nil {
 		log.Fatalf("Could not unmarshal config file: %v", viper.ConfigFileUsed())
 	}
+
+	if c.ensureSessionSecret() {
+		c.persistGeneratedSessionSecret()
+	}
+}
+
+const (
+	legacySessionSecret = "secret-session-key"
+	sessionSecretBytes  = 32
+)
+
+func (c *AppConfig) ensureSessionSecret() bool {
+	if c.Config.SessionSecret != "" && c.Config.SessionSecret != legacySessionSecret {
+		return false
+	}
+	c.Config.SessionSecret = api.GenerateSecureToken(sessionSecretBytes)
+	return true
+}
+
+func (c *AppConfig) persistGeneratedSessionSecret() {
+	file := c.configFile()
+	if err := c.UpdateConfig(); err != nil {
+		log.Printf("sessionSecret was missing or the placeholder in %s and could not be saved (%v); using a one-off secret, web sessions will not survive a restart", file, err)
+		return
+	}
+	log.Printf("sessionSecret was missing or the placeholder in %s; generated a new one and saved it", file)
 }
 
 func (c *AppConfig) DynamicReload(log logger.Logger) {
@@ -353,8 +371,15 @@ func (c *AppConfig) DynamicReload(log logger.Logger) {
 	return
 }
 
+func (c *AppConfig) configFile() string {
+	if used := viper.ConfigFileUsed(); used != "" {
+		return used
+	}
+	return path.Join(c.Config.ConfigPath, "config.toml")
+}
+
 func (c *AppConfig) UpdateConfig() error {
-	file := path.Join(c.Config.ConfigPath, "config.toml")
+	file := c.configFile()
 
 	f, err := os.ReadFile(file)
 	if err != nil {
@@ -372,16 +397,22 @@ func (c *AppConfig) UpdateConfig() error {
 	return nil
 }
 
+var sessionSecretLine = regexp.MustCompile(`^\s*#?\s*sessionSecret\s*=`)
+
 func (c *AppConfig) processLines(lines []string) []string {
-	// keep track of not found values to append at bottom
 	var (
-		foundLineUpdate   = false
-		foundLineLogLevel = false
-		foundLineLogPath  = false
+		foundLineUpdate        = false
+		foundLineLogLevel      = false
+		foundLineLogPath       = false
+		foundLineSessionSecret = c.Config.SessionSecret == ""
 	)
+	sessionSecretOutput := "sessionSecret = " + strconv.Quote(c.Config.SessionSecret)
 
 	for i, line := range lines {
-		// set checkForUpdates
+		if !foundLineSessionSecret && sessionSecretLine.MatchString(line) {
+			lines[i] = sessionSecretOutput
+			foundLineSessionSecret = true
+		}
 		if !foundLineUpdate && strings.Contains(line, "checkForUpdates =") {
 			lines[i] = fmt.Sprintf("checkForUpdates = %t", c.Config.CheckForUpdates)
 			foundLineUpdate = true
@@ -400,7 +431,6 @@ func (c *AppConfig) processLines(lines []string) []string {
 		}
 	}
 
-	// append missing vars to bottom
 	if !foundLineUpdate {
 		lines = append(lines, "# Check for updates")
 		lines = append(lines, "#")
@@ -427,6 +457,10 @@ func (c *AppConfig) processLines(lines []string) []string {
 		} else {
 			lines = append(lines, fmt.Sprintf(`logPath = "%s"`, c.Config.LogPath))
 		}
+	}
+
+	if !foundLineSessionSecret {
+		lines = append(lines, "# Session secret", "#", sessionSecretOutput)
 	}
 
 	return lines
