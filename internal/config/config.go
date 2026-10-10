@@ -13,6 +13,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -340,8 +342,15 @@ func (c *AppConfig) DynamicReload(log logger.Logger) {
 	return
 }
 
+func (c *AppConfig) configFile() string {
+	if used := viper.ConfigFileUsed(); used != "" {
+		return used
+	}
+	return path.Join(c.Config.ConfigPath, "config.toml")
+}
+
 func (c *AppConfig) UpdateConfig() error {
-	file := path.Join(c.Config.ConfigPath, "config.toml")
+	file := c.configFile()
 
 	f, err := os.ReadFile(file)
 	if err != nil {
@@ -359,14 +368,22 @@ func (c *AppConfig) UpdateConfig() error {
 	return nil
 }
 
+var sessionSecretLine = regexp.MustCompile(`^\s*#?\s*sessionSecret\s*=`)
+
 func (c *AppConfig) processLines(lines []string) []string {
 	var (
-		foundLineUpdate   = false
-		foundLineLogLevel = false
-		foundLineLogPath  = false
+		foundLineUpdate        = false
+		foundLineLogLevel      = false
+		foundLineLogPath       = false
+		foundLineSessionSecret = c.Config.SessionSecret == ""
 	)
+	sessionSecretOutput := "sessionSecret = " + strconv.Quote(c.Config.SessionSecret)
 
 	for i, line := range lines {
+		if !foundLineSessionSecret && sessionSecretLine.MatchString(line) {
+			lines[i] = sessionSecretOutput
+			foundLineSessionSecret = true
+		}
 		if !foundLineUpdate && strings.Contains(line, "checkForUpdates =") {
 			lines[i] = fmt.Sprintf("checkForUpdates = %t", c.Config.CheckForUpdates)
 			foundLineUpdate = true
@@ -411,6 +428,10 @@ func (c *AppConfig) processLines(lines []string) []string {
 		} else {
 			lines = append(lines, fmt.Sprintf(`logPath = "%s"`, c.Config.LogPath))
 		}
+	}
+
+	if !foundLineSessionSecret {
+		lines = append(lines, "# Session secret", "#", sessionSecretOutput)
 	}
 
 	return lines

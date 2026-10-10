@@ -36,6 +36,11 @@ func TestAppConfig_defaults(t *testing.T) {
 }
 
 func TestAppConfig_processLines(t *testing.T) {
+	settled := []string{"# Check for updates", "#", "checkForUpdates = true", "# Log level", "#", "# Default: \"DEBUG\"", "#", "# Options: \"ERROR\", \"DEBUG\", \"INFO\", \"WARN\", \"TRACE\"", "#", `logLevel = "TRACE"`, "# Log Path", "#", "# Optional", "#", "#logPath = \"\""}
+	withSessionSecret := func(line string) []string {
+		return append(append([]string{}, settled...), line)
+	}
+
 	tests := []struct {
 		name   string
 		config *domain.Config
@@ -53,6 +58,36 @@ func TestAppConfig_processLines(t *testing.T) {
 			config: &domain.Config{CheckForUpdates: true, LogLevel: "TRACE"},
 			lines:  []string{"# Check for updates", "#", "checkForUpdates = false", "# Log level", "#", "# Default: \"DEBUG\"", "#", "# Options: \"ERROR\", \"DEBUG\", \"INFO\", \"WARN\", \"TRACE\"", "#", `logLevel = "TRACE"`, "# Log Path", "#", "# Optional", "#", "#logPath = \"\""},
 			want:   []string{"# Check for updates", "#", "checkForUpdates = true", "# Log level", "#", "# Default: \"DEBUG\"", "#", "# Options: \"ERROR\", \"DEBUG\", \"INFO\", \"WARN\", \"TRACE\"", "#", `logLevel = "TRACE"`, "# Log Path", "#", "# Optional", "#", "#logPath = \"\""},
+		},
+		{
+			name:   "appends sessionSecret when set and missing",
+			config: &domain.Config{CheckForUpdates: true, LogLevel: "TRACE", SessionSecret: "abc123"},
+			lines:  append([]string{}, settled...),
+			want:   append(withSessionSecret("# Session secret"), "#", `sessionSecret = "abc123"`),
+		},
+		{
+			name:   "rewrites the placeholder sessionSecret",
+			config: &domain.Config{CheckForUpdates: true, LogLevel: "TRACE", SessionSecret: "abc123"},
+			lines:  withSessionSecret(`sessionSecret = "secret-session-key"`),
+			want:   withSessionSecret(`sessionSecret = "abc123"`),
+		},
+		{
+			name:   "rewrites sessionSecret written without spaces",
+			config: &domain.Config{CheckForUpdates: true, LogLevel: "TRACE", SessionSecret: "abc123"},
+			lines:  withSessionSecret(`sessionSecret="x"`),
+			want:   withSessionSecret(`sessionSecret = "abc123"`),
+		},
+		{
+			name:   "activates a commented-out sessionSecret",
+			config: &domain.Config{CheckForUpdates: true, LogLevel: "TRACE", SessionSecret: "abc123"},
+			lines:  withSessionSecret(`#sessionSecret = "x"`),
+			want:   withSessionSecret(`sessionSecret = "abc123"`),
+		},
+		{
+			name:   "leaves sessionSecret lines alone when the in-memory secret is empty",
+			config: &domain.Config{CheckForUpdates: true, LogLevel: "TRACE"},
+			lines:  withSessionSecret(`sessionSecret = "keep"`),
+			want:   withSessionSecret(`sessionSecret = "keep"`),
 		},
 	}
 	for _, tt := range tests {
