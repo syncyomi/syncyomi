@@ -1,12 +1,12 @@
 package notification
 
 import (
-	"net/http"
 	"bytes"
 	"crypto/tls"
-	"time"
 	"io"
-	
+	"net/http"
+	"time"
+
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/pkg/errors"
 	"github.com/rs/zerolog"
