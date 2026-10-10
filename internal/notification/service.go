@@ -60,6 +60,10 @@ func (s *service) FindByID(ctx context.Context, id int) (*domain.Notification, e
 }
 
 func (s *service) Store(ctx context.Context, n domain.Notification) (*domain.Notification, error) {
+	if err := validate(n); err != nil {
+		return nil, err
+	}
+
 	_, err := s.repo.Store(ctx, n)
 	if err != nil {
 		s.log.Error().Err(err).Str("name", n.Name).Str("type", string(n.Type)).Msg("could not store notification")
@@ -76,6 +80,10 @@ func (s *service) Store(ctx context.Context, n domain.Notification) (*domain.Not
 }
 
 func (s *service) Update(ctx context.Context, n domain.Notification) (*domain.Notification, error) {
+	if err := validate(n); err != nil {
+		return nil, err
+	}
+
 	_, err := s.repo.Update(ctx, n)
 	if err != nil {
 		s.log.Error().Err(err).Str("name", n.Name).Str("type", string(n.Type)).Msg("could not update notification")
@@ -125,9 +133,19 @@ func (s *service) registerSenders() {
 				s.senders = append(s.senders, NewTelegramSender(s.log, n))
 			case domain.NotificationTypeNtfy:
 				s.senders = append(s.senders, NewNtfySender(s.log, n))
+			case domain.NotificationTypeWebhook:
+				s.senders = append(s.senders, NewWebhookSender(s.log, n))
 			}
 		}
 	}
+}
+
+func validate(n domain.Notification) error {
+	if n.Type == domain.NotificationTypeWebhook {
+		return validateWebhookURL(n.Webhook)
+	}
+
+	return nil
 }
 
 // Send notifications
@@ -147,6 +165,10 @@ func (s *service) Send(event domain.NotificationEvent, payload domain.Notificati
 }
 
 func (s *service) Test(ctx context.Context, notification domain.Notification) error {
+	if err := validate(notification); err != nil {
+		return err
+	}
+
 	var agent domain.NotificationSender
 
 	// send test events
@@ -204,6 +226,8 @@ func (s *service) Test(ctx context.Context, notification domain.Notification) er
 		agent = NewTelegramSender(s.log, notification)
 	case domain.NotificationTypeNtfy:
 		agent = NewNtfySender(s.log, notification)
+	case domain.NotificationTypeWebhook:
+		agent = NewWebhookSender(s.log, notification)
 	default:
 		s.log.Error().Msgf("unsupported notification type: %v", notification.Type)
 		return errors.New("unsupported notification type")
