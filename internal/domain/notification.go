@@ -63,6 +63,7 @@ const (
 	NotificationTypeSlack      NotificationType = "SLACK"
 	NotificationTypeTelegram   NotificationType = "TELEGRAM"
 	NotificationTypeNtfy       NotificationType = "NTFY"
+	NotificationTypeWebhook    NotificationType = "WEBHOOK"
 )
 
 type NotificationEvent string
