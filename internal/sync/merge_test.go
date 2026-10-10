@@ -210,6 +210,52 @@ func TestMerge_CategoryDeleteAndRefs(t *testing.T) {
 	}
 }
 
+func TestMerge_ChapterDeletePropagates(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	m := mangaOf(1, "/m", 1, true, chapterOf("/c1", 1, false), chapterOf("/c2", 1, false))
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{m}})
+
+	// B gets both chapters
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if len(b.Backup.BackupManga) != 1 || len(b.Backup.BackupManga[0].Chapters) != 2 {
+		t.Fatalf("B chapters = %v", b.Backup.BackupManga)
+	}
+
+	// B's source dropped /c2: B reports it to the deletions endpoint ahead of its merge
+	if _, err := svc.DeleteChapters(ctx, DeleteChaptersRequest{
+		APIKey:          "key1",
+		Device:          domain.DeviceInfo{ID: "B", Name: "B"},
+		DeletedChapters: []string{backup.ChapterKey("1|/m", "/c2")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A pulls the delta: the manga comes back with only /c1
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	mm := urls(a.Backup)["/m"]
+	if mm == nil {
+		t.Fatal("manga missing from delta")
+	}
+	if len(mm.Chapters) != 1 || mm.Chapters[0].Url != "/c1" {
+		t.Fatalf("A chapters = %v, want only /c1", mm.Chapters)
+	}
+
+	// a fresh snapshot excludes it too
+	snap, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb, err := backup.Decode(snap.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm := urls(sb)["/m"]; sm == nil || len(sm.Chapters) != 1 || sm.Chapters[0].Url != "/c1" {
+		t.Fatalf("snapshot chapters = %v", sm)
+	}
+}
+
 func TestMerge_LegacyImportAndV1(t *testing.T) {
 	svc, db := newTestService(t)
 	ctx := context.Background()

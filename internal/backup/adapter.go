@@ -152,8 +152,8 @@ func dedupe(items []*merge.Item) []*merge.Item {
 }
 
 // Render assembles a Backup from items. Tombstoned categories are skipped and manga
-// refs pointing at them are dropped. Chapters are attached to their manga; a chapter
-// whose manga is not in the list is ignored.
+// refs pointing at them are dropped. Tombstoned chapters are skipped. Chapters are
+// attached to their manga; a chapter whose manga is not in the list is ignored.
 func Render(items []*merge.Item) (*pb.Backup, error) {
 	b := &pb.Backup{}
 
@@ -177,7 +177,7 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 
 	chaptersByManga := map[string][]*pb.BackupChapter{}
 	for _, it := range items {
-		if it.Kind != merge.KindChapter {
+		if it.Kind != merge.KindChapter || it.Deleted {
 			continue
 		}
 		ch := &pb.BackupChapter{}

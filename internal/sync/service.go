@@ -19,6 +19,10 @@ var ErrInvalidSyncEvent = errors.New("invalid sync event")
 type Service interface {
 	// v2 protocol
 	Merge(ctx context.Context, req MergeRequest) (*MergeResponse, error)
+	// DeleteChapters applies the chapter tombstones a client reported ahead of its merge, so
+	// deletions never need to fit in a request header. Idempotent: unknown or already-deleted
+	// keys are no-ops. Returns the number of keys acknowledged.
+	DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error)
 	Snapshot(ctx context.Context, apiKey string, cursor int64) (*Snapshot, error)
 	// v1 protocol, served from the same item store
 	GetContent(ctx context.Context, apiKey string) (*Snapshot, error)

@@ -15,7 +15,10 @@ func Merge(store Store, req Request) *Result {
 
 	// categories first: manga refs point at them and tombstones affect refs
 	for _, key := range req.DeletedCategories {
-		m.tombstone(key)
+		m.tombstone(KindCategory, key)
+	}
+	for _, key := range req.DeletedChapters {
+		m.tombstone(KindChapter, key)
 	}
 	for _, it := range req.Items {
 		if it.Kind == KindCategory {
@@ -47,9 +50,9 @@ type merger struct {
 	catKeys map[string]string
 }
 
-func (m *merger) tombstone(key string) {
-	if cur := m.store.Get(KindCategory, key); cur != nil && !cur.Deleted {
-		m.res.Tombstones = append(m.res.Tombstones, key)
+func (m *merger) tombstone(kind Kind, key string) {
+	if cur := m.store.Get(kind, key); cur != nil && !cur.Deleted {
+		m.res.Tombstones = append(m.res.Tombstones, Tombstone{Kind: kind, Key: key})
 	}
 }
 
@@ -101,6 +104,12 @@ func (m *merger) versioned(it *Item) {
 	switch {
 	case cur == nil:
 		m.write(it)
+	case cur.Deleted:
+		if it.Version > cur.Version {
+			m.write(it) // edited after the delete elsewhere: resurrect
+		} else {
+			m.res.ChangedForClient = true
+		}
 	case it.Version > cur.Version:
 		m.write(it)
 	case it.Version < cur.Version:

@@ -62,13 +62,20 @@ type Request struct {
 	DeviceID          string
 	Items             []*Item
 	DeletedCategories []string // category keys the client deleted
+	DeletedChapters   []string // chapter keys the client deleted
+}
+
+// Tombstone marks a stored item as deleted; the store flips Deleted and bumps Seq.
+type Tombstone struct {
+	Kind Kind
+	Key  string
 }
 
 type Result struct {
 	// Writes are the items to upsert; the store assigns Seq and OriginDevice.
 	Writes []*Item
-	// Tombstones are category keys to mark deleted.
-	Tombstones []string
+	// Tombstones are items to mark deleted.
+	Tombstones []Tombstone
 	// ReturnKeys are items the client must receive because the server version won.
 	ReturnKeys map[Kind][]string
 	// ChangedForClient is true when the client's state differs from the server's after the merge.

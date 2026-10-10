@@ -232,17 +232,17 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 		return 0, err
 	}
 
-	for _, key := range res.Tombstones {
+	for _, tb := range res.Tombstones {
 		_, err := t.repo.db.squirrel.
 			Update("sync_item").
 			Set("deleted", true).
 			Set("seq", newSeq).
 			Set("origin_device", device).
-			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(merge.KindCategory), "key": key}).
+			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(tb.Kind), "key": tb.Key}).
 			RunWith(t.tx).
 			ExecContext(ctx)
 		if err != nil {
-			return 0, errors.Wrap(err, "error tombstoning category")
+			return 0, errors.Wrap(err, "error tombstoning item")
 		}
 	}
 
