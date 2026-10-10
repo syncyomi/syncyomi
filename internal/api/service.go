@@ -149,8 +149,6 @@ func (s *service) loadKeys(ctx context.Context) (map[string]domain.APIKey, error
 
 func GenerateSecureToken(length int) string {
 	b := make([]byte, length)
-	if _, err := rand.Read(b); err != nil {
-		return ""
-	}
+	rand.Read(b)
 	return hex.EncodeToString(b)
 }
