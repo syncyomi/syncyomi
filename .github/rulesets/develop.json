@@ -42,7 +42,8 @@
           { "context": "build-apk", "integration_id": 15368 },
           { "context": "build-suwayomi", "integration_id": 15368 },
           { "context": "e2e", "integration_id": 15368 },
-          { "context": "e2e-v1", "integration_id": 15368 }
+          { "context": "e2e-v1", "integration_id": 15368 },
+          { "context": "govulncheck", "integration_id": 15368 }
         ]
       }
     }
