@@ -62,7 +62,7 @@ func (s *service) FindByID(ctx context.Context, id int) (*domain.Notification, e
 func (s *service) Store(ctx context.Context, n domain.Notification) (*domain.Notification, error) {
 	_, err := s.repo.Store(ctx, n)
 	if err != nil {
-		s.log.Error().Err(err).Msgf("could not store notification: %+v", n)
+		s.log.Error().Err(err).Str("name", n.Name).Str("type", string(n.Type)).Msg("could not store notification")
 		return nil, err
 	}
 
@@ -78,7 +78,7 @@ func (s *service) Store(ctx context.Context, n domain.Notification) (*domain.Not
 func (s *service) Update(ctx context.Context, n domain.Notification) (*domain.Notification, error) {
 	_, err := s.repo.Update(ctx, n)
 	if err != nil {
-		s.log.Error().Err(err).Msgf("could not update notification: %+v", n)
+		s.log.Error().Err(err).Str("name", n.Name).Str("type", string(n.Type)).Msg("could not update notification")
 		return nil, err
 	}
 
