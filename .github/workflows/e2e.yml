@@ -233,12 +233,11 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
-      - name: Cache emulator, system image and Maestro
+      - name: Cache system image and Maestro
         uses: actions/cache@v6
         with:
           path: |
-            ${{ env.ANDROID_HOME }}/emulator
-            ${{ env.ANDROID_HOME }}/system-images/android-35
+            ${{ env.ANDROID_SDK_ROOT }}/system-images/android-35
             e2e/.tools
           key: e2e-android-${{ runner.os }}-${{ hashFiles('e2e/scripts/setup-env.sh') }}
 

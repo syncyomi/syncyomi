@@ -151,9 +151,12 @@ shards defined in `e2e/scripts/shards.sh` — `devices`, `categories`,
 `suwayomi`, each roughly six minutes of tests plus its own emulator boot — and
 a roll-up job named `e2e` is the required check. `shards.sh` fails the run if a
 scenario is not in exactly one shard, so a new `TestSnn_` must be added there.
-The emulator, system image, AVDs and Maestro are cached between runs. The
-emulator is pinned in `scripts/setup-env.sh` (version, build and sha1), so a
-cache eviction or a runner image update can't swap it; on CI its Wi-Fi goes
+The system image and Maestro are cached between runs; the AVDs are recreated
+on every run. The emulator is pinned in `scripts/setup-env.sh` (version, build
+and sha1) and installed from that zip on every run, replacing whatever the
+runner image ships, so a runner image update can't swap it; `setup-env.sh`
+also writes the `package.xml` that `avdmanager` needs before it will create an
+AVD, and `doctor.sh` fails when it is missing. On CI the emulator's Wi-Fi goes
 through a single `netsimd` shared by both emulators. On failure each shard
 uploads `e2e/artifacts/` (logcat, network state, Maestro debug output, server
 logs, the adb server log with transport tracing, and the `netsimd` logs) as
