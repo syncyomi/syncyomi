@@ -37,8 +37,7 @@ type Item struct {
 	Version   int64
 	// ModifiedAt breaks equal-version ties and decides whether a tombstoned item is resurrected
 	// (clients that never bump Version would otherwise be stuck at "first write wins forever").
-	// Extracted by the adapter so the merge itself still never inspects payloads; for a chapter
-	// it is the later of its last modification and its fetch time.
+	// Extracted by the adapter so the merge itself still never inspects payloads.
 	ModifiedAt int64
 	Deleted    bool     // category tombstone
 	Refs       []string // manga -> category keys

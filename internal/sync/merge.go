@@ -99,11 +99,9 @@ func (k *keyLocks) lock(ctx context.Context, key string) (func(), error) {
 
 // writeStart is what the shared preamble observed before the write body runs.
 type writeStart struct {
-	// existed is whether the key had item-store state before the pending import, imported whether
-	// a legacy blob was folded in, and seq the cursor the transaction starts from.
-	existed  bool
-	imported bool
-	seq      int64
+	existed  bool  // item-store state existed before the pending import
+	imported bool  // a legacy blob was folded in
+	seq      int64 // cursor the transaction starts from
 }
 
 // writeTx runs fn under the per-key lock and one store transaction, after the legacy promotion

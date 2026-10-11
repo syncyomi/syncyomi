@@ -216,7 +216,7 @@ func TestMerge_ChapterDeletePropagates(t *testing.T) {
 
 	m := mangaOf(1, "/m", 1, true,
 		chapterOf("/c1", 1, false),
-		&pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, DateFetch: 500},
+		&pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, LastModifiedAt: 500},
 	)
 	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{m}})
 
@@ -258,10 +258,28 @@ func TestMerge_ChapterDeletePropagates(t *testing.T) {
 		t.Fatalf("snapshot chapters = %v", sm)
 	}
 
-	// B's source re-adds /c2: the client inserts a new row at version 1 with a fresh date_fetch,
-	// and it comes back for A instead of staying lost to its own tombstone
+	// a device that has not refreshed the source yet sends its own copy with a newer timestamp
+	// than the server's: the tombstone's deletion time is newer still, so it must not come back
 	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(
-		1, "/m", 1, true, &pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, DateFetch: 1000},
+		1, "/m", 1, true, &pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, LastModifiedAt: 1_000_000_000},
+	)}})
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	snap, err = svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb, err = backup.Decode(snap.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm := urls(sb)["/m"]; sm == nil || len(sm.Chapters) != 1 || sm.Chapters[0].Url != "/c1" {
+		t.Fatalf("the stale copy must not resurrect /c2: %v", sm)
+	}
+
+	// B's source re-adds /c2: the client inserts a new row at version 1 and stamps last_modified_at
+	// after the deletion, so it comes back for A instead of staying lost to its own tombstone
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(
+		1, "/m", 1, true, &pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, LastModifiedAt: time.Now().Unix() + 1},
 	)}})
 	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
 	mm = urls(a.Backup)["/m"]

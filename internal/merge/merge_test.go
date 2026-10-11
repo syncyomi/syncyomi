@@ -296,9 +296,8 @@ func TestChapterTombstoneAndResurrect(t *testing.T) {
 	}
 }
 
-// A flaky source that drops a chapter and later re-adds it must not lose it to the tombstone.
-// The client inserts the re-added chapter as a new row at version 1, so only the fresh
-// date_fetch (folded into ModifiedAt by the adapter) tells it apart from a stale echo.
+// A chapter the source dropped and later re-added comes back: the client stamps last_modified_at
+// on the new row, which beats the stored tombstone.
 func TestChapterReAddResurrectsTombstone(t *testing.T) {
 	s := newMemStore()
 	original := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")

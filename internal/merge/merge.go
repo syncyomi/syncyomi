@@ -58,11 +58,9 @@ func (m *merger) tombstone(kind Kind, key string) {
 	}
 }
 
-// resurrect decides what happens to a client item whose stored copy is tombstoned. The tombstone
-// stands unless the client has a genuinely newer copy: a higher version (edited after the delete
-// elsewhere), or a newer ModifiedAt. The latter is what lets a chapter the source dropped and
-// later re-added come back: the client re-inserts it at version 1, which loses to its own
-// tombstone, but a fresh fetch gives it a newer ModifiedAt.
+// resurrect writes the client's copy over a tombstone when it is genuinely newer: a higher version,
+// or a newer ModifiedAt, which is what a chapter the source re-added carries (the client stamps
+// last_modified_at when it inserts the new row).
 func (m *merger) resurrect(it, cur *Item) {
 	if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
 		m.write(it)
@@ -85,9 +83,8 @@ func (m *merger) category(it *Item) {
 	case cur == nil:
 		m.write(it)
 	case cur.Deleted:
-		// Only a higher version resurrects a category. Categories are uploaded whole on every sync,
-		// so a device that has not applied the delete yet resends its copy unchanged, and restores
-		// and reorders bump its timestamp; a newer ModifiedAt must not bring the tombstone back.
+		// Categories ride every upload, so only a higher version may resurrect one: a device that
+		// has not applied the delete yet resends its copy unchanged.
 		if it.Version > cur.Version {
 			m.write(it)
 		} else {

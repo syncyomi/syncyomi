@@ -78,7 +78,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: max(ch.GetLastModifiedAt(), ch.GetDateFetch()), Payload: payload})
+			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: ch.GetLastModifiedAt(), Payload: payload})
 		}
 	}
 

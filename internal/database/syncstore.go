@@ -232,10 +232,14 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 		return 0, err
 	}
 
+	// A tombstone records when it happened: only a copy the client stamped after that resurrects
+	// it, so a device still holding the deleted copy cannot bring it back.
+	deletedAt := time.Now().UTC().Unix()
 	for _, tb := range res.Tombstones {
 		_, err := t.repo.db.squirrel.
 			Update("sync_item").
 			Set("deleted", true).
+			Set("modified_at", deletedAt).
 			Set("seq", newSeq).
 			Set("origin_device", device).
 			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(tb.Kind), "key": tb.Key}).
