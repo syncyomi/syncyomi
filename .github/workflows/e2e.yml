@@ -55,7 +55,7 @@ jobs:
           TACHIYOMI_REPO: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
           TACHIYOMI_REF: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
           SUWAYOMI_REPO: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
-          SUWAYOMI_REF: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'feat/syncyomi-v2' }}
+          SUWAYOMI_REF: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'fix/syncyomi-streamed-upload' }}
 
   build-apk:
     needs: changes
