@@ -17,7 +17,7 @@ See [sync-protocol-v2.md](sync-protocol-v2.md) for the protocol.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"snapshot":…}`; old servers answer `404` |
+| `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"deletions":…,"snapshot":…}`; old servers answer `404` |
 | `POST /sync/v2/merge` | merge the uploaded backup, receive what the client lacks (`X-Device-ID` required; `X-Sync-Cursor`, `X-Sync-Full`, `X-Sync-Deleted-Categories`; responds with `X-Sync-Cursor`, `X-Sync-Changed`, `X-Sync-Full-Requested`) |
 | `POST /sync/v2/deletions` | tombstone the chapter keys the client deleted (`{"deletedChapters":[...]}`); responds `{"acknowledged":n}`. Idempotent |
 | `GET /sync/v2/snapshot` | the whole merged library; `304` when `X-Sync-Cursor` is current |
