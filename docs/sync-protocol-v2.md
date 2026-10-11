@@ -136,10 +136,13 @@ flowchart TD
   from every response (the manga is still returned, with its remaining chapters), so a chapter a
   source removed stops reappearing on the other devices.
 - A tombstone stands until the client sends a genuinely newer copy of the item: a higher
-  `version` (an edit after the delete), or a newer `modified_at`. A chapter the source drops and
-  later re-adds comes back this way: the client re-inserts it at `version = 1`, and the server
-  takes a chapter's `modified_at` as the later of its `last_modified_at` and its `date_fetch`,
-  which the re-add has refreshed.
+  `version` (an edit after the delete), or, for chapters, a newer `modified_at`. A chapter the
+  source drops and later re-adds comes back this way: the client re-inserts it at `version = 1`,
+  and the server takes a chapter's `modified_at` as the later of its `last_modified_at` and its
+  `date_fetch`, which the re-add has refreshed.
+- A category tombstone only yields to a higher `version`: categories ride every upload, so a
+  device that has not applied the delete yet resends its copy unchanged, and a `modified_at` that
+  a restore or a reorder bumped must not bring the tombstone back.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
   changes); the server stores the winning copy and never bumps it.
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a

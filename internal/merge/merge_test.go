@@ -244,6 +244,14 @@ func TestCategoryTombstoneAndResurrect(t *testing.T) {
 	if len(res.Writes) != 0 || !res.ChangedForClient {
 		t.Errorf("stale resend must not resurrect: %+v", res)
 	}
+	// A resends it with a bumped timestamp but no edit (a restore or a reorder does this): the
+	// tombstone must still stand, because categories ride every upload
+	resent := category("uid:1", "Reading", 1)
+	resent.ModifiedAt = 200
+	res = s.merge("A", resent)
+	if len(res.Writes) != 0 || !res.ChangedForClient {
+		t.Errorf("a newer timestamp must not resurrect a category: %+v", res)
+	}
 	// A renamed it after the delete (version bump): resurrect
 	res = s.merge("A", category("uid:1", "Reading now", 2))
 	if len(res.Writes) != 1 || s.Get(KindCategory, "uid:1").Deleted {
