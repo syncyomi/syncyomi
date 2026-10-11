@@ -145,8 +145,9 @@ whether the suite runs; otherwise the jobs skip and still report, so the `e2e`
 check can be required by the branch ruleset.
 
 The APK and shadowJar are cached by the upstream commit they were built from
-(`build-apk`/`build-suwayomi` resolve `feat/syncyomi-v2` with `git ls-remote`
-and only run Gradle on a cache miss). The scenarios run in three parallel
+(`build-apk`/`build-suwayomi` resolve their ref with `git ls-remote` and only
+run Gradle on a cache miss). PRs from forks get no repository variables, so the
+fallback refs in `e2e.yml` must match `E2E_TACHIYOMI_REF`/`E2E_SUWAYOMI_REF`. The scenarios run in three parallel
 shards defined in `e2e/scripts/shards.sh` — `devices`, `categories`,
 `suwayomi`, each roughly six minutes of tests plus its own emulator boot — and
 a roll-up job named `e2e` is the required check. `shards.sh` fails the run if a
