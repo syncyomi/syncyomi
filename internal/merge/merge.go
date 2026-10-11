@@ -7,6 +7,7 @@ import "bytes"
 // Rules (same as TachiyomiSY's client merge, minus the absence inference):
 //   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
 //     newer ModifiedAt wins, and only a full tie keeps the server copy
+//   - a tombstone yields to a higher version, and for chapters also to a newer ModifiedAt
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
 func Merge(store Store, req Request) *Result {
@@ -15,7 +16,10 @@ func Merge(store Store, req Request) *Result {
 
 	// categories first: manga refs point at them and tombstones affect refs
 	for _, key := range req.DeletedCategories {
-		m.tombstone(key)
+		m.tombstone(KindCategory, key)
+	}
+	for _, key := range req.DeletedChapters {
+		m.tombstone(KindChapter, key)
 	}
 	for _, it := range req.Items {
 		if it.Kind == KindCategory {
@@ -47,9 +51,18 @@ type merger struct {
 	catKeys map[string]string
 }
 
-func (m *merger) tombstone(key string) {
-	if cur := m.store.Get(KindCategory, key); cur != nil && !cur.Deleted {
-		m.res.Tombstones = append(m.res.Tombstones, key)
+func (m *merger) tombstone(kind Kind, key string) {
+	if cur := m.store.Get(kind, key); cur != nil && !cur.Deleted {
+		m.res.Tombstones = append(m.res.Tombstones, Tombstone{Kind: kind, Key: key})
+	}
+}
+
+// resurrect lets a higher version, or a copy modified after the deletion, replace a tombstone.
+func (m *merger) resurrect(it, cur *Item) {
+	if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
+		m.write(it)
+	} else {
+		m.res.ChangedForClient = true
 	}
 }
 
@@ -68,7 +81,7 @@ func (m *merger) category(it *Item) {
 		m.write(it)
 	case cur.Deleted:
 		if it.Version > cur.Version {
-			m.write(it) // edited after the delete elsewhere: resurrect
+			m.write(it)
 		} else {
 			m.res.ChangedForClient = true
 		}
@@ -101,6 +114,8 @@ func (m *merger) versioned(it *Item) {
 	switch {
 	case cur == nil:
 		m.write(it)
+	case cur.Deleted:
+		m.resurrect(it, cur)
 	case it.Version > cur.Version:
 		m.write(it)
 	case it.Version < cur.Version:

@@ -51,6 +51,7 @@ func (h syncHandler) Routes(r chi.Router) {
 
 	r.Route("/v2", func(r chi.Router) {
 		r.Get("/capabilities", h.capabilities)
+		r.With(compress).Post("/deletions", h.deletions)
 		r.With(compress).Post("/merge", h.merge)
 		r.With(compress).Get("/snapshot", h.snapshot)
 	})

@@ -39,6 +39,12 @@ type MergeRequest struct {
 	DeletedCategories []int64
 }
 
+type DeleteChaptersRequest struct {
+	APIKey          string
+	Device          domain.DeviceInfo
+	DeletedChapters []string
+}
+
 type MergeResponse struct {
 	Backup        *pb.Backup
 	Cursor        int64
@@ -89,39 +95,51 @@ func (k *keyLocks) lock(ctx context.Context, key string) (func(), error) {
 	}
 }
 
+type writeStart struct {
+	existedBeforeImport bool
+	importedLegacy      bool
+	seq                 int64
+}
+
+// writeTx runs fn under the per-key lock and one transaction, after the legacy promotion and pending import.
+func (s *service) writeTx(ctx context.Context, apiKey string, fn func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error) error {
+	unlock, err := s.locks.lock(ctx, apiKey)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	return s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		if err := s.promoteLegacy(ctx, tx); err != nil {
+			return err
+		}
+		start := writeStart{existedBeforeImport: tx.Exists()}
+		if start.importedLegacy, err = s.importPending(ctx, tx); err != nil {
+			return err
+		}
+		start.seq = tx.Seq()
+		return fn(ctx, tx, start)
+	})
+}
+
 // Merge is the v2 sync: merge the client's items into the store and return what it lacks.
 func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, error) {
 	items, err := splitBackup(req.Backup)
 	if err != nil {
 		return nil, err
 	}
-	unlock, err := s.locks.lock(ctx, req.APIKey)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
 
 	var resp *MergeResponse
-	err = s.store.Tx(ctx, req.APIKey, func(tx domain.SyncStoreTx) error {
-		if err := s.promoteLegacy(ctx, tx); err != nil {
-			return err
-		}
-		existed := tx.Exists()
-		imported, err := s.importPending(ctx, tx)
-		if err != nil {
-			return err
-		}
-		startSeq := tx.Seq()
-
+	err = s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		cursor := req.Cursor
-		fullRequested := imported && !existed && !req.Full
-		if cursor > startSeq {
-			s.log.Warn().Int64("cursor", cursor).Int64("seq", startSeq).Msg("client cursor ahead of server, asking for a full sync")
+		fullRequested := start.importedLegacy && !start.existedBeforeImport && !req.Full
+		if cursor > start.seq {
+			s.log.Warn().Int64("cursor", cursor).Int64("seq", start.seq).Msg("client cursor ahead of server, asking for a full sync")
 			cursor, fullRequested = 0, true
 		}
 		full := req.Full || cursor == 0
 
-		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories)
+		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories, nil)
 		if err != nil {
 			return err
 		}
@@ -151,7 +169,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			}
 		}
 
-		if newSeq != startSeq {
+		if newSeq != start.seq {
 			if err := s.refreshRenderCache(ctx, tx, full, out); err != nil {
 				return err
 			}
@@ -164,6 +182,28 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		return nil
 	})
 	return resp, err
+}
+
+// DeleteChapters tombstones the keys in one transaction; unknown and already-deleted keys are no-ops.
+func (s *service) DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error) {
+	var applied int
+	err := s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
+		res, err := s.mergeBackup(ctx, tx, nil, req.Device.Key(), nil, req.DeletedChapters)
+		if err != nil {
+			return err
+		}
+		newSeq, err := tx.Apply(ctx, res, req.Device.Key())
+		if err != nil {
+			return err
+		}
+		applied = len(req.DeletedChapters)
+
+		if newSeq != start.seq {
+			return s.refreshRenderCache(ctx, tx, false, nil)
+		}
+		return nil
+	})
+	return applied, err
 }
 
 // Snapshot renders the whole store for v2 clients. ErrNoData when nothing was ever stored.
@@ -382,7 +422,7 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		if err := tx.Clear(ctx); err != nil {
 			return err
 		}
-		res, err := s.mergeBackup(ctx, tx, items, deviceRestore, nil)
+		res, err := s.mergeBackup(ctx, tx, items, deviceRestore, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -465,7 +505,7 @@ func (s *service) prepareImport(ctx context.Context, tx domain.SyncStoreReader) 
 		p.garbage = true
 		return p, nil
 	}
-	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil)
+	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -502,8 +542,8 @@ func splitBackup(b *pb.Backup) ([]*merge.Item, error) {
 	return items, nil
 }
 
-func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64) (*merge.Result, error) {
-	view, err := loadStoreView(ctx, tx, items)
+func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64, deletedChapters []string) (*merge.Result, error) {
+	view, err := loadStoreView(ctx, tx, items, deletedChapters)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +553,12 @@ func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, it
 		deleted = append(deleted, "uid:"+strconv.FormatInt(uid, 10))
 	}
 
-	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, DeletedCategories: deleted}), nil
+	return merge.Merge(view, merge.Request{
+		DeviceID:          device,
+		Items:             items,
+		DeletedCategories: deleted,
+		DeletedChapters:   deletedChapters,
+	}), nil
 }
 
 // storeView is the merge's window on the server state: the stored items matching the
@@ -523,12 +568,15 @@ type storeView struct {
 	categories []*merge.Item
 }
 
-func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item) (*storeView, error) {
+func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, deletedChapters []string) (*storeView, error) {
 	keys := map[merge.Kind][]string{}
 	for _, it := range items {
 		if it.Kind != merge.KindCategory {
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
 		}
+	}
+	if len(deletedChapters) > 0 {
+		keys[merge.KindChapter] = append(keys[merge.KindChapter], deletedChapters...)
 	}
 	view := &storeView{items: map[merge.Kind]map[string]*merge.Item{}}
 	for kind, ks := range keys {

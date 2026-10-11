@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -21,11 +22,16 @@ const (
 	maxDeviceIDLen          = 128
 )
 
+type deletionsRequest struct {
+	DeletedChapters []string `json:"deletedChapters"`
+}
+
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, map[string]any{
-		"version":  2,
-		"merge":    "/api/sync/v2/merge",
-		"snapshot": "/api/sync/v2/snapshot",
+		"version":   2,
+		"merge":     "/api/sync/v2/merge",
+		"deletions": "/api/sync/v2/deletions",
+		"snapshot":  "/api/sync/v2/snapshot",
 	})
 }
 
@@ -103,6 +109,44 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(out); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write merge response")
 	}
+}
+
+func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	bad := func(msg string) {
+		h.encoder.StatusResponse(ctx, w, map[string]string{"message": msg}, http.StatusBadRequest)
+	}
+
+	dev := deviceFromRequest(r)
+	if dev.ID == "" || len(dev.ID) > maxDeviceIDLen {
+		bad("missing or invalid " + headerDeviceID)
+		return
+	}
+
+	data, ok := h.readBody(w, r)
+	if !ok {
+		return
+	}
+	var req deletionsRequest
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &req); err != nil {
+			bad("body is not a valid deletions request")
+			return
+		}
+	}
+
+	count, err := h.syncService.DeleteChapters(ctx, sync.DeleteChaptersRequest{
+		APIKey:          r.Header.Get("X-API-Token"),
+		Device:          dev,
+		DeletedChapters: req.DeletedChapters,
+	})
+	if err != nil {
+		h.log.Error().Err(err).Msg("failed to apply deleted chapters")
+		h.encoder.StatusInternalError(w)
+		return
+	}
+
+	render.JSON(w, r, map[string]int{"acknowledged": count})
 }
 
 func (h syncHandler) snapshot(w http.ResponseWriter, r *http.Request) {

@@ -116,7 +116,7 @@ func TestSyncStore_TombstoneAndResurrect(t *testing.T) {
 		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Version: 1, Payload: []byte("c")}), "A"); err != nil {
 			return err
 		}
-		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []string{"uid:1"}, ReturnKeys: map[merge.Kind][]string{}}, "B"); err != nil {
+		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindCategory, Key: "uid:1"}}, ReturnKeys: map[merge.Kind][]string{}}, "B"); err != nil {
 			return err
 		}
 		cats, err := tx.Categories(ctx)

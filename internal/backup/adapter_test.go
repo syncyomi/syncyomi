@@ -156,6 +156,21 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
+func TestRenderSkipsTombstonedChapters(t *testing.T) {
+	items := []*merge.Item{
+		{Kind: merge.KindManga, Key: "3|/m", Payload: mustEncode(t, &pb.BackupManga{Source: 3, Url: "/m"})},
+		{Kind: merge.KindChapter, Key: ChapterKey("3|/m", "/c1"), ParentKey: "3|/m", Payload: mustEncode(t, &pb.BackupChapter{Url: "/c1"})},
+		{Kind: merge.KindChapter, Key: ChapterKey("3|/m", "/c2"), ParentKey: "3|/m", Deleted: true, Payload: mustEncode(t, &pb.BackupChapter{Url: "/c2"})},
+	}
+	b, err := Render(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupManga) != 1 || len(b.BackupManga[0].Chapters) != 1 || b.BackupManga[0].Chapters[0].Url != "/c1" {
+		t.Fatalf("tombstoned chapter leaked into render: %v", b.BackupManga)
+	}
+}
+
 func TestSplitKeepsUnknownTopLevelFields(t *testing.T) {
 	b := &pb.Backup{}
 	b.ProtoReflect().SetUnknown([]byte{0xc2, 0xb2, 0x04, 0x01, 0x41}) // field 9000 bytes "A"
@@ -219,7 +234,10 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 	b := &pb.Backup{
 		BackupCategories: []*pb.BackupCategory{{Name: "A", Uid: 1, LastModifiedAt: lm}},
 		BackupManga: []*pb.BackupManga{
-			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: lm + 2}}},
+			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{
+				{Url: "/c", LastModifiedAt: lm + 2},
+				{Url: "/c2", LastModifiedAt: lm + 2, DateFetch: 1_700_000_000_000},
+			}},
 			// version tie deduped by the newer timestamp
 			{Source: 1, Url: "/dup", LastModifiedAt: lm + 9},
 			{Source: 1, Url: "/dup", LastModifiedAt: lm + 3},
@@ -235,6 +253,9 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 	}
 	if got["category|uid:1"] != lm || got["manga|1|/m"] != lm+1 || got["chapter|"+ChapterKey("1|/m", "/c")] != lm+2 {
 		t.Errorf("ModifiedAt not extracted: %v", got)
+	}
+	if got["chapter|"+ChapterKey("1|/m", "/c2")] != lm+2 {
+		t.Errorf("a chapter must compare on last_modified_at, not date_fetch: %v", got)
 	}
 	if got["manga|1|/dup"] != lm+9 {
 		t.Errorf("dedupe kept the older timestamp: %v", got["manga|1|/dup"])
