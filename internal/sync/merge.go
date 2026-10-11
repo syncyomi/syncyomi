@@ -39,12 +39,10 @@ type MergeRequest struct {
 	DeletedCategories []int64
 }
 
-// DeleteChaptersRequest is a standalone submission of chapter tombstones, sent ahead of a merge
-// (POST /api/sync/v2/deletions) so deletions never need to fit in a request header.
 type DeleteChaptersRequest struct {
 	APIKey          string
 	Device          domain.DeviceInfo
-	DeletedChapters []string // chapter keys (backup.ChapterKey) the client deleted
+	DeletedChapters []string
 }
 
 type MergeResponse struct {
@@ -97,15 +95,13 @@ func (k *keyLocks) lock(ctx context.Context, key string) (func(), error) {
 	}
 }
 
-// writeStart is what the shared preamble observed before the write body runs.
 type writeStart struct {
-	existed  bool  // item-store state existed before the pending import
-	imported bool  // a legacy blob was folded in
-	seq      int64 // cursor the transaction starts from
+	existedBeforeImport bool
+	importedLegacy      bool
+	seq                 int64
 }
 
-// writeTx runs fn under the per-key lock and one store transaction, after the legacy promotion
-// and pending import every v2 write path needs, so that ordering lives in one place.
+// writeTx runs fn under the per-key lock and one transaction, after the legacy promotion and pending import.
 func (s *service) writeTx(ctx context.Context, apiKey string, fn func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error) error {
 	unlock, err := s.locks.lock(ctx, apiKey)
 	if err != nil {
@@ -117,8 +113,8 @@ func (s *service) writeTx(ctx context.Context, apiKey string, fn func(ctx contex
 		if err := s.promoteLegacy(ctx, tx); err != nil {
 			return err
 		}
-		start := writeStart{existed: tx.Exists()}
-		if start.imported, err = s.importPending(ctx, tx); err != nil {
+		start := writeStart{existedBeforeImport: tx.Exists()}
+		if start.importedLegacy, err = s.importPending(ctx, tx); err != nil {
 			return err
 		}
 		start.seq = tx.Seq()
@@ -136,7 +132,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 	var resp *MergeResponse
 	err = s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		cursor := req.Cursor
-		fullRequested := start.imported && !start.existed && !req.Full
+		fullRequested := start.importedLegacy && !start.existedBeforeImport && !req.Full
 		if cursor > start.seq {
 			s.log.Warn().Int64("cursor", cursor).Int64("seq", start.seq).Msg("client cursor ahead of server, asking for a full sync")
 			cursor, fullRequested = 0, true
@@ -188,9 +184,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 	return resp, err
 }
 
-// DeleteChapters applies the chapter tombstones a client reported ahead of its merge. The whole
-// submission is one transaction, so success means every key was processed; unknown and
-// already-deleted keys are no-ops, so a retry is safe. Returns the keys acknowledged.
+// DeleteChapters tombstones the keys in one transaction; unknown and already-deleted keys are no-ops.
 func (s *service) DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error) {
 	var applied int
 	err := s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {

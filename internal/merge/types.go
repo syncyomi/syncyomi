@@ -35,11 +35,11 @@ type Item struct {
 	ParentKey string // chapter -> manga key, source_pref -> source key
 	Name      string // category display name, used for the uid-less fallback match
 	Version   int64
-	// ModifiedAt breaks equal-version ties and decides whether a tombstoned item is resurrected
-	// (clients that never bump Version would otherwise be stuck at "first write wins forever").
-	// Extracted by the adapter so the merge itself still never inspects payloads.
+	// ModifiedAt breaks equal-version ties (clients that never bump Version would
+	// otherwise be stuck at "first write wins forever"). Extracted by the adapter so the
+	// merge itself still never inspects payloads.
 	ModifiedAt int64
-	Deleted    bool     // category tombstone
+	Deleted    bool
 	Refs       []string // manga -> category keys
 	Payload    []byte
 
@@ -65,7 +65,6 @@ type Request struct {
 	DeletedChapters   []string // chapter keys the client deleted
 }
 
-// Tombstone marks a stored item as deleted; the store flips Deleted and bumps Seq.
 type Tombstone struct {
 	Kind Kind
 	Key  string

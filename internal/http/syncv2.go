@@ -22,9 +22,6 @@ const (
 	maxDeviceIDLen          = 128
 )
 
-// deletionsRequest is the body of POST /api/sync/v2/deletions: chapter keys the client deleted,
-// sent ahead of its merge. Keys are the raw backup.ChapterKey values, JSON-escaped like any other
-// string, so the 0x1f separator inside them needs no encoding.
 type deletionsRequest struct {
 	DeletedChapters []string `json:"deletedChapters"`
 }

@@ -7,8 +7,7 @@ import "bytes"
 // Rules (same as TachiyomiSY's client merge, minus the absence inference):
 //   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
 //     newer ModifiedAt wins, and only a full tie keeps the server copy
-//   - a tombstone stands unless the client has a genuinely newer copy: a chapter resurrects on a
-//     higher version or a newer ModifiedAt (see resurrect), a category only on a higher version
+//   - a tombstone yields to a higher version, and for chapters also to a newer ModifiedAt
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
 func Merge(store Store, req Request) *Result {
@@ -58,9 +57,7 @@ func (m *merger) tombstone(kind Kind, key string) {
 	}
 }
 
-// resurrect writes the client's copy over a tombstone when it is genuinely newer: a higher version,
-// or a newer ModifiedAt, which is what a chapter the source re-added carries (the client stamps
-// last_modified_at when it inserts the new row).
+// resurrect lets a higher version, or a copy modified after the deletion, replace a tombstone.
 func (m *merger) resurrect(it, cur *Item) {
 	if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
 		m.write(it)
@@ -83,8 +80,6 @@ func (m *merger) category(it *Item) {
 	case cur == nil:
 		m.write(it)
 	case cur.Deleted:
-		// Categories ride every upload, so only a higher version may resurrect one: a device that
-		// has not applied the delete yet resends its copy unchanged.
 		if it.Version > cur.Version {
 			m.write(it)
 		} else {

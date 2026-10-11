@@ -236,8 +236,6 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 		BackupManga: []*pb.BackupManga{
 			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{
 				{Url: "/c", LastModifiedAt: lm + 2},
-				// date_fetch is milliseconds and last_modified_at is seconds, so a chapter must
-				// still compare on last_modified_at or the always-larger fetch time takes over
 				{Url: "/c2", LastModifiedAt: lm + 2, DateFetch: 1_700_000_000_000},
 			}},
 			// version tie deduped by the newer timestamp

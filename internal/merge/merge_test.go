@@ -244,8 +244,6 @@ func TestCategoryTombstoneAndResurrect(t *testing.T) {
 	if len(res.Writes) != 0 || !res.ChangedForClient {
 		t.Errorf("stale resend must not resurrect: %+v", res)
 	}
-	// A resends it with a bumped timestamp but no edit (a restore or a reorder does this): the
-	// tombstone must still stand, because categories ride every upload
 	resent := category("uid:1", "Reading", 1)
 	resent.ModifiedAt = 200
 	res = s.merge("A", resent)
@@ -278,36 +276,30 @@ func TestChapterTombstoneAndResurrect(t *testing.T) {
 		t.Fatal("not tombstoned")
 	}
 
-	// A resends the chapter unchanged: the tombstone stands and A is told to change
 	res = s.merge("A", manga("1|/m", 1, "m"), chapter("1|/m", "1|/m\x1f/c1", 1, "c1"))
 	if len(res.Writes) != 0 || !res.ChangedForClient {
 		t.Errorf("stale resend must not resurrect: %+v", res)
 	}
-	// A updated it after the delete (version bump): resurrect
 	res = s.merge("A", chapter("1|/m", "1|/m\x1f/c1", 2, "c1b"))
 	if len(res.Writes) != 1 || s.Get(KindChapter, "1|/m\x1f/c1").Deleted {
 		t.Errorf("edit after delete must resurrect: %+v", res)
 	}
 
-	// deleting an unknown or already deleted chapter is a no-op
 	res = Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/nope"}})
 	if len(res.Tombstones) != 0 {
 		t.Errorf("tombstones = %+v", res.Tombstones)
 	}
 }
 
-// A chapter the source dropped and later re-added comes back: the client stamps last_modified_at
-// on the new row, which beats the stored tombstone.
 func TestChapterReAddResurrectsTombstone(t *testing.T) {
 	s := newMemStore()
 	original := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")
-	original.ModifiedAt = 100 // fetched at 100
+	original.ModifiedAt = 100
 	s.merge("A", manga("1|/m", 1, "m"), original)
 
 	res := Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/c1"}})
 	s.apply(res, "B")
 
-	// the source re-adds it: a new row, still version 1, fetched later
 	readded := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")
 	readded.ModifiedAt = 200
 	res = s.merge("A", readded)
@@ -315,7 +307,6 @@ func TestChapterReAddResurrectsTombstone(t *testing.T) {
 		t.Fatalf("re-added chapter must resurrect: %+v", res)
 	}
 
-	// a stale copy of the deleted chapter (same fetch time) does not resurrect it
 	res = Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/c1"}})
 	s.apply(res, "B")
 	stale := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")
