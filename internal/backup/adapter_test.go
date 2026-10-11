@@ -234,7 +234,12 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 	b := &pb.Backup{
 		BackupCategories: []*pb.BackupCategory{{Name: "A", Uid: 1, LastModifiedAt: lm}},
 		BackupManga: []*pb.BackupManga{
-			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: lm + 2}}},
+			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{
+				{Url: "/c", LastModifiedAt: lm + 2},
+				// date_fetch is milliseconds and last_modified_at is seconds, so a chapter must
+				// still compare on last_modified_at or the always-larger fetch time takes over
+				{Url: "/c2", LastModifiedAt: lm + 2, DateFetch: 1_700_000_000_000},
+			}},
 			// version tie deduped by the newer timestamp
 			{Source: 1, Url: "/dup", LastModifiedAt: lm + 9},
 			{Source: 1, Url: "/dup", LastModifiedAt: lm + 3},
@@ -250,6 +255,9 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 	}
 	if got["category|uid:1"] != lm || got["manga|1|/m"] != lm+1 || got["chapter|"+ChapterKey("1|/m", "/c")] != lm+2 {
 		t.Errorf("ModifiedAt not extracted: %v", got)
+	}
+	if got["chapter|"+ChapterKey("1|/m", "/c2")] != lm+2 {
+		t.Errorf("a chapter must compare on last_modified_at, not date_fetch: %v", got)
 	}
 	if got["manga|1|/dup"] != lm+9 {
 		t.Errorf("dedupe kept the older timestamp: %v", got["manga|1|/dup"])

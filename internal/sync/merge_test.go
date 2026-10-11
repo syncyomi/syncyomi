@@ -258,10 +258,14 @@ func TestMerge_ChapterDeletePropagates(t *testing.T) {
 		t.Fatalf("snapshot chapters = %v", sm)
 	}
 
-	// a device that has not refreshed the source yet sends its own copy with a newer timestamp
-	// than the server's: the tombstone's deletion time is newer still, so it must not come back
+	// a device that has not refreshed the source yet sends its own copy: a timestamp newer than the
+	// server's, and its own fetch time in milliseconds. The tombstone's deletion time is newer than
+	// both, so it must not come back
 	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(
-		1, "/m", 1, true, &pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, LastModifiedAt: 1_000_000_000},
+		1, "/m", 1, true, &pb.BackupChapter{
+			Url: "/c2", Name: "/c2", Version: 1,
+			LastModifiedAt: 1_000_000_000, DateFetch: 1_700_000_000_000,
+		},
 	)}})
 	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
 	snap, err = svc.Snapshot(ctx, "key1", 0)
