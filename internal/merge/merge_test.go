@@ -288,6 +288,37 @@ func TestChapterTombstoneAndResurrect(t *testing.T) {
 	}
 }
 
+// A flaky source that drops a chapter and later re-adds it must not lose it to the tombstone.
+// The client inserts the re-added chapter as a new row at version 1, so only the fresh
+// date_fetch (folded into ModifiedAt by the adapter) tells it apart from a stale echo.
+func TestChapterReAddResurrectsTombstone(t *testing.T) {
+	s := newMemStore()
+	original := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")
+	original.ModifiedAt = 100 // fetched at 100
+	s.merge("A", manga("1|/m", 1, "m"), original)
+
+	res := Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/c1"}})
+	s.apply(res, "B")
+
+	// the source re-adds it: a new row, still version 1, fetched later
+	readded := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")
+	readded.ModifiedAt = 200
+	res = s.merge("A", readded)
+	if len(res.Writes) != 1 || s.Get(KindChapter, "1|/m\x1f/c1").Deleted {
+		t.Fatalf("re-added chapter must resurrect: %+v", res)
+	}
+
+	// a stale copy of the deleted chapter (same fetch time) does not resurrect it
+	res = Merge(s, Request{DeviceID: "B", DeletedChapters: []string{"1|/m\x1f/c1"}})
+	s.apply(res, "B")
+	stale := chapter("1|/m", "1|/m\x1f/c1", 1, "c1")
+	stale.ModifiedAt = 100
+	res = s.merge("B", stale)
+	if len(res.Writes) != 0 || !res.ChangedForClient {
+		t.Errorf("stale echo must not resurrect: %+v", res)
+	}
+}
+
 func TestCategoryNameFallbackRemapsMangaRefs(t *testing.T) {
 	s := newMemStore()
 	s.merge("A", category("uid:1", "Reading", 1))

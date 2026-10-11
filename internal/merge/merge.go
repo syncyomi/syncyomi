@@ -7,6 +7,7 @@ import "bytes"
 // Rules (same as TachiyomiSY's client merge, minus the absence inference):
 //   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
 //     newer ModifiedAt wins, and only a full tie keeps the server copy
+//   - a tombstone stands unless the client has a genuinely newer copy (see resurrect)
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
 func Merge(store Store, req Request) *Result {
@@ -56,6 +57,19 @@ func (m *merger) tombstone(kind Kind, key string) {
 	}
 }
 
+// resurrect decides what happens to a client item whose stored copy is tombstoned. The tombstone
+// stands unless the client has a genuinely newer copy: a higher version (edited after the delete
+// elsewhere), or a newer ModifiedAt. The latter is what lets a chapter the source dropped and
+// later re-added come back: the client re-inserts it at version 1, which loses to its own
+// tombstone, but a fresh fetch gives it a newer ModifiedAt.
+func (m *merger) resurrect(it, cur *Item) {
+	if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
+		m.write(it)
+	} else {
+		m.res.ChangedForClient = true
+	}
+}
+
 func (m *merger) category(it *Item) {
 	cur := m.store.Get(KindCategory, it.Key)
 	if cur == nil && it.Name != "" {
@@ -70,11 +84,7 @@ func (m *merger) category(it *Item) {
 	case cur == nil:
 		m.write(it)
 	case cur.Deleted:
-		if it.Version > cur.Version {
-			m.write(it) // edited after the delete elsewhere: resurrect
-		} else {
-			m.res.ChangedForClient = true
-		}
+		m.resurrect(it, cur)
 	case it.Version > cur.Version:
 		m.write(it)
 	case it.Version < cur.Version:
@@ -105,11 +115,7 @@ func (m *merger) versioned(it *Item) {
 	case cur == nil:
 		m.write(it)
 	case cur.Deleted:
-		if it.Version > cur.Version {
-			m.write(it) // edited after the delete elsewhere: resurrect
-		} else {
-			m.res.ChangedForClient = true
-		}
+		m.resurrect(it, cur)
 	case it.Version > cur.Version:
 		m.write(it)
 	case it.Version < cur.Version:

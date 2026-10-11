@@ -214,7 +214,10 @@ func TestMerge_ChapterDeletePropagates(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 
-	m := mangaOf(1, "/m", 1, true, chapterOf("/c1", 1, false), chapterOf("/c2", 1, false))
+	m := mangaOf(1, "/m", 1, true,
+		chapterOf("/c1", 1, false),
+		&pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, DateFetch: 500},
+	)
 	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{m}})
 
 	// B gets both chapters
@@ -253,6 +256,17 @@ func TestMerge_ChapterDeletePropagates(t *testing.T) {
 	}
 	if sm := urls(sb)["/m"]; sm == nil || len(sm.Chapters) != 1 || sm.Chapters[0].Url != "/c1" {
 		t.Fatalf("snapshot chapters = %v", sm)
+	}
+
+	// B's source re-adds /c2: the client inserts a new row at version 1 with a fresh date_fetch,
+	// and it comes back for A instead of staying lost to its own tombstone
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(
+		1, "/m", 1, true, &pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, DateFetch: 1000},
+	)}})
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	mm = urls(a.Backup)["/m"]
+	if mm == nil || len(mm.Chapters) != 2 {
+		t.Fatalf("A chapters after the re-add = %v, want /c1 and /c2", mm)
 	}
 }
 
