@@ -108,9 +108,8 @@ is dropped from every sync response (the manga is still returned, with its remai
 so a chapter a source removed stops reappearing on the other devices.
 
 Older servers have no such route and answer `404`. Clients therefore only call it when they have
-pending deletions and keep a deletion pending until the call succeeds, so the header never
-silently swallows a deletion: an older server queues it, and it is applied as soon as the server
-is upgraded.
+pending deletions and keep a deletion pending until the call succeeds: an older server queues
+it, and it is applied as soon as the server is upgraded.
 
 ## Merge rules
 
@@ -124,7 +123,7 @@ flowchart TD
     V -- lower --> R[server copy returned to client]
     T[category uid in X-Sync-Deleted-Categories] --> TB[tombstone]
     C[chapter key in /v2/deletions] --> TB
-    TB --> RES{later edit with higher version?}
+    TB --> RES{client copy newer?}
     RES -- yes --> RESURRECT[resurrect]
     RES -- no --> STAY[stays deleted, dropped from responses]
 ```
@@ -136,6 +135,11 @@ flowchart TD
   `POST /api/sync/v2/deletions` as a raw string (JSON-escaped). A chapter tombstone is dropped
   from every response (the manga is still returned, with its remaining chapters), so a chapter a
   source removed stops reappearing on the other devices.
+- A tombstone stands until the client sends a genuinely newer copy of the item: a higher
+  `version` (an edit after the delete), or a newer `modified_at`. A chapter the source drops and
+  later re-adds comes back this way: the client re-inserts it at `version = 1`, and the server
+  takes a chapter's `modified_at` as the later of its `last_modified_at` and its `date_fetch`,
+  which the re-add has refreshed.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
   changes); the server stores the winning copy and never bumps it.
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a

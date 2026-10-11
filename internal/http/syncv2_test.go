@@ -23,6 +23,9 @@ func TestSyncV2_capabilities(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &caps); err != nil || caps["version"] != float64(2) || caps["merge"] == "" {
 		t.Errorf("caps = %v err = %v", caps, err)
 	}
+	if caps["deletions"] != "/api/sync/v2/deletions" || caps["snapshot"] != "/api/sync/v2/snapshot" {
+		t.Errorf("routes not advertised: %v", caps)
+	}
 }
 
 func TestSyncV2_merge(t *testing.T) {

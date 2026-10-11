@@ -513,6 +513,9 @@ paths:
                   merge:
                     type: string
                     example: /api/sync/v2/merge
+                  deletions:
+                    type: string
+                    example: /api/sync/v2/deletions
                   snapshot:
                     type: string
                     example: /api/sync/v2/snapshot
@@ -618,8 +621,7 @@ paths:
         The client reports chapter keys it deleted since its last successful sync, before it
         merges, so the server tombstones them and the other devices stop receiving them. Each key
         is `<source id>|<manga url>` + `0x1f` + `<chapter url>` (the same key the server stores),
-        sent unencoded so the separator and control characters are JSON-escaped instead of needing
-        base64 in a request header.
+        sent as a raw string.
 
         The whole submission is one transaction, so a 200 means every key was processed: unknown
         and already-deleted keys are no-ops, which makes a retry safe. An older server has no such
@@ -649,13 +651,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [deletedChapters]
               properties:
                 deletedChapters:
                   type: array
                   items:
                     type: string
-                  description: Chapter keys (backup.ChapterKey) deleted since the client's last sync
+                  description: Chapter keys (backup.ChapterKey) deleted since the client's last sync; an empty or absent list acknowledges nothing
       responses:
         '200':
           description: Acknowledged

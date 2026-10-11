@@ -97,39 +97,54 @@ func (k *keyLocks) lock(ctx context.Context, key string) (func(), error) {
 	}
 }
 
+// writeStart is what the shared preamble observed before the write body runs.
+type writeStart struct {
+	// existed is whether the key had item-store state before the pending import, imported whether
+	// a legacy blob was folded in, and seq the cursor the transaction starts from.
+	existed  bool
+	imported bool
+	seq      int64
+}
+
+// writeTx runs fn under the per-key lock and one store transaction, after the legacy promotion
+// and pending import every v2 write path needs, so that ordering lives in one place.
+func (s *service) writeTx(ctx context.Context, apiKey string, fn func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error) error {
+	unlock, err := s.locks.lock(ctx, apiKey)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	return s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		if err := s.promoteLegacy(ctx, tx); err != nil {
+			return err
+		}
+		start := writeStart{existed: tx.Exists()}
+		if start.imported, err = s.importPending(ctx, tx); err != nil {
+			return err
+		}
+		start.seq = tx.Seq()
+		return fn(ctx, tx, start)
+	})
+}
+
 // Merge is the v2 sync: merge the client's items into the store and return what it lacks.
 func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, error) {
 	items, err := splitBackup(req.Backup)
 	if err != nil {
 		return nil, err
 	}
-	unlock, err := s.locks.lock(ctx, req.APIKey)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
 
 	var resp *MergeResponse
-	err = s.store.Tx(ctx, req.APIKey, func(tx domain.SyncStoreTx) error {
-		if err := s.promoteLegacy(ctx, tx); err != nil {
-			return err
-		}
-		existed := tx.Exists()
-		imported, err := s.importPending(ctx, tx)
-		if err != nil {
-			return err
-		}
-		startSeq := tx.Seq()
-
+	err = s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		cursor := req.Cursor
-		fullRequested := imported && !existed && !req.Full
-		if cursor > startSeq {
-			s.log.Warn().Int64("cursor", cursor).Int64("seq", startSeq).Msg("client cursor ahead of server, asking for a full sync")
+		fullRequested := start.imported && !start.existed && !req.Full
+		if cursor > start.seq {
+			s.log.Warn().Int64("cursor", cursor).Int64("seq", start.seq).Msg("client cursor ahead of server, asking for a full sync")
 			cursor, fullRequested = 0, true
 		}
 		full := req.Full || cursor == 0
 
-		// chapter tombstones arrive through DeleteChapters, not the merge request
 		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories, nil)
 		if err != nil {
 			return err
@@ -160,7 +175,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			}
 		}
 
-		if newSeq != startSeq {
+		if newSeq != start.seq {
 			if err := s.refreshRenderCache(ctx, tx, full, out); err != nil {
 				return err
 			}
@@ -179,22 +194,8 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 // submission is one transaction, so success means every key was processed; unknown and
 // already-deleted keys are no-ops, so a retry is safe. Returns the keys acknowledged.
 func (s *service) DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error) {
-	unlock, err := s.locks.lock(ctx, req.APIKey)
-	if err != nil {
-		return 0, err
-	}
-	defer unlock()
-
 	var applied int
-	err = s.store.Tx(ctx, req.APIKey, func(tx domain.SyncStoreTx) error {
-		if err := s.promoteLegacy(ctx, tx); err != nil {
-			return err
-		}
-		if _, err := s.importPending(ctx, tx); err != nil {
-			return err
-		}
-		startSeq := tx.Seq()
-
+	err := s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		res, err := s.mergeBackup(ctx, tx, nil, req.Device.Key(), nil, req.DeletedChapters)
 		if err != nil {
 			return err
@@ -205,7 +206,7 @@ func (s *service) DeleteChapters(ctx context.Context, req DeleteChaptersRequest)
 		}
 		applied = len(req.DeletedChapters)
 
-		if newSeq != startSeq {
+		if newSeq != start.seq {
 			return s.refreshRenderCache(ctx, tx, false, nil)
 		}
 		return nil
@@ -582,7 +583,6 @@ func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merg
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
 		}
 	}
-	// the merge needs the stored rows for tombstoned chapters to know whether they exist
 	if len(deletedChapters) > 0 {
 		keys[merge.KindChapter] = append(keys[merge.KindChapter], deletedChapters...)
 	}

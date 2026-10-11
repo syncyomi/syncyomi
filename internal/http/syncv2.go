@@ -23,17 +23,18 @@ const (
 )
 
 // deletionsRequest is the body of POST /api/sync/v2/deletions: chapter keys the client deleted,
-// sent ahead of its merge. Keys are the raw backup.ChapterKey values, so the 0x1f separator and
-// control characters inside urls are JSON-escaped instead of needing base64 to fit in a header.
+// sent ahead of its merge. Keys are the raw backup.ChapterKey values, JSON-escaped like any other
+// string, so the 0x1f separator inside them needs no encoding.
 type deletionsRequest struct {
 	DeletedChapters []string `json:"deletedChapters"`
 }
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, map[string]any{
-		"version":  2,
-		"merge":    "/api/sync/v2/merge",
-		"snapshot": "/api/sync/v2/snapshot",
+		"version":   2,
+		"merge":     "/api/sync/v2/merge",
+		"deletions": "/api/sync/v2/deletions",
+		"snapshot":  "/api/sync/v2/snapshot",
 	})
 }
 
@@ -113,10 +114,6 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// deletions applies the chapter tombstones a client reported ahead of its merge, so the merge
-// itself never needs to carry bulk deletions in a header. This route is what makes the feature
-// detectable: an older server has no such route and answers 404, which keeps the client's
-// deletions pending instead of silently dropping them.
 func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	bad := func(msg string) {
@@ -141,8 +138,6 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// a key the merge cannot resolve is a no-op there, so there is no key-level validation: a
-	// client bug that produces garbage keys never wedges its pending set
 	count, err := h.syncService.DeleteChapters(ctx, sync.DeleteChaptersRequest{
 		APIKey:          r.Header.Get("X-API-Token"),
 		Device:          dev,
