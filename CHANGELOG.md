@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.7.0](https://github.com/syncyomi/syncyomi/compare/v1.6.0...v1.7.0) (2026-10-12)
+
+
+### New Features
+
+* **sync:** chapter tombstones for protocol v2 ([#279](https://github.com/syncyomi/syncyomi/issues/279)) ([5497b3f](https://github.com/syncyomi/syncyomi/commit/5497b3fba0a06e694f85eae0583654a7db674765))
+
+
+### Other Changes
+
+* **e2e:** build the streamed-upload Suwayomi branch on fork PRs ([#280](https://github.com/syncyomi/syncyomi/issues/280)) ([5c5c7d5](https://github.com/syncyomi/syncyomi/commit/5c5c7d589fb89e320945a421a4cdd18812dad643))
+
+
+### Dependencies
+
+* bump the gomod-minor-patch group with 2 updates ([#282](https://github.com/syncyomi/syncyomi/issues/282)) ([6872a6f](https://github.com/syncyomi/syncyomi/commit/6872a6f7ea59526cc69993c565b4ed231b379bb3))
+* bump the npm-minor-patch group in /web with 8 updates ([#283](https://github.com/syncyomi/syncyomi/issues/283)) ([ed9c188](https://github.com/syncyomi/syncyomi/commit/ed9c1880d3bb9500f8dcf8ebab7f44cd52ed44fd))
+
 ## [1.6.0](https://github.com/syncyomi/syncyomi/compare/v1.5.8...v1.6.0) (2026-10-10)
 
 
