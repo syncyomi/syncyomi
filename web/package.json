@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@mdi/font": "7.4.47",
-    "@tanstack/vue-query": "^5.104.1",
+    "@tanstack/vue-query": "^5.104.2",
     "date-fns": "^4.4.0",
     "pinia": "^4.0.3",
     "portal-vue": "3.0.0",
@@ -45,7 +45,7 @@
     "typescript": "^6.0.3",
     "vite": "8.3.4",
     "vite-plugin-vuetify": "^2.1.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.4",
     "vue-tsc": "^3.3.13"
   }
 }
