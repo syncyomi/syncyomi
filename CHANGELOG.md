@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.1](https://github.com/syncyomi/syncyomi/compare/v1.7.0...v1.7.1) (2026-10-16)
+
+
+### Dependencies
+
+* bump github.com/go-chi/chi/v5 ([#284](https://github.com/syncyomi/syncyomi/issues/284)) ([5e93ce1](https://github.com/syncyomi/syncyomi/commit/5e93ce12dcb97d9413dcd9b382b0fd1d8954fd1e))
+* bump postcss in /web in the npm-minor-patch group ([#288](https://github.com/syncyomi/syncyomi/issues/288)) ([0bd0548](https://github.com/syncyomi/syncyomi/commit/0bd054877759bfc9f524a199128ca82838956fe5))
+* bump the npm-minor-patch group in /web with 2 updates ([#285](https://github.com/syncyomi/syncyomi/issues/285)) ([c58f2e3](https://github.com/syncyomi/syncyomi/commit/c58f2e345992f4e107721249e8f5cb4b1597020d))
+* bump the npm-minor-patch group in /web with 2 updates ([#289](https://github.com/syncyomi/syncyomi/issues/289)) ([1837296](https://github.com/syncyomi/syncyomi/commit/18372960276536e61d930e160c55571bc8421350))
+
 ## [1.7.0](https://github.com/syncyomi/syncyomi/compare/v1.6.0...v1.7.0) (2026-10-12)
 
 
