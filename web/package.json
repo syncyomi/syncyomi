@@ -20,9 +20,9 @@
     "portal-vue": "3.0.0",
     "qrcode.vue": "^3.11.0",
     "roboto-fontface": "^0.10.0",
-    "vue": "^3.5.43",
+    "vue": "^3.5.44",
     "vue-router": "^5.4.0",
-    "vuetify": "^4.2.4",
+    "vuetify": "^4.2.5",
     "webfontloader": "^1.6.28"
   },
   "devDependencies": {
