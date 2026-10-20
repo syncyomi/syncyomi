@@ -167,7 +167,13 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 		if err := proto.Unmarshal(it.Payload, c); err != nil {
 			return nil, fmt.Errorf("category %s: %w", it.Key, err)
 		}
+		if strings.HasPrefix(it.Key, "uid:") {
+			if uid, err := strconv.ParseInt(strings.TrimPrefix(it.Key, "uid:"), 10, 64); err == nil && uid != 0 {
+				c.Uid = uid
+			}
+		}
 		categories = append(categories, c)
+		keyToOrder[it.Key] = c.Order
 	}
 	sort.SliceStable(categories, func(i, j int) bool { return categories[i].Order < categories[j].Order })
 	for _, c := range categories {
@@ -316,6 +322,7 @@ func clearTimestamps(m proto.Message) {
 		m.LastModifiedAt = 0
 	case *pb.BackupCategory:
 		m.LastModifiedAt = 0
+		m.Uid = 0
 	}
 }
 

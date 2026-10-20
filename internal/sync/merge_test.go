@@ -129,6 +129,34 @@ func TestMerge_TwoDeviceRace(t *testing.T) {
 	}
 }
 
+func TestMerge_SameCategoryNameDifferentUIDs(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	catsA := []*pb.BackupCategory{{Name: "Reading", Order: 0, Uid: 10, Version: 1, LastModifiedAt: 100}}
+	mA := mangaOf(1, "/m", 1, true)
+	mA.Categories = []int64{0}
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupCategories: catsA, BackupManga: []*pb.BackupManga{mA}})
+
+	catsB := []*pb.BackupCategory{{Name: "Reading", Order: 0, Uid: 20, Version: 1, LastModifiedAt: 200}}
+	mB := mangaOf(1, "/m", 1, true)
+	mB.Categories = []int64{0}
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{BackupCategories: catsB, BackupManga: []*pb.BackupManga{mB}})
+
+	m := urls(b.Backup)["/m"]
+	if m == nil {
+		t.Fatalf("B has no manga /m")
+	}
+	if len(m.Categories) != 1 {
+		t.Fatalf("B manga lost its categories: categories=%v, all cats=%v", m.Categories, b.Backup.BackupCategories)
+	}
+
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{})
+	m = urls(a.Backup)["/m"]
+	if m == nil || len(m.Categories) != 1 {
+		t.Fatalf("A manga lost its categories on follow-up sync: categories=%v", m.Categories)
+	}
+}
+
 func TestMerge_ReadStateAndUnfavoriteFlow(t *testing.T) {
 	svc, _ := newTestService(t)
 
