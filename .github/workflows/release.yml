@@ -35,11 +35,11 @@ jobs:
         with:
           node-version-file: ".node-version"
 
-      - name: Set up corepack
-        run:
-          corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
 
-          # It can not be done before enable corepack
       - name: Set up cache
         uses: actions/setup-node@v7
         with:
@@ -82,8 +82,10 @@ jobs:
         with:
           node-version-file: ".node-version"
 
-      - name: Set up corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
 
       - name: Set up cache
         uses: actions/setup-node@v7
