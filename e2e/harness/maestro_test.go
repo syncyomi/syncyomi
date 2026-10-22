@@ -87,3 +87,23 @@ func TestFlowTopLevelCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestIsTransportDrop(t *testing.T) {
+	tests := []struct {
+		name string
+		out  string
+		want bool
+	}{
+		{"device offline in driver teardown", "Input text ${NAME}...\nException in thread \"Thread-5\" java.io.IOException: Command failed (host:transport:emulator-5554): device offline\n\tat dadb.adbserver.AdbServer.send", true},
+		{"device not found", "adb: device 'emulator-5554' not found", true},
+		{"element not found", "Assertion is false: \"More\" is visible", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTransportDrop([]byte(tt.out)); got != tt.want {
+				t.Fatalf("isTransportDrop = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
