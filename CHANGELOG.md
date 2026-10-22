@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.2](https://github.com/syncyomi/syncyomi/compare/v1.7.1...v1.7.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **backup:** preserve manga categories when harmonizing category UIDs ([#295](https://github.com/syncyomi/syncyomi/issues/295)) ([35dd2fa](https://github.com/syncyomi/syncyomi/commit/35dd2fa69fd53eaf191286ac37bb36ecb49d2d4f))
+
+
+### Dependencies
+
+* bump @tanstack/vue-query in /web in the npm-minor-patch group ([#293](https://github.com/syncyomi/syncyomi/issues/293)) ([1753e55](https://github.com/syncyomi/syncyomi/commit/1753e55001ed6463ea3b62093b9029144a67130e))
+* bump happy-dom from 20.14.6 to 21.0.3 in /web ([#292](https://github.com/syncyomi/syncyomi/issues/292)) ([f09ca6d](https://github.com/syncyomi/syncyomi/commit/f09ca6df941d5fce1087e761c3f31a81fe48b819))
+* bump postcss in /web in the npm-minor-patch group ([#296](https://github.com/syncyomi/syncyomi/issues/296)) ([9e5cb42](https://github.com/syncyomi/syncyomi/commit/9e5cb428e74d7362eb2364b0204a8629dfde3f27))
+
 ## [1.7.1](https://github.com/syncyomi/syncyomi/compare/v1.7.0...v1.7.1) (2026-10-19)
 
 
