@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.7.3](https://github.com/syncyomi/syncyomi/compare/v1.7.2...v1.7.3) (2026-10-23)
+
+
+### Other Changes
+
+* **e2e:** pin pnpm from web/package.json before cache setup ([#297](https://github.com/syncyomi/syncyomi/issues/297)) ([6772d10](https://github.com/syncyomi/syncyomi/commit/6772d10a7f17b88786bca3249ffa9edbffabb30d))
+
+
+### Tests
+
+* **e2e:** retry Maestro flows after an adb transport drop post-launch ([#298](https://github.com/syncyomi/syncyomi/issues/298)) ([d90ae6b](https://github.com/syncyomi/syncyomi/commit/d90ae6bffb4c4116c48e4fb9fa013c99bd9d62b8))
+
+
+### Dependencies
+
+* bump happy-dom in /web in the npm-minor-patch group ([#302](https://github.com/syncyomi/syncyomi/issues/302)) ([a8afa0f](https://github.com/syncyomi/syncyomi/commit/a8afa0f37c29995aa849d7c05cfa16ae87976470))
+* bump the npm-minor-patch group in /web with 2 updates ([#300](https://github.com/syncyomi/syncyomi/issues/300)) ([750079c](https://github.com/syncyomi/syncyomi/commit/750079c829ef2cf01bf935f23b98349dec67dbe9))
+
 ## [1.7.2](https://github.com/syncyomi/syncyomi/compare/v1.7.1...v1.7.2) (2026-10-22)
 
 
