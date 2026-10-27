@@ -690,12 +690,14 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		}
 	}
 
-	// a changed chapter is delivered as its manga with the manga's complete chapter list, so
-	// clients can restore it exactly like a full backup
+	// a changed chapter or history entry is delivered as its manga with the manga's complete
+	// chapter list and history, so clients can restore it exactly like a full backup
 	var parents []string
-	for _, ch := range want[merge.KindChapter] {
-		if want[merge.KindManga][ch.ParentKey] == nil {
-			parents = append(parents, ch.ParentKey)
+	for _, kind := range []merge.Kind{merge.KindChapter, merge.KindHistory} {
+		for _, child := range want[kind] {
+			if want[merge.KindManga][child.ParentKey] == nil {
+				parents = append(parents, child.ParentKey)
+			}
 		}
 	}
 	if len(parents) > 0 {
@@ -712,12 +714,12 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		for key := range want[merge.KindManga] {
 			keys = append(keys, key)
 		}
-		chapters, err := tx.ChaptersOf(ctx, keys)
+		children, err := tx.ChildrenOf(ctx, keys)
 		if err != nil {
 			return nil, false, err
 		}
-		for _, ch := range chapters {
-			add(ch)
+		for _, child := range children {
+			add(child)
 		}
 	}
 
