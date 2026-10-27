@@ -3,6 +3,8 @@ package backup
 import (
 	"bytes"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +27,10 @@ func ChapterKey(mangaKey, url string) string {
 	return mangaKey + keySep + url
 }
 
+func HistoryKey(mangaKey, url string) string {
+	return ChapterKey(mangaKey, url)
+}
+
 func SourcePrefKey(sourceKey, prefKey string) string {
 	return sourceKey + keySep + prefKey
 }
@@ -33,9 +39,10 @@ func SavedSearchKey(s *pb.BackupSavedSearch) string {
 	return s.Name + "|" + strconv.FormatInt(s.Source, 10)
 }
 
-// Split turns a Backup into merge items. Manga payloads carry neither chapters nor
-// categories: chapters are items of their own and category membership lives in Refs
-// (category keys), so it survives differing category orders between devices.
+// Split turns a Backup into merge items. Manga payloads carry neither chapters, history nor
+// categories: chapters and history entries are items of their own, since reading changes
+// them without bumping the manga, and category membership lives in Refs (category keys),
+// so it survives differing category orders between devices.
 func Split(b *pb.Backup) ([]*merge.Item, error) {
 	var items []*merge.Item
 
@@ -63,6 +70,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		}
 		stripped := proto.Clone(m).(*pb.BackupManga)
 		stripped.Chapters = nil
+		stripped.History = nil
 		stripped.Categories = nil
 		payload, err := encodeMsg(stripped)
 		if err != nil {
@@ -79,6 +87,17 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 				return nil, err
 			}
 			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: ch.GetLastModifiedAt(), Payload: payload})
+		}
+
+		for _, h := range m.History {
+			if h.Url == "" {
+				continue
+			}
+			payload, err := encodeMsg(h)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, &merge.Item{Kind: merge.KindHistory, Key: HistoryKey(key, h.Url), ParentKey: key, ModifiedAt: h.LastRead, Payload: payload})
 		}
 	}
 
@@ -152,8 +171,8 @@ func dedupe(items []*merge.Item) []*merge.Item {
 }
 
 // Render assembles a Backup from items. Tombstoned categories are skipped and manga
-// refs pointing at them are dropped. Tombstoned chapters are skipped. Chapters are
-// attached to their manga; a chapter whose manga is not in the list is ignored.
+// refs pointing at them are dropped. Tombstoned chapters are skipped. Chapters and
+// history are attached to their manga; one whose manga is not in the list is ignored.
 func Render(items []*merge.Item) (*pb.Backup, error) {
 	b := &pb.Backup{}
 
@@ -193,6 +212,18 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 		chaptersByManga[it.ParentKey] = append(chaptersByManga[it.ParentKey], ch)
 	}
 
+	historyByManga := map[string][]*pb.BackupHistory{}
+	for _, it := range items {
+		if it.Kind != merge.KindHistory || it.Deleted {
+			continue
+		}
+		h := &pb.BackupHistory{}
+		if err := proto.Unmarshal(it.Payload, h); err != nil {
+			return nil, fmt.Errorf("history %s: %w", it.Key, err)
+		}
+		historyByManga[it.ParentKey] = append(historyByManga[it.ParentKey], h)
+	}
+
 	sourcesSeen := map[int64]bool{}
 	var mangaSources []int64
 	for _, it := range items {
@@ -217,6 +248,7 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 			return chapters[i].Url < chapters[j].Url
 		})
 		m.Chapters = chapters
+		m.History = newestHistory(m.History, historyByManga[it.Key])
 		b.BackupManga = append(b.BackupManga, m)
 		if !sourcesSeen[m.Source] {
 			sourcesSeen[m.Source] = true
@@ -286,6 +318,24 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 	return b, nil
 }
 
+func newestHistory(embedded, items []*pb.BackupHistory) []*pb.BackupHistory {
+	if len(embedded) == 0 {
+		return sortedHistory(items)
+	}
+	byURL := make(map[string]*pb.BackupHistory, len(embedded)+len(items))
+	for _, h := range slices.Concat(embedded, items) {
+		if cur, ok := byURL[h.Url]; !ok || h.LastRead > cur.LastRead {
+			byURL[h.Url] = h
+		}
+	}
+	return sortedHistory(slices.Collect(maps.Values(byURL)))
+}
+
+func sortedHistory(history []*pb.BackupHistory) []*pb.BackupHistory {
+	slices.SortFunc(history, func(a, b *pb.BackupHistory) int { return strings.Compare(a.Url, b.Url) })
+	return history
+}
+
 func encodeMsg(m proto.Message) ([]byte, error) {
 	return proto.MarshalOptions{Deterministic: true}.Marshal(m)
 }
@@ -318,6 +368,7 @@ func clearTimestamps(m proto.Message) {
 	switch m := m.(type) {
 	case *pb.BackupManga:
 		m.LastModifiedAt, m.FavoriteModifiedAt = 0, nil
+		m.History = nil
 	case *pb.BackupChapter:
 		m.LastModifiedAt = 0
 	case *pb.BackupCategory:

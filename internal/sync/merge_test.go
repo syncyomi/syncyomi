@@ -202,6 +202,46 @@ func TestMerge_ReadStateAndUnfavoriteFlow(t *testing.T) {
 	}
 }
 
+func TestMerge_HistoryReachesOtherDeviceWithoutMangaBump(t *testing.T) {
+	svc, _ := newTestService(t)
+	seed := mangaOf(1, "/m", 5, true, chapterOf("/c1", 2, false))
+	seed.LastModifiedAt = 100
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{seed}})
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+
+	read := mangaOf(1, "/m", 5, true, chapterOf("/c1", 3, true))
+	read.LastModifiedAt = 100
+	read.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 1_700_000_000_000, ReadDuration: 60}}
+	sync2(t, svc, "A", a.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{read}})
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{})
+
+	m := urls(b.Backup)["/m"]
+	if !b.Changed || m == nil {
+		t.Fatalf("B delta = changed=%v %v", b.Changed, b.Backup.BackupManga)
+	}
+	if len(m.History) != 1 || m.History[0].LastRead != 1_700_000_000_000 {
+		t.Errorf("B history = %v, want the entry A recorded", m.History)
+	}
+}
+
+func TestMerge_HistoryOnlyChangeIsDelivered(t *testing.T) {
+	svc, _ := newTestService(t)
+	first := mangaOf(1, "/m", 5, true, chapterOf("/c1", 3, true))
+	first.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 100}}
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{first}})
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+
+	reread := mangaOf(1, "/m", 5, true)
+	reread.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 200}}
+	sync2(t, svc, "A", a.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{reread}})
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{})
+
+	m := urls(b.Backup)["/m"]
+	if m == nil || len(m.Chapters) != 1 || len(m.History) != 1 || m.History[0].LastRead != 200 {
+		t.Fatalf("B delta = %v, want /m with its chapter and the newer history", b.Backup.BackupManga)
+	}
+}
+
 func TestMerge_CategoryDeleteAndRefs(t *testing.T) {
 	svc, _ := newTestService(t)
 

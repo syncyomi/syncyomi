@@ -42,21 +42,21 @@ erDiagram
 
 ## sync_item
 
-One row per merged item. `kind` is one of `manga`, `chapter`, `category`, `source`,
+One row per merged item. `kind` is one of `manga`, `chapter`, `history`, `category`, `source`,
 `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra`.
 
 | Column | Meaning |
 |---|---|
-| `key` | `source\|url` for manga, `<manga key>\x1f<url>` for chapters, `uid:<uid>` / `name:<name>` for categories, natural keys for settings |
-| `parent_key` | manga key for chapters, source key for source preferences |
+| `key` | `source\|url` for manga, `<manga key>\x1f<url>` for chapters and history entries, `uid:<uid>` / `name:<name>` for categories, natural keys for settings |
+| `parent_key` | manga key for chapters and history entries, source key for source preferences |
 | `name` | category name (used for the uid-less fallback match) |
 | `version` | the client's counter; higher wins |
 | `deleted` | category tombstone |
 | `refs` | manga → category keys, `\x1f`-separated |
-| `payload` | the item's protobuf message (a manga payload carries neither chapters nor category numbers) |
+| `payload` | the item's protobuf message (a manga payload carries neither chapters, history nor category numbers) |
 | `seq` | the key's `sync_state.seq` at the last change of this row |
 | `origin_device` | device that made the last change (`legacy`, `migration`, `restore` for server-side writes) |
-| `modified_at` | the payload's `last_modified_at`, the tiebreaker for equal-version conflicts |
+| `modified_at` | the payload's `last_modified_at`, the tiebreaker for equal-version conflicts; `last_read` for history entries |
 
 The server never parses the payload beyond what the merge keys need, which is what will let
 end-to-end encryption reuse the same store.

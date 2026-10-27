@@ -2,6 +2,7 @@ package merge
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -357,5 +358,34 @@ func TestRetryIsIdempotent(t *testing.T) {
 	res := s.merge("A", items()...)
 	if len(res.Writes) != 0 || len(res.Tombstones) != 0 || res.ChangedForClient || s.seq != seq {
 		t.Errorf("retry not idempotent: %+v seq %d -> %d", res, seq, s.seq)
+	}
+}
+
+func history(parent, key string, lastRead int64) *Item {
+	return &Item{Kind: KindHistory, Key: key, ParentKey: parent, ModifiedAt: lastRead, Payload: fmt.Appendf(nil, "%s@%d", key, lastRead)}
+}
+
+func TestHistoryNewerReadWinsWithoutMangaBump(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", manga("1|/m", 5, "m"), history("1|/m", "/c1", 100))
+
+	res := s.merge("A", manga("1|/m", 5, "m"), history("1|/m", "/c1", 200), history("1|/m", "/c2", 150))
+
+	if len(res.Writes) != 2 {
+		t.Fatalf("writes = %+v, want the two history entries", res.Writes)
+	}
+	if got := s.Get(KindHistory, "/c1").ModifiedAt; got != 200 {
+		t.Errorf("c1 last read = %d, want 200", got)
+	}
+}
+
+func TestHistoryOlderReadGetsServerCopyBack(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", history("1|/m", "/c1", 200))
+
+	res := s.merge("B", history("1|/m", "/c1", 100))
+
+	if len(res.Writes) != 0 || len(res.ReturnKeys[KindHistory]) != 1 {
+		t.Errorf("B must receive the newer entry: %+v", res)
 	}
 }

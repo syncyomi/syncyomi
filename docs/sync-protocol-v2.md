@@ -77,8 +77,8 @@ Body: a backup with everything the client is missing:
 
 - all live categories (so the client can map category numbers and delete categories that
   vanished),
-- manga changed since the cursor by other devices (each with its complete chapter list, also
-  when only one chapter changed), settings changed since the cursor, and any item where the
+- manga changed since the cursor by other devices (each with its complete chapter list and
+  history, also when only one chapter or history entry changed), settings changed since the cursor, and any item where the
   server copy won over the client's,
 - with `X-Sync-Cursor: 0` or `X-Sync-Full: true`: the complete library.
 
@@ -143,6 +143,9 @@ flowchart TD
   device that has not applied the delete yet resends its copy unchanged.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
   changes); the server stores the winning copy and never bumps it.
+- Reading history is merged per chapter, apart from its manga: reading never bumps the manga's
+  `version`, so history inside the manga would be dropped as an unchanged copy. Entries have no
+  version; the later `last_read` wins.
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a
   deletion.
 - Settings (sources, preferences, source preferences, extension repos, saved searches) have
