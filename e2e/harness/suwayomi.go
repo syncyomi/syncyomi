@@ -522,6 +522,37 @@ func (s *Suwayomi) MarkChaptersRead(ctx context.Context, title string) error {
 	return nil
 }
 
+func (s *Suwayomi) RemoveFromLibrary(ctx context.Context, title string) error {
+	library, err := s.Library(ctx)
+	if err != nil {
+		return err
+	}
+	id := 0
+	for _, m := range library {
+		if m.Title == title {
+			id = m.ID
+		}
+	}
+	if id == 0 {
+		return fmt.Errorf("%q is not in the library", title)
+	}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	err = s.GraphQL(ctx,
+		`mutation($id: Int!) { updateManga(input: {id: $id, patch: {inLibrary: false}}) { manga { id } } }`,
+		map[string]any{"id": id}, &out)
+	if err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("updateManga: %s", out.Errors[0].Message)
+	}
+	return nil
+}
+
 func (s *Suwayomi) Stop() {
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Signal(syscall.SIGTERM)
