@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.7.3](https://github.com/syncyomi/syncyomi/compare/v1.7.2...v1.7.3) (2026-10-27)
+
+
+### Bug Fixes
+
+* **sync:** merge reading history independently of its manga ([#309](https://github.com/syncyomi/syncyomi/issues/309)) ([eda60c9](https://github.com/syncyomi/syncyomi/commit/eda60c91a2230176744f4bcdf26a23b034fdf1f2))
+
+
+### Other Changes
+
+* **e2e:** pin pnpm from web/package.json before cache setup ([#297](https://github.com/syncyomi/syncyomi/issues/297)) ([6772d10](https://github.com/syncyomi/syncyomi/commit/6772d10a7f17b88786bca3249ffa9edbffabb30d))
+
+
+### Tests
+
+* **e2e:** cover library removal, unread, history and Mihon restore ([#310](https://github.com/syncyomi/syncyomi/issues/310)) ([580274d](https://github.com/syncyomi/syncyomi/commit/580274d5f7a3106b8eeb24700d96da95607e56cd))
+* **e2e:** retry Maestro flows after an adb transport drop post-launch ([#298](https://github.com/syncyomi/syncyomi/issues/298)) ([d90ae6b](https://github.com/syncyomi/syncyomi/commit/d90ae6bffb4c4116c48e4fb9fa013c99bd9d62b8))
+
+
+### Dependencies
+
+* bump docker/login-action from 4.6.0 to 4.7.0 ([#306](https://github.com/syncyomi/syncyomi/issues/306)) ([100c1c0](https://github.com/syncyomi/syncyomi/commit/100c1c0a6af5bbeca8d25b6a363e1835bb499b11))
+* bump golang from 1.27.2-alpine3.23 to 1.27.3-alpine3.23 ([#304](https://github.com/syncyomi/syncyomi/issues/304)) ([8767f7e](https://github.com/syncyomi/syncyomi/commit/8767f7e3929de4841a64a844caf5a834a9b231d6))
+* bump happy-dom in /web in the npm-minor-patch group ([#302](https://github.com/syncyomi/syncyomi/issues/302)) ([a8afa0f](https://github.com/syncyomi/syncyomi/commit/a8afa0f37c29995aa849d7c05cfa16ae87976470))
+* bump modernc.org/sqlite ([#305](https://github.com/syncyomi/syncyomi/issues/305)) ([a3080a6](https://github.com/syncyomi/syncyomi/commit/a3080a63c658bdbe758c1ac525d4ffd3a5e2837e))
+* bump pnpm/action-setup from 4 to 6 ([#301](https://github.com/syncyomi/syncyomi/issues/301)) ([3a1d400](https://github.com/syncyomi/syncyomi/commit/3a1d400adec97b737f35a9ad1c73764f1a34b565))
+* bump the npm-minor-patch group in /web with 2 updates ([#300](https://github.com/syncyomi/syncyomi/issues/300)) ([750079c](https://github.com/syncyomi/syncyomi/commit/750079c829ef2cf01bf935f23b98349dec67dbe9))
+* bump vite from 8.3.4 to 8.3.5 in /web in the npm-minor-patch group ([#307](https://github.com/syncyomi/syncyomi/issues/307)) ([58408f2](https://github.com/syncyomi/syncyomi/commit/58408f27eb613a51d345e698d8f9b188ecbc26fc))
+
 ## [1.7.2](https://github.com/syncyomi/syncyomi/compare/v1.7.1...v1.7.2) (2026-10-22)
 
 
