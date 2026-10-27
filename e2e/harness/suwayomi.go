@@ -68,7 +68,60 @@ func StartSuwayomi(ctx context.Context, jarPath string, srv *SyncServer, artifac
 		s.Stop()
 		return nil, err
 	}
+	if err := s.enableUserSync(ctx, srv); err != nil {
+		s.Stop()
+		return nil, err
+	}
 	return s, nil
+}
+
+// enableUserSync points the default user at srv on builds that keep sync settings per user, where the
+// server-level config properties above no longer apply.
+func (s *Suwayomi) enableUserSync(ctx context.Context, srv *SyncServer) error {
+	perUser, err := s.hasMutation(ctx, "setUserSettings")
+	if err != nil || !perUser {
+		return err
+	}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	err = s.GraphQL(ctx, `mutation($host: String!, $key: String!) {
+		setUserSettings(input: {userSettings: {syncYomiEnabled: true, syncYomiHost: $host, syncYomiApiKey: $key}}) {
+			userSettings { syncYomiEnabled }
+		}
+	}`, map[string]any{"host": srv.BaseURL, "key": srv.APIKey}, &out)
+	if err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("setUserSettings: %s", out.Errors[0].Message)
+	}
+	return nil
+}
+
+func (s *Suwayomi) hasMutation(ctx context.Context, name string) (bool, error) {
+	var out struct {
+		Data struct {
+			Schema struct {
+				MutationType struct {
+					Fields []struct {
+						Name string `json:"name"`
+					} `json:"fields"`
+				} `json:"mutationType"`
+			} `json:"__schema"`
+		} `json:"data"`
+	}
+	if err := s.GraphQL(ctx, `{ __schema { mutationType { fields { name } } } }`, nil, &out); err != nil {
+		return false, err
+	}
+	for _, f := range out.Data.Schema.MutationType.Fields {
+		if f.Name == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Suwayomi) waitReady(ctx context.Context) error {
