@@ -115,6 +115,10 @@ Env vars:
 | S21 device large library first push | A device holding the scrubbed real library pushes all of it to an empty server on its first sync |
 | S22 Suwayomi large library first push | Suwayomi, running under a small heap, imports a large library and pushes all of it to an empty server on its first sync |
 | S23 Suwayomi large library restore | Suwayomi, running under a small heap, restores a large library from a seeded server |
+| S24 history without manga change | Reading history sent with an unchanged manga reaches the server and both devices |
+| S25 library removal (UI) | Removing a manga on-device reaches the server and the peer, and a stale full upload does not bring it back |
+| S26 unread (UI) | Marking read chapters unread on-device reaches the server and the peer |
+| S27 Suwayomi library removal | Removing a manga in Suwayomi reaches the server and Android |
 
 v1 suite (`scenarios/v1/`, server only):
 
