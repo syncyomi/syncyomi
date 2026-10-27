@@ -7,6 +7,7 @@ import "bytes"
 // Rules (same as TachiyomiSY's client merge, minus the absence inference):
 //   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
 //     newer ModifiedAt wins, and only a full tie keeps the server copy
+//   - history entries never carry a version, so the newer ModifiedAt (last read) wins
 //   - a tombstone yields to a higher version, and for chapters also to a newer ModifiedAt
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
@@ -29,9 +30,7 @@ func Merge(store Store, req Request) *Result {
 	for _, it := range req.Items {
 		switch it.Kind {
 		case KindCategory:
-		case KindManga:
-			m.versioned(it)
-		case KindChapter:
+		case KindManga, KindChapter, KindHistory:
 			m.versioned(it)
 		default:
 			if IsSectionKind(it.Kind) {

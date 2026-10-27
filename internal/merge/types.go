@@ -8,6 +8,7 @@ const (
 	KindManga       Kind = "manga"
 	KindChapter     Kind = "chapter"
 	KindCategory    Kind = "category"
+	KindHistory     Kind = "history"
 	KindSource      Kind = "source"
 	KindAppPref     Kind = "app_pref"
 	KindSourcePref  Kind = "source_pref"
