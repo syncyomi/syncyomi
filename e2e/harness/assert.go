@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -119,8 +120,64 @@ func SnapshotTitles(b *pb.Backup) []string {
 	return titles
 }
 
+// renamedSchemaViews maps the tables TachiyomiSY renamed in its schema rewrite (manga, chapter, category,
+// manga_category) back to the names these assertions query, so they read either client generation.
+var renamedSchemaViews = []string{
+	`CREATE TEMP VIEW mangas AS SELECT id AS _id, coalesce(user_title, remote_title) AS title,
+		user_favorite_at IS NOT NULL AS favorite, state_last_modified_at AS last_modified_at FROM main.manga`,
+	`CREATE TEMP VIEW chapters AS SELECT id AS _id, manga_id, remote_url AS url, user_read AS read,
+		state_last_modified_at AS last_modified_at FROM main.chapter`,
+	`CREATE TEMP VIEW categories AS SELECT id AS _id, name, "order" AS sort FROM main.category`,
+	`CREATE TEMP VIEW mangas_categories AS SELECT manga_id, category_id FROM main.manga_category`,
+	`CREATE TEMP VIEW e2e_history AS SELECT chapter_id, read_at FROM main.history`,
+}
+
+var legacySchemaViews = []string{
+	`CREATE TEMP VIEW e2e_history AS SELECT chapter_id, last_read AS read_at FROM main.history`,
+}
+
 func OpenAppDB(path string) (*sql.DB, error) {
-	return sql.Open("sqlite", "file:"+path+"?mode=ro")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	if err := createSchemaViews(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("map app schema of %s: %w", path, err)
+	}
+	return db, nil
+}
+
+func createSchemaViews(db *sql.DB) error {
+	var renamed bool
+	err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'manga')`).Scan(&renamed)
+	if err != nil {
+		return err
+	}
+	views := legacySchemaViews
+	if renamed {
+		views = renamedSchemaViews
+	}
+	for _, v := range views {
+		if _, err := db.Exec(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func LastReadAt(db *sql.DB, mangaTitle, chapterURL string) (int64, error) {
+	var readAt sql.NullInt64
+	err := db.QueryRow(`
+		SELECT h.read_at FROM e2e_history h
+		JOIN chapters c ON c._id = h.chapter_id
+		JOIN mangas m ON m._id = c.manga_id
+		WHERE m.title = ? AND c.url = ?`, mangaTitle, chapterURL).Scan(&readAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return readAt.Int64, err
 }
 
 func LibraryTitles(db *sql.DB) ([]string, error) {

@@ -50,10 +50,9 @@ Env vars:
   harness pushes a generated fixture backup to the server via `/api/sync/v2/merge`,
   and the device pulls it on its first sync. Divergent per-device state (for merge
   scenarios) is staged against throwaway servers on ports 8791/8792 before the
-  devices are re-pointed at the main server. In-app backup restore is not used —
-  it crashes with SQLITE_BUSY on current builds
-  (jobobby04/TachiyomiSY#1634); `flows/restore_backup.yaml` stays around for when
-  that is fixed.
+  devices are re-pointed at the main server. In-app backup restore is covered by
+  S28 only: `PushBackup` stages the file in the app's cache, since scoped storage
+  denies the app a `file://` path on shared storage.
 - Sync triggers: the debug-only `SyncTriggerReceiver` broadcast
   (`<pkg>.TRIGGER_SYNC`, debug source set of TachiyomiSY) for most scenarios;
   S1 exercises the real "Sync now" settings UI via Maestro once per run.
@@ -115,6 +114,11 @@ Env vars:
 | S21 device large library first push | A device holding the scrubbed real library pushes all of it to an empty server on its first sync |
 | S22 Suwayomi large library first push | Suwayomi, running under a small heap, imports a large library and pushes all of it to an empty server on its first sync |
 | S23 Suwayomi large library restore | Suwayomi, running under a small heap, restores a large library from a seeded server |
+| S24 history without manga change | Reading history sent with an unchanged manga reaches the server and both devices |
+| S25 library removal (UI) | Removing a manga on-device reaches the server and the peer, and a stale full upload does not bring it back |
+| S26 unread (UI) | Marking read chapters unread on-device reaches the server and the peer |
+| S27 Suwayomi library removal | Removing a manga in Suwayomi reaches the server and Android |
+| S28 Mihon backup restore | A backup with only Mihon fields restores twice through the in-app restore without duplicates, keeping read state, history and non-library entries out of the library |
 
 v1 suite (`scenarios/v1/`, server only):
 
