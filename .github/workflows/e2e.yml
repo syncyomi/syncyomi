@@ -84,7 +84,7 @@ jobs:
         if: steps.apk.outputs.cache-hit != 'true'
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@v6
         if: steps.apk.outputs.cache-hit != 'true'
