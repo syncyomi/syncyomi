@@ -19,14 +19,14 @@ permissions:
 jobs:
   govulncheck:
     name: govulncheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: golang/govulncheck-action@v1
 
   trivy:
     name: Trivy image scan
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
