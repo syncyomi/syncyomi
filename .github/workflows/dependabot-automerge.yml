@@ -9,7 +9,7 @@ permissions:
 jobs:
   automerge:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: dependabot/fetch-metadata@v3
         id: metadata

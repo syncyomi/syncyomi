@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       pull-requests: read
     outputs:
@@ -60,7 +60,7 @@ jobs:
   build-apk:
     needs: changes
     if: needs.changes.outputs.sync == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/cache/restore@v6
         id: apk
@@ -123,7 +123,7 @@ jobs:
   build-suwayomi:
     needs: changes
     if: needs.changes.outputs.sync == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/cache/restore@v6
         id: jar
@@ -183,7 +183,7 @@ jobs:
 
   e2e-shard:
     name: e2e (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [changes, build-apk, build-suwayomi]
     if: needs.changes.outputs.sync == 'true'
     timeout-minutes: 30
@@ -287,7 +287,7 @@ jobs:
   e2e:
     needs: [changes, e2e-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - run: |
           case "$CHANGES/$SYNC/$SHARDS" in
