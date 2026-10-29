@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.4](https://github.com/syncyomi/syncyomi/compare/v1.7.3...v1.7.4) (2026-10-29)
+
+
+### Bug Fixes
+
+* **http:** require session auth for admin routes ([#312](https://github.com/syncyomi/syncyomi/issues/312)) ([90e5eed](https://github.com/syncyomi/syncyomi/commit/90e5eed3df6eaa082ee4760ed36bbb9b878dee74))
+
 ## [1.7.3](https://github.com/syncyomi/syncyomi/compare/v1.7.2...v1.7.3) (2026-10-27)
 
 
