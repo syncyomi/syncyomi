@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.5](https://github.com/syncyomi/syncyomi/compare/v1.7.4...v1.7.5) (2026-10-29)
+
+
+### Other Changes
+
+* pin runners to ubuntu-26.04 ([#314](https://github.com/syncyomi/syncyomi/issues/314)) ([8e1da4e](https://github.com/syncyomi/syncyomi/commit/8e1da4ed5a5862684774e24e34609369e97c67ac))
+
+
+### Dependencies
+
+* bump the npm-minor-patch group in /web with 4 updates ([#316](https://github.com/syncyomi/syncyomi/issues/316)) ([3460c89](https://github.com/syncyomi/syncyomi/commit/3460c892cae09b59fdd3e01cdc7035ec4633088a))
+
 ## [1.7.4](https://github.com/syncyomi/syncyomi/compare/v1.7.3...v1.7.4) (2026-10-29)
 
 
