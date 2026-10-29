@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@mdi/font": "7.4.47",
-    "@tanstack/vue-query": "^5.104.5",
+    "@tanstack/vue-query": "^5.105.0",
     "date-fns": "^4.4.0",
     "pinia": "^4.1.0",
     "portal-vue": "3.0.0",
@@ -22,7 +22,7 @@
     "roboto-fontface": "^0.10.0",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0",
-    "vuetify": "^4.3.0",
+    "vuetify": "^4.3.1",
     "webfontloader": "^1.6.28"
   },
   "devDependencies": {
@@ -36,10 +36,10 @@
     "@vue/test-utils": "^2.5.1",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-vue": "^10.11.1",
+    "eslint-plugin-vue": "^10.12.0",
     "globals": "^17.13.0",
     "happy-dom": "^21.0.4",
-    "postcss": "^8.5.31",
+    "postcss": "^8.5.32",
     "prettier": "3.9.10",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
