@@ -43,7 +43,7 @@ flowchart LR
 
 ## How a sync works (protocol v2)
 
-The server keeps every library as merged items (manga, chapters, categories, settings) in
+The server keeps every library as merged items (manga, chapters, history, categories, settings) in
 `sync_item` and merges each upload item by item; clients send what changed and receive what
 they lack. See [sync-protocol-v2.md](sync-protocol-v2.md) and [data-model.md](data-model.md).
 

@@ -38,6 +38,7 @@ func sortBackup(b *pb.Backup) *pb.Backup {
 			return m.Chapters[i].Url < m.Chapters[j].Url
 		})
 		sort.Slice(m.Categories, func(i, j int) bool { return m.Categories[i] < m.Categories[j] })
+		sort.SliceStable(m.History, func(i, j int) bool { return m.History[i].Url < m.History[j].Url })
 	}
 	sort.SliceStable(c.BackupSources, func(i, j int) bool { return c.BackupSources[i].SourceId < c.BackupSources[j].SourceId })
 	sort.SliceStable(c.BackupPreferences, func(i, j int) bool { return c.BackupPreferences[i].Key < c.BackupPreferences[j].Key })

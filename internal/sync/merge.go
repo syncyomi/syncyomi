@@ -89,34 +89,46 @@ func (k *keyLocks) lock(ctx context.Context, key string) (func(), error) {
 	}
 }
 
+type writeStart struct {
+	existedBeforeImport bool
+	importedLegacy      bool
+	seq                 int64
+}
+
+// writeTx runs fn under the per-key lock and one transaction, after the legacy promotion and pending import.
+func (s *service) writeTx(ctx context.Context, apiKey string, fn func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error) error {
+	unlock, err := s.locks.lock(ctx, apiKey)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	return s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		if err := s.promoteLegacy(ctx, tx); err != nil {
+			return err
+		}
+		start := writeStart{existedBeforeImport: tx.Exists()}
+		if start.importedLegacy, err = s.importPending(ctx, tx); err != nil {
+			return err
+		}
+		start.seq = tx.Seq()
+		return fn(ctx, tx, start)
+	})
+}
+
 // Merge is the v2 sync: merge the client's items into the store and return what it lacks.
 func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, error) {
 	items, err := splitBackup(req.Backup)
 	if err != nil {
 		return nil, err
 	}
-	unlock, err := s.locks.lock(ctx, req.APIKey)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
 
 	var resp *MergeResponse
-	err = s.store.Tx(ctx, req.APIKey, func(tx domain.SyncStoreTx) error {
-		if err := s.promoteLegacy(ctx, tx); err != nil {
-			return err
-		}
-		existed := tx.Exists()
-		imported, err := s.importPending(ctx, tx)
-		if err != nil {
-			return err
-		}
-		startSeq := tx.Seq()
-
+	err = s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		cursor := req.Cursor
-		fullRequested := imported && !existed && !req.Full
-		if cursor > startSeq {
-			s.log.Warn().Int64("cursor", cursor).Int64("seq", startSeq).Msg("client cursor ahead of server, asking for a full sync")
+		fullRequested := start.importedLegacy && !start.existedBeforeImport && !req.Full
+		if cursor > start.seq {
+			s.log.Warn().Int64("cursor", cursor).Int64("seq", start.seq).Msg("client cursor ahead of server, asking for a full sync")
 			cursor, fullRequested = 0, true
 		}
 		full := req.Full || cursor == 0
@@ -151,7 +163,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			}
 		}
 
-		if newSeq != startSeq {
+		if newSeq != start.seq {
 			if err := s.refreshRenderCache(ctx, tx, full, out); err != nil {
 				return err
 			}
@@ -683,12 +695,14 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		}
 	}
 
-	// a changed chapter is delivered as its manga with the manga's complete chapter list, so
-	// clients can restore it exactly like a full backup
+	// a changed chapter or history entry is delivered as its manga with the manga's complete
+	// chapter list and history, so clients can restore it exactly like a full backup
 	var parents []string
-	for _, ch := range want[merge.KindChapter] {
-		if want[merge.KindManga][ch.ParentKey] == nil {
-			parents = append(parents, ch.ParentKey)
+	for _, kind := range []merge.Kind{merge.KindChapter, merge.KindHistory} {
+		for _, child := range want[kind] {
+			if want[merge.KindManga][child.ParentKey] == nil {
+				parents = append(parents, child.ParentKey)
+			}
 		}
 	}
 	if len(parents) > 0 {
@@ -705,12 +719,12 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		for key := range want[merge.KindManga] {
 			keys = append(keys, key)
 		}
-		chapters, err := tx.ChaptersOf(ctx, keys)
+		children, err := tx.ChildrenOf(ctx, keys)
 		if err != nil {
 			return nil, false, err
 		}
-		for _, ch := range chapters {
-			add(ch)
+		for _, child := range children {
+			add(child)
 		}
 	}
 

@@ -150,17 +150,11 @@ func (s Server) Handler() http.Handler {
 			r.Use(s.IsSessionAuthenticated)
 
 			r.Route("/sync/admin", syncHandler.AdminRoutes)
-		})
-
-		r.Group(func(r chi.Router) {
-			r.Use(s.IsAuthenticated)
-
 			r.Route("/config", newConfigHandler(encoder, s, s.config).Routes)
 			r.Route("/keys", newAPIKeyHandler(encoder, s.apiService).Routes)
 			r.Route("/logs", newLogsHandler(s.config).Routes)
 			r.Route("/notification", newNotificationHandler(encoder, s.notificationService).Routes)
 			r.Route("/updates", newUpdateHandler(encoder, s.updateService).Routes)
-			r.Route("/sync", syncHandler.Routes)
 
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 				streamForever(w)
@@ -175,6 +169,12 @@ func (s Server) Handler() http.Handler {
 
 				s.sse.ServeHTTP(w, r)
 			})
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(s.IsAuthenticated)
+
+			r.Route("/sync", syncHandler.Routes)
 		})
 	})
 

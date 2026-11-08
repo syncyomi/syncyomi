@@ -26,8 +26,8 @@ func TestSyncV2_capabilities(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &caps); err != nil || caps["version"] != float64(2) || caps["merge"] == "" {
 		t.Errorf("caps = %v err = %v", caps, err)
 	}
-	if caps["deletions"] != "/api/sync/v2/deletions" {
-		t.Errorf("deletions = %v, want /api/sync/v2/deletions", caps["deletions"])
+	if caps["deletions"] != "/api/sync/v2/deletions" || caps["snapshot"] != "/api/sync/v2/snapshot" {
+		t.Errorf("routes not advertised: %v", caps)
 	}
 }
 
@@ -83,19 +83,6 @@ func TestSyncV2_merge(t *testing.T) {
 	}
 }
 
-func TestSyncV2_mergeAcceptsGzip(t *testing.T) {
-	mock := &mockSyncService{mergeResp: &sync.MergeResponse{Backup: &pb.Backup{}}}
-	req := httptest.NewRequest(http.MethodPost, "/v2/merge", bytes.NewReader(gzipBytes(t, encodedBackup(t, "/m"))))
-	req.Header.Set("X-API-Token", "key1")
-	req.Header.Set("X-Device-ID", "d")
-	req.Header.Set("Content-Encoding", "gzip")
-	rec := httptest.NewRecorder()
-	newRouter(mock, 0).ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || len(mock.mergeReq.Backup.BackupManga) != 1 {
-		t.Errorf("status = %v req = %+v", rec.Code, mock.mergeReq)
-	}
-}
-
 func TestSyncV2_deletions(t *testing.T) {
 	type result struct {
 		Acknowledged int `json:"acknowledged"`
@@ -125,6 +112,17 @@ func TestSyncV2_deletions(t *testing.T) {
 			wantApplied: 1,
 			wantKinds:   []merge.Kind{merge.KindChapter, merge.KindSource},
 			wantKeys:    []string{"1|/m\x1f/c", "1"},
+		},
+		{
+			name:        "history kind",
+			device:      "d",
+			body:        `{"items":[{"kind":"history","key":"1|/m\u001f/h"}]}`,
+			applied:     1,
+			wantStatus:  http.StatusOK,
+			wantAck:     1,
+			wantApplied: 1,
+			wantKinds:   []merge.Kind{merge.KindHistory},
+			wantKeys:    []string{"1|/m\x1f/h"},
 		},
 		{
 			name:        "legacy deleted chapters",
@@ -272,6 +270,39 @@ func TestSyncV2_deletions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSyncV2_deletionsAcceptsGzip(t *testing.T) {
+	keys := []string{backup.ChapterKey("1|/m", "/c1"), backup.ChapterKey("1|/m", "/c2")}
+	body, err := json.Marshal(map[string][]string{"deletedChapters": keys})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock := &mockSyncService{deleteApplied: 2}
+	req := httptest.NewRequest(http.MethodPost, "/v2/deletions", bytes.NewReader(gzipBytes(t, body)))
+	req.Header.Set("X-API-Token", "key1")
+	req.Header.Set("X-Device-ID", "d")
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	newRouter(mock, 0).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || len(mock.deleteReq) != 2 ||
+		mock.deleteReq[0].Kind != merge.KindChapter || mock.deleteReq[0].Key != keys[0] ||
+		mock.deleteReq[1].Kind != merge.KindChapter || mock.deleteReq[1].Key != keys[1] {
+		t.Errorf("status = %v req = %+v", rec.Code, mock.deleteReq)
+	}
+}
+
+func TestSyncV2_mergeAcceptsGzip(t *testing.T) {
+	mock := &mockSyncService{mergeResp: &sync.MergeResponse{Backup: &pb.Backup{}}}
+	req := httptest.NewRequest(http.MethodPost, "/v2/merge", bytes.NewReader(gzipBytes(t, encodedBackup(t, "/m"))))
+	req.Header.Set("X-API-Token", "key1")
+	req.Header.Set("X-Device-ID", "d")
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	newRouter(mock, 0).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || len(mock.mergeReq.Backup.BackupManga) != 1 {
+		t.Errorf("status = %v req = %+v", rec.Code, mock.mergeReq)
 	}
 }
 

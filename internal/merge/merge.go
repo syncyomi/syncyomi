@@ -10,11 +10,13 @@ import (
 // Rules (same as TachiyomiSY's client merge, minus the absence inference):
 //   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
 //     newer ModifiedAt wins, and only a full tie keeps the server copy
-//   - a tombstoned row's resurrection rule differs by kind: manga and chapter come back on a
-//     higher version OR a ModifiedAt newer than the deletion, because a re-added item
-//     restarts at version 1; a category comes back only on a higher version, because
-//     categories are uploaded whole on every sync, so an unchanged resend or a
-//     restore/reorder that bumps last_modified_at must not restore a deleted category
+//   - history entries never carry a version, so the newer ModifiedAt (last read) wins
+//   - a tombstoned row's resurrection rule differs by kind: manga, chapter and history come
+//     back on a higher version OR a ModifiedAt newer than the deletion (a re-added
+//     manga/chapter restarts at version 1, and a history entry only carries last_read); a
+//     category comes back only on a higher version, because categories are uploaded whole on
+//     every sync, so an unchanged resend or a restore/reorder that bumps last_modified_at
+//     must not restore a deleted category
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
 func Merge(store Store, req Request) *Result {
@@ -33,9 +35,7 @@ func Merge(store Store, req Request) *Result {
 	for _, it := range req.Items {
 		switch it.Kind {
 		case KindCategory:
-		case KindManga:
-			m.versioned(it)
-		case KindChapter:
+		case KindManga, KindChapter, KindHistory:
 			m.versioned(it)
 		default:
 			if IsSectionKind(it.Kind) {
@@ -65,9 +65,10 @@ type tombstoneKey struct {
 
 // tombstone marks a live row deleted. The tombstone stands until a later write proves it
 // is newer, which differs by kind:
-//   - manga and chapter resurrect on a higher Version, or on a ModifiedAt newer than the
-//     deletion, regardless of Version (a re-added item restarts at version 1, so its
-//     timestamp must be able to beat the tombstoned version)
+//   - manga, chapter and history resurrect on a higher Version, or on a ModifiedAt newer
+//     than the deletion, regardless of Version (a re-added manga/chapter restarts at version
+//     1, and a history entry only carries last_read, so the timestamp must be able to beat
+//     the tombstoned version)
 //   - a category resurrects only on a higher Version: categories are uploaded whole on every
 //     sync, so a device that has not applied the delete resends its unchanged copy, and
 //     restores/reorders bump last_modified_at; a newer timestamp must not bring it back
@@ -147,9 +148,10 @@ func (m *merger) versioned(it *Item) {
 	case cur == nil:
 		m.write(it)
 	case cur.Deleted:
-		// a tombstoned manga or chapter resurrects on a higher version, or on a modified_at
-		// newer than the deletion regardless of version: a re-added manga or chapter
-		// restarts at version 1, so the timestamp must be able to beat the tombstoned version
+		// a tombstoned manga, chapter or history entry resurrects on a higher version, or on
+		// a modified_at newer than the deletion regardless of version: a re-added manga or
+		// chapter restarts at version 1 and history only carries last_read, so the timestamp
+		// must be able to beat the tombstoned version
 		if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
 			m.write(it)
 		} else {

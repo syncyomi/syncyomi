@@ -1,5 +1,85 @@
 # Changelog
 
+## [1.7.4](https://github.com/syncyomi/syncyomi/compare/v1.7.3...v1.7.4) (2026-10-29)
+
+
+### Bug Fixes
+
+* **http:** require session auth for admin routes ([#312](https://github.com/syncyomi/syncyomi/issues/312)) ([90e5eed](https://github.com/syncyomi/syncyomi/commit/90e5eed3df6eaa082ee4760ed36bbb9b878dee74))
+
+## [1.7.3](https://github.com/syncyomi/syncyomi/compare/v1.7.2...v1.7.3) (2026-10-27)
+
+
+### Bug Fixes
+
+* **sync:** merge reading history independently of its manga ([#309](https://github.com/syncyomi/syncyomi/issues/309)) ([eda60c9](https://github.com/syncyomi/syncyomi/commit/eda60c91a2230176744f4bcdf26a23b034fdf1f2))
+
+
+### Other Changes
+
+* **e2e:** pin pnpm from web/package.json before cache setup ([#297](https://github.com/syncyomi/syncyomi/issues/297)) ([6772d10](https://github.com/syncyomi/syncyomi/commit/6772d10a7f17b88786bca3249ffa9edbffabb30d))
+
+
+### Tests
+
+* **e2e:** cover library removal, unread, history and Mihon restore ([#310](https://github.com/syncyomi/syncyomi/issues/310)) ([580274d](https://github.com/syncyomi/syncyomi/commit/580274d5f7a3106b8eeb24700d96da95607e56cd))
+* **e2e:** retry Maestro flows after an adb transport drop post-launch ([#298](https://github.com/syncyomi/syncyomi/issues/298)) ([d90ae6b](https://github.com/syncyomi/syncyomi/commit/d90ae6bffb4c4116c48e4fb9fa013c99bd9d62b8))
+
+
+### Dependencies
+
+* bump docker/login-action from 4.6.0 to 4.7.0 ([#306](https://github.com/syncyomi/syncyomi/issues/306)) ([100c1c0](https://github.com/syncyomi/syncyomi/commit/100c1c0a6af5bbeca8d25b6a363e1835bb499b11))
+* bump golang from 1.27.2-alpine3.23 to 1.27.3-alpine3.23 ([#304](https://github.com/syncyomi/syncyomi/issues/304)) ([8767f7e](https://github.com/syncyomi/syncyomi/commit/8767f7e3929de4841a64a844caf5a834a9b231d6))
+* bump happy-dom in /web in the npm-minor-patch group ([#302](https://github.com/syncyomi/syncyomi/issues/302)) ([a8afa0f](https://github.com/syncyomi/syncyomi/commit/a8afa0f37c29995aa849d7c05cfa16ae87976470))
+* bump modernc.org/sqlite ([#305](https://github.com/syncyomi/syncyomi/issues/305)) ([a3080a6](https://github.com/syncyomi/syncyomi/commit/a3080a63c658bdbe758c1ac525d4ffd3a5e2837e))
+* bump pnpm/action-setup from 4 to 6 ([#301](https://github.com/syncyomi/syncyomi/issues/301)) ([3a1d400](https://github.com/syncyomi/syncyomi/commit/3a1d400adec97b737f35a9ad1c73764f1a34b565))
+* bump the npm-minor-patch group in /web with 2 updates ([#300](https://github.com/syncyomi/syncyomi/issues/300)) ([750079c](https://github.com/syncyomi/syncyomi/commit/750079c829ef2cf01bf935f23b98349dec67dbe9))
+* bump vite from 8.3.4 to 8.3.5 in /web in the npm-minor-patch group ([#307](https://github.com/syncyomi/syncyomi/issues/307)) ([58408f2](https://github.com/syncyomi/syncyomi/commit/58408f27eb613a51d345e698d8f9b188ecbc26fc))
+
+## [1.7.2](https://github.com/syncyomi/syncyomi/compare/v1.7.1...v1.7.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **backup:** preserve manga categories when harmonizing category UIDs ([#295](https://github.com/syncyomi/syncyomi/issues/295)) ([35dd2fa](https://github.com/syncyomi/syncyomi/commit/35dd2fa69fd53eaf191286ac37bb36ecb49d2d4f))
+
+
+### Dependencies
+
+* bump @tanstack/vue-query in /web in the npm-minor-patch group ([#293](https://github.com/syncyomi/syncyomi/issues/293)) ([1753e55](https://github.com/syncyomi/syncyomi/commit/1753e55001ed6463ea3b62093b9029144a67130e))
+* bump happy-dom from 20.14.6 to 21.0.3 in /web ([#292](https://github.com/syncyomi/syncyomi/issues/292)) ([f09ca6d](https://github.com/syncyomi/syncyomi/commit/f09ca6df941d5fce1087e761c3f31a81fe48b819))
+* bump postcss in /web in the npm-minor-patch group ([#296](https://github.com/syncyomi/syncyomi/issues/296)) ([9e5cb42](https://github.com/syncyomi/syncyomi/commit/9e5cb428e74d7362eb2364b0204a8629dfde3f27))
+
+## [1.7.1](https://github.com/syncyomi/syncyomi/compare/v1.7.0...v1.7.1) (2026-10-19)
+
+
+### Dependencies
+
+* bump github.com/go-chi/chi/v5 ([#284](https://github.com/syncyomi/syncyomi/issues/284)) ([5e93ce1](https://github.com/syncyomi/syncyomi/commit/5e93ce12dcb97d9413dcd9b382b0fd1d8954fd1e))
+* bump github.com/go-chi/chi/v5 ([#290](https://github.com/syncyomi/syncyomi/issues/290)) ([6837c2e](https://github.com/syncyomi/syncyomi/commit/6837c2e6278e868b96e30232746da7f637bd7583))
+* bump postcss in /web in the npm-minor-patch group ([#288](https://github.com/syncyomi/syncyomi/issues/288)) ([0bd0548](https://github.com/syncyomi/syncyomi/commit/0bd054877759bfc9f524a199128ca82838956fe5))
+* bump the npm-minor-patch group in /web with 2 updates ([#285](https://github.com/syncyomi/syncyomi/issues/285)) ([c58f2e3](https://github.com/syncyomi/syncyomi/commit/c58f2e345992f4e107721249e8f5cb4b1597020d))
+* bump the npm-minor-patch group in /web with 2 updates ([#289](https://github.com/syncyomi/syncyomi/issues/289)) ([1837296](https://github.com/syncyomi/syncyomi/commit/18372960276536e61d930e160c55571bc8421350))
+* bump the npm-minor-patch group in /web with 6 updates ([#291](https://github.com/syncyomi/syncyomi/issues/291)) ([12ffaa5](https://github.com/syncyomi/syncyomi/commit/12ffaa5ca9af94d35c143419cd6057a4cc217c8d))
+
+## [1.7.0](https://github.com/syncyomi/syncyomi/compare/v1.6.0...v1.7.0) (2026-10-12)
+
+
+### New Features
+
+* **sync:** chapter tombstones for protocol v2 ([#279](https://github.com/syncyomi/syncyomi/issues/279)) ([5497b3f](https://github.com/syncyomi/syncyomi/commit/5497b3fba0a06e694f85eae0583654a7db674765))
+
+
+### Other Changes
+
+* **e2e:** build the streamed-upload Suwayomi branch on fork PRs ([#280](https://github.com/syncyomi/syncyomi/issues/280)) ([5c5c7d5](https://github.com/syncyomi/syncyomi/commit/5c5c7d589fb89e320945a421a4cdd18812dad643))
+
+
+### Dependencies
+
+* bump the gomod-minor-patch group with 2 updates ([#282](https://github.com/syncyomi/syncyomi/issues/282)) ([6872a6f](https://github.com/syncyomi/syncyomi/commit/6872a6f7ea59526cc69993c565b4ed231b379bb3))
+* bump the npm-minor-patch group in /web with 8 updates ([#283](https://github.com/syncyomi/syncyomi/issues/283)) ([ed9c188](https://github.com/syncyomi/syncyomi/commit/ed9c1880d3bb9500f8dcf8ebab7f44cd52ed44fd))
+
 ## [1.6.0](https://github.com/syncyomi/syncyomi/compare/v1.5.8...v1.6.0) (2026-10-10)
 
 

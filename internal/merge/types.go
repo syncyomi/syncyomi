@@ -8,6 +8,7 @@ const (
 	KindManga       Kind = "manga"
 	KindChapter     Kind = "chapter"
 	KindCategory    Kind = "category"
+	KindHistory     Kind = "history"
 	KindSource      Kind = "source"
 	KindAppPref     Kind = "app_pref"
 	KindSourcePref  Kind = "source_pref"
@@ -39,7 +40,7 @@ type Item struct {
 	// otherwise be stuck at "first write wins forever"). Extracted by the adapter so the
 	// merge itself still never inspects payloads.
 	ModifiedAt int64
-	Deleted    bool     // category tombstone
+	Deleted    bool
 	Refs       []string // manga -> category keys
 	Payload    []byte
 

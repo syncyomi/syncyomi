@@ -19,7 +19,7 @@ See [sync-protocol-v2.md](sync-protocol-v2.md) for the protocol.
 |---|---|
 | `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"snapshot":…,"deletions":…}`; old servers answer `404` |
 | `POST /sync/v2/merge` | merge the uploaded backup, receive what the client lacks (`X-Device-ID` required; `X-Sync-Cursor`, `X-Sync-Full`; responds with `X-Sync-Cursor`, `X-Sync-Changed`, `X-Sync-Full-Requested`). `X-Sync-Deleted-Categories` still works as a deprecated alias for category tombstones. |
-| `POST /sync/v2/deletions` | post tombstones for any of the nine kinds; body `{"items":[{"kind":"…","key":"…"}]}` plus the legacy `deletedChapters`/`deletedCategories` fields; responds `200 {"acknowledged":…,"applied":…}` |
+| `POST /sync/v2/deletions` | post tombstones for any of the ten kinds; body `{"items":[{"kind":"…","key":"…"}]}` plus the legacy `deletedChapters`/`deletedCategories` fields; responds `200 {"acknowledged":…,"applied":…}` |
 | `GET /sync/v2/snapshot` | the whole merged library; `304` when `X-Sync-Cursor` is current |
 
 `POST /sync/v2/deletions` accepts an empty body as a no-op. It answers `400` for malformed JSON,

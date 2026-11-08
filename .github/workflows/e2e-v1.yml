@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       pull-requests: read
     outputs:
@@ -34,7 +34,7 @@ jobs:
   e2e-v1:
     needs: changes
     if: needs.changes.outputs.sync == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -48,8 +48,9 @@ jobs:
         with:
           node-version-file: ".node-version"
 
-      - name: Set up corepack
-        run: corepack enable
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
 
       - uses: actions/setup-node@v7
         with:

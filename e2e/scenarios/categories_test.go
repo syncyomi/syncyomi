@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/SyncYomi/SyncYomi/e2e/harness"
+	"github.com/SyncYomi/SyncYomi/internal/backup"
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
@@ -143,6 +144,123 @@ func TestS13_DeviceOriginatedCategoryTombstone(t *testing.T) {
 			t.Errorf("%s has %d manga after category delete, want %d", e.AVD, len(titles), fixtureAManga)
 		}
 	}
+}
+
+func TestS16_CrossDeviceCategoryIdentity(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	stageA := startServer(t, stagePortA)
+	stageB := startServer(t, stagePortB)
+	main := startServer(t, mainPort)
+	harness.CollectOnFailure(t, artifactDir, main, emuA, emuB)
+
+	catName := "E2E Shared Cat"
+	mangaTitle := "E2E Shared 01"
+
+	// Seed stageA with category under UID 10001
+	cA := harness.NewSyntheticClient(stageA, "seed-a")
+	backupA := &pb.Backup{
+		BackupCategories: []*pb.BackupCategory{
+			{Name: catName, Order: 0, Id: 1, Uid: 10001, Version: 1, LastModifiedAt: 100},
+		},
+		BackupSources: []*pb.BackupSource{
+			{Name: "E2E Fixture Source", SourceId: harness.FixtureSource},
+		},
+		BackupManga: []*pb.BackupManga{
+			{
+				Source:      harness.FixtureSource,
+				Url:         "/e2e/shared/01",
+				Title:       mangaTitle,
+				Status:      1,
+				Categories:  []int64{0},
+				Initialized: true,
+				Chapters: []*pb.BackupChapter{
+					{Url: "/e2e/shared/01/c1", Name: "Chapter 1", ChapterNumber: 1, DateFetch: 100},
+				},
+			},
+		},
+	}
+	backup.SetFavorite(backupA.BackupManga[0], true)
+	if _, err := cA.Merge(ctx, backupA, harness.MergeOptions{Full: true}); err != nil {
+		t.Fatalf("seed stageA: %v", err)
+	}
+
+	// Seed stageB with the same category name and manga, but divergent UID 20002 and newer timestamp
+	cB := harness.NewSyntheticClient(stageB, "seed-b")
+	backupB := &pb.Backup{
+		BackupCategories: []*pb.BackupCategory{
+			{Name: catName, Order: 0, Id: 1, Uid: 20002, Version: 1, LastModifiedAt: 200},
+		},
+		BackupSources: []*pb.BackupSource{
+			{Name: "E2E Fixture Source", SourceId: harness.FixtureSource},
+		},
+		BackupManga: []*pb.BackupManga{
+			{
+				Source:      harness.FixtureSource,
+				Url:         "/e2e/shared/01",
+				Title:       mangaTitle,
+				Status:      1,
+				Categories:  []int64{0},
+				Initialized: true,
+				Chapters: []*pb.BackupChapter{
+					{Url: "/e2e/shared/01/c1", Name: "Chapter 1", ChapterNumber: 1, DateFetch: 100},
+				},
+			},
+		},
+	}
+	backup.SetFavorite(backupB.BackupManga[0], true)
+	if _, err := cB.Merge(ctx, backupB, harness.MergeOptions{Full: true}); err != nil {
+		t.Fatalf("seed stageB: %v", err)
+	}
+
+	// Pull into both devices
+	resetApp(t, ctx, emuA, stageA)
+	resetApp(t, ctx, emuB, stageB)
+	syncViaBroadcast(t, ctx, emuA, stageA)
+	awaitLibrary(t, ctx, emuA, 1)
+	awaitCategoryPresent(t, ctx, emuA, catName)
+	awaitMangaInCategory(t, ctx, emuA, mangaTitle, catName)
+
+	syncViaBroadcast(t, ctx, emuB, stageB)
+	awaitLibrary(t, ctx, emuB, 1)
+	awaitCategoryPresent(t, ctx, emuB, catName)
+	awaitMangaInCategory(t, ctx, emuB, mangaTitle, catName)
+
+	// Now repoint both devices to the main server
+	repoint(t, ctx, emuA, main)
+	repoint(t, ctx, emuB, main)
+
+	// Device A pushes first
+	syncViaBroadcast(t, ctx, emuA, main)
+
+	// Device B pushes second
+	syncViaBroadcast(t, ctx, emuB, main)
+
+	// Assert on Device B: category must still exist and manga must still be in category!
+	awaitCategoryPresent(t, ctx, emuB, catName)
+	awaitMangaInCategory(t, ctx, emuB, mangaTitle, catName)
+
+	// Check server snapshot: exactly 1 category, and manga must be in it
+	snap, err := main.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := categoryNames(snap.BackupCategories); len(names) != 1 || names[0] != catName {
+		t.Fatalf("server categories = %v, want 1 category %q (duplicate?)", names, catName)
+	}
+	if !snapshotMangaInCategory(snap, mangaTitle, catName) {
+		t.Fatalf("server manga %q lost category %q: snap manga = %+v", mangaTitle, catName, snap.BackupManga[0])
+	}
+
+	// Device A pulls update from main server
+	syncViaBroadcast(t, ctx, emuA, main)
+	awaitCategoryPresent(t, ctx, emuA, catName)
+	awaitMangaInCategory(t, ctx, emuA, mangaTitle, catName)
+
+	// Device B follow-up sync
+	syncViaBroadcast(t, ctx, emuB, main)
+	awaitMangaInCategory(t, ctx, emuB, mangaTitle, catName)
 }
 
 func renameCategory(t *testing.T, ctx context.Context, e *harness.Emulator, oldName, newName string) {

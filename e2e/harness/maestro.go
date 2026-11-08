@@ -2,6 +2,7 @@ package harness
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -57,11 +58,16 @@ func (e *Emulator) RunFlow(ctx context.Context, flowPath, artifactDir string, fl
 		}
 		lastErr = fmt.Errorf("maestro flow %s on %s attempt %d: %s (debug output: %s): %w",
 			filepath.Base(flowPath), e.AVD, attempt, v.reason, attemptDir, runErr)
-		if !v.retryable || ctx.Err() != nil {
+		if !(v.retryable || isTransportDrop(out)) || ctx.Err() != nil {
 			return lastErr
 		}
 	}
 	return lastErr
+}
+
+func isTransportDrop(out []byte) bool {
+	return bytes.Contains(out, []byte("device offline")) ||
+		bytes.Contains(out, []byte("not found")) && bytes.Contains(out, []byte("adb: device"))
 }
 
 type flowStep struct {

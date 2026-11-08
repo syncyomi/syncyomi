@@ -37,12 +37,14 @@ server-rendered backup — that is the one case where the zero-default warning b
    send it chunked with `Content-Encoding: gzip`. Encoding a large library into a single byte
    array is what runs Android clients out of memory.
 
-4. **Track deletions**: when the user deletes a manga, chapter or category, enqueue
-   `(kind, key)` in a persistent pending-deletion queue. POST the queue to
+4. **Track deletions**: when the user deletes a manga, chapter, category or history entry,
+   enqueue `(kind, key)` in a persistent pending-deletion queue. POST the queue to
    `POST /api/sync/v2/deletions` as
    `{"items":[{"kind":"…","key":"…"}]}` with the usual device headers, and clear an entry only
-   after a 2xx response. The old `X-Sync-Deleted-Categories` header on merge still works, but it
-   is deprecated and covers categories only.
+   after a 2xx response. An older server answers 404: keep the entries pending and apply them
+   once the server is upgraded; a capabilities response that lists `deletions` confirms the
+   route. The old `X-Sync-Deleted-Categories` header on merge still works, but it is
+   deprecated and covers categories only.
 5. **`POST /api/sync/v2/merge`** with `X-Sync-Cursor` = the cursor from the last response.
    Do **not** run a local merge on the response.
 6. **Apply the response**: if `X-Sync-Changed` is `false`, record success and stop. Otherwise

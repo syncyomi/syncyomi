@@ -41,7 +41,7 @@ type deletionItem struct {
 func knownDeletionKind(name string) (merge.Kind, bool) {
 	kind := merge.Kind(name)
 	switch kind {
-	case merge.KindManga, merge.KindChapter, merge.KindCategory,
+	case merge.KindManga, merge.KindChapter, merge.KindCategory, merge.KindHistory,
 		merge.KindSource, merge.KindAppPref, merge.KindSourcePref,
 		merge.KindExtStore, merge.KindSavedSearch, merge.KindExtra:
 		return kind, true
@@ -134,7 +134,7 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// deletions applies generic tombstones for any of the nine item kinds. The canonical
+// deletions applies generic tombstones for any of the ten item kinds. The canonical
 // {"items":[...]} shape and the legacy chapter/category shapes are merged and deduplicated
 // by (kind, key); unknown or absent keys are acknowledged but apply nothing.
 func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +153,6 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-
 	var body deletionsRequest
 	if len(bytes.TrimSpace(data)) > 0 {
 		if err := json.Unmarshal(data, &body); err != nil {

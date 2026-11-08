@@ -100,12 +100,18 @@ func (e *Emulator) TriggerSyncBroadcast(ctx context.Context) error {
 	return nil
 }
 
+// PushBackup stages the file in the app's own cache, since scoped storage denies the app a file:// path
+// on shared storage.
 func (e *Emulator) PushBackup(ctx context.Context, localPath string) (string, error) {
-	remote := "/sdcard/Download/" + filepath.Base(localPath)
-	if _, err := e.Adb(ctx, "push", localPath, remote); err != nil {
+	name := filepath.Base(localPath)
+	staged := "/data/local/tmp/" + name
+	if _, err := e.Adb(ctx, "push", localPath, staged); err != nil {
 		return "", err
 	}
-	return remote, nil
+	if _, err := e.Adb(ctx, "shell", "run-as", AppPackage, "sh", "-c", fmt.Sprintf("'mkdir -p cache && cat %s > cache/%s'", staged, name)); err != nil {
+		return "", err
+	}
+	return "/data/user/0/" + AppPackage + "/cache/" + name, nil
 }
 
 func (e *Emulator) OpenBackupFile(ctx context.Context, devicePath string) error {

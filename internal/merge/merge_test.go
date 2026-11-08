@@ -2,6 +2,7 @@ package merge
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -253,6 +254,12 @@ func TestCategoryTombstoneAndResurrect(t *testing.T) {
 	res = s.merge("A", category("uid:1", "Reading", 1))
 	if len(res.Writes) != 0 || !res.ChangedForClient {
 		t.Errorf("stale resend must not resurrect: %+v", res)
+	}
+	resent := category("uid:1", "Reading", 1)
+	resent.ModifiedAt = 200
+	res = s.merge("A", resent)
+	if len(res.Writes) != 0 || !res.ChangedForClient {
+		t.Errorf("a newer timestamp must not resurrect a category: %+v", res)
 	}
 	// A renamed it after the delete (version bump): resurrect
 	res = s.merge("A", category("uid:1", "Reading now", 2))
@@ -555,6 +562,34 @@ func TestSectionTombstoneResurrectRules(t *testing.T) {
 	}
 }
 
+func TestChapterTombstoneAndResurrect(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", manga("1|/m", 1, "m"), chapter("1|/m", "1|/m\x1f/c1", 1, "c1"))
+
+	res := Merge(s, Request{DeviceID: "B", Tombstones: []Tombstone{{Kind: KindChapter, Key: "1|/m\x1f/c1"}}})
+	if len(res.Tombstones) != 1 || res.Tombstones[0].Kind != KindChapter || res.Tombstones[0].Key != "1|/m\x1f/c1" {
+		t.Fatalf("tombstones = %+v", res.Tombstones)
+	}
+	s.apply(res, "B")
+	if !s.Get(KindChapter, "1|/m\x1f/c1").Deleted {
+		t.Fatal("not tombstoned")
+	}
+
+	res = s.merge("A", manga("1|/m", 1, "m"), chapter("1|/m", "1|/m\x1f/c1", 1, "c1"))
+	if len(res.Writes) != 0 || !res.ChangedForClient {
+		t.Errorf("stale resend must not resurrect: %+v", res)
+	}
+	res = s.merge("A", chapter("1|/m", "1|/m\x1f/c1", 2, "c1b"))
+	if len(res.Writes) != 1 || s.Get(KindChapter, "1|/m\x1f/c1").Deleted {
+		t.Errorf("edit after delete must resurrect: %+v", res)
+	}
+
+	res = Merge(s, Request{DeviceID: "B", Tombstones: []Tombstone{{Kind: KindChapter, Key: "1|/m\x1f/nope"}}})
+	if len(res.Tombstones) != 0 {
+		t.Errorf("tombstones = %+v", res.Tombstones)
+	}
+}
+
 func TestCategoryNameFallbackRemapsMangaRefs(t *testing.T) {
 	s := newMemStore()
 	s.merge("A", category("uid:1", "Reading", 1))
@@ -595,5 +630,34 @@ func TestRetryIsIdempotent(t *testing.T) {
 	res := s.merge("A", items()...)
 	if len(res.Writes) != 0 || len(res.Tombstones) != 0 || res.ChangedForClient || s.seq != seq {
 		t.Errorf("retry not idempotent: %+v seq %d -> %d", res, seq, s.seq)
+	}
+}
+
+func history(parent, key string, lastRead int64) *Item {
+	return &Item{Kind: KindHistory, Key: key, ParentKey: parent, ModifiedAt: lastRead, Payload: fmt.Appendf(nil, "%s@%d", key, lastRead)}
+}
+
+func TestHistoryNewerReadWinsWithoutMangaBump(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", manga("1|/m", 5, "m"), history("1|/m", "/c1", 100))
+
+	res := s.merge("A", manga("1|/m", 5, "m"), history("1|/m", "/c1", 200), history("1|/m", "/c2", 150))
+
+	if len(res.Writes) != 2 {
+		t.Fatalf("writes = %+v, want the two history entries", res.Writes)
+	}
+	if got := s.Get(KindHistory, "/c1").ModifiedAt; got != 200 {
+		t.Errorf("c1 last read = %d, want 200", got)
+	}
+}
+
+func TestHistoryOlderReadGetsServerCopyBack(t *testing.T) {
+	s := newMemStore()
+	s.merge("A", history("1|/m", "/c1", 200))
+
+	res := s.merge("B", history("1|/m", "/c1", 100))
+
+	if len(res.Writes) != 0 || len(res.ReturnKeys[KindHistory]) != 1 {
+		t.Errorf("B must receive the newer entry: %+v", res)
 	}
 }

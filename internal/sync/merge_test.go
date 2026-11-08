@@ -130,6 +130,34 @@ func TestMerge_TwoDeviceRace(t *testing.T) {
 	}
 }
 
+func TestMerge_SameCategoryNameDifferentUIDs(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	catsA := []*pb.BackupCategory{{Name: "Reading", Order: 0, Uid: 10, Version: 1, LastModifiedAt: 100}}
+	mA := mangaOf(1, "/m", 1, true)
+	mA.Categories = []int64{0}
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupCategories: catsA, BackupManga: []*pb.BackupManga{mA}})
+
+	catsB := []*pb.BackupCategory{{Name: "Reading", Order: 0, Uid: 20, Version: 1, LastModifiedAt: 200}}
+	mB := mangaOf(1, "/m", 1, true)
+	mB.Categories = []int64{0}
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{BackupCategories: catsB, BackupManga: []*pb.BackupManga{mB}})
+
+	m := urls(b.Backup)["/m"]
+	if m == nil {
+		t.Fatalf("B has no manga /m")
+	}
+	if len(m.Categories) != 1 {
+		t.Fatalf("B manga lost its categories: categories=%v, all cats=%v", m.Categories, b.Backup.BackupCategories)
+	}
+
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{})
+	m = urls(a.Backup)["/m"]
+	if m == nil || len(m.Categories) != 1 {
+		t.Fatalf("A manga lost its categories on follow-up sync: categories=%v", m.Categories)
+	}
+}
+
 func TestMerge_ReadStateAndUnfavoriteFlow(t *testing.T) {
 	svc, _ := newTestService(t)
 
@@ -172,6 +200,46 @@ func TestMerge_ReadStateAndUnfavoriteFlow(t *testing.T) {
 	m = urls(b.Backup)["/m"]
 	if !b.Changed || m == nil || m.Version != 2 {
 		t.Fatalf("stale resend: changed=%v %v", b.Changed, b.Backup.BackupManga)
+	}
+}
+
+func TestMerge_HistoryReachesOtherDeviceWithoutMangaBump(t *testing.T) {
+	svc, _ := newTestService(t)
+	seed := mangaOf(1, "/m", 5, true, chapterOf("/c1", 2, false))
+	seed.LastModifiedAt = 100
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{seed}})
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+
+	read := mangaOf(1, "/m", 5, true, chapterOf("/c1", 3, true))
+	read.LastModifiedAt = 100
+	read.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 1_700_000_000_000, ReadDuration: 60}}
+	sync2(t, svc, "A", a.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{read}})
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{})
+
+	m := urls(b.Backup)["/m"]
+	if !b.Changed || m == nil {
+		t.Fatalf("B delta = changed=%v %v", b.Changed, b.Backup.BackupManga)
+	}
+	if len(m.History) != 1 || m.History[0].LastRead != 1_700_000_000_000 {
+		t.Errorf("B history = %v, want the entry A recorded", m.History)
+	}
+}
+
+func TestMerge_HistoryOnlyChangeIsDelivered(t *testing.T) {
+	svc, _ := newTestService(t)
+	first := mangaOf(1, "/m", 5, true, chapterOf("/c1", 3, true))
+	first.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 100}}
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{first}})
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+
+	reread := mangaOf(1, "/m", 5, true)
+	reread.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 200}}
+	sync2(t, svc, "A", a.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{reread}})
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{})
+
+	m := urls(b.Backup)["/m"]
+	if m == nil || len(m.Chapters) != 1 || len(m.History) != 1 || m.History[0].LastRead != 200 {
+		t.Fatalf("B delta = %v, want /m with its chapter and the newer history", b.Backup.BackupManga)
 	}
 }
 
@@ -267,6 +335,7 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 	seed := []*merge.Item{
 		{Kind: merge.KindManga, Key: "1|/m", Payload: mustMarshal(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})},
 		{Kind: merge.KindChapter, Key: "1|/m\x1f/c", ParentKey: "1|/m", Payload: mustMarshal(t, &pb.BackupChapter{Url: "/c", Name: "/c"})},
+		{Kind: merge.KindHistory, Key: "1|/m\x1f/h", ParentKey: "1|/m", Payload: mustMarshal(t, &pb.BackupHistory{Url: "/h", LastRead: 1})},
 		{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Payload: mustMarshal(t, &pb.BackupCategory{Name: "R", Uid: 1})},
 		{Kind: merge.KindSource, Key: "1", Payload: mustMarshal(t, &pb.BackupSource{SourceId: 1})},
 		{Kind: merge.KindAppPref, Key: "theme", Payload: mustMarshal(t, &pb.BackupPreference{Key: "theme"})},
@@ -332,6 +401,76 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 		len(rendered.BackupExtensionStores) != 0 || len(rendered.BackupSavedSearches) != 0 ||
 		len(rendered.ProtoReflect().GetUnknown()) != 0 {
 		t.Errorf("deleted rows rendered: %+v", rendered)
+	}
+}
+
+func TestMerge_ChapterDeletePropagates(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	m := mangaOf(1, "/m", 1, true,
+		chapterOf("/c1", 1, false),
+		&pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, LastModifiedAt: 500},
+	)
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{m}})
+
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if len(b.Backup.BackupManga) != 1 || len(b.Backup.BackupManga[0].Chapters) != 2 {
+		t.Fatalf("B chapters = %v", b.Backup.BackupManga)
+	}
+
+	if _, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "B", Name: "B"},
+		[]merge.Tombstone{{Kind: merge.KindChapter, Key: backup.ChapterKey("1|/m", "/c2")}}); err != nil {
+		t.Fatal(err)
+	}
+
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	mm := urls(a.Backup)["/m"]
+	if mm == nil {
+		t.Fatal("manga missing from delta")
+	}
+	if len(mm.Chapters) != 1 || mm.Chapters[0].Url != "/c1" {
+		t.Fatalf("A chapters = %v, want only /c1", mm.Chapters)
+	}
+
+	snap, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb, err := backup.Decode(snap.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm := urls(sb)["/m"]; sm == nil || len(sm.Chapters) != 1 || sm.Chapters[0].Url != "/c1" {
+		t.Fatalf("snapshot chapters = %v", sm)
+	}
+
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(
+		1, "/m", 1, true, &pb.BackupChapter{
+			Url: "/c2", Name: "/c2", Version: 1,
+			LastModifiedAt: 1_000_000_000, DateFetch: 1_700_000_000_000,
+		},
+	)}})
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	snap, err = svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb, err = backup.Decode(snap.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm := urls(sb)["/m"]; sm == nil || len(sm.Chapters) != 1 || sm.Chapters[0].Url != "/c1" {
+		t.Fatalf("the stale copy must not resurrect /c2: %v", sm)
+	}
+
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(
+		1, "/m", 1, true, &pb.BackupChapter{Url: "/c2", Name: "/c2", Version: 1, LastModifiedAt: time.Now().Unix() + 1},
+	)}})
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	mm = urls(a.Backup)["/m"]
+	if mm == nil || len(mm.Chapters) != 2 {
+		t.Fatalf("A chapters after the re-add = %v, want /c1 and /c2", mm)
 	}
 }
 

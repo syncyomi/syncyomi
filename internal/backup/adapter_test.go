@@ -83,6 +83,7 @@ func normalize(b *pb.Backup) *pb.Backup {
 			return m.Chapters[i].Url < m.Chapters[j].Url
 		})
 		sort.Slice(m.Categories, func(i, j int) bool { return m.Categories[i] < m.Categories[j] })
+		sort.SliceStable(m.History, func(i, j int) bool { return m.History[i].Url < m.History[j].Url })
 	}
 	return c
 }
@@ -181,6 +182,21 @@ func TestRenderSkipsDeletedSectionKinds(t *testing.T) {
 	}
 }
 
+func TestRenderSkipsTombstonedChapters(t *testing.T) {
+	items := []*merge.Item{
+		{Kind: merge.KindManga, Key: "3|/m", Payload: mustEncode(t, &pb.BackupManga{Source: 3, Url: "/m"})},
+		{Kind: merge.KindChapter, Key: ChapterKey("3|/m", "/c1"), ParentKey: "3|/m", Payload: mustEncode(t, &pb.BackupChapter{Url: "/c1"})},
+		{Kind: merge.KindChapter, Key: ChapterKey("3|/m", "/c2"), ParentKey: "3|/m", Deleted: true, Payload: mustEncode(t, &pb.BackupChapter{Url: "/c2"})},
+	}
+	b, err := Render(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupManga) != 1 || len(b.BackupManga[0].Chapters) != 1 || b.BackupManga[0].Chapters[0].Url != "/c1" {
+		t.Fatalf("tombstoned chapter leaked into render: %v", b.BackupManga)
+	}
+}
+
 func TestSplitKeepsUnknownTopLevelFields(t *testing.T) {
 	b := &pb.Backup{}
 	b.ProtoReflect().SetUnknown([]byte{0xc2, 0xb2, 0x04, 0x01, 0x41}) // field 9000 bytes "A"
@@ -244,7 +260,10 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 	b := &pb.Backup{
 		BackupCategories: []*pb.BackupCategory{{Name: "A", Uid: 1, LastModifiedAt: lm}},
 		BackupManga: []*pb.BackupManga{
-			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: lm + 2}}},
+			{Source: 1, Url: "/m", LastModifiedAt: lm + 1, Chapters: []*pb.BackupChapter{
+				{Url: "/c", LastModifiedAt: lm + 2},
+				{Url: "/c2", LastModifiedAt: lm + 2, DateFetch: 1_700_000_000_000},
+			}},
 			// version tie deduped by the newer timestamp
 			{Source: 1, Url: "/dup", LastModifiedAt: lm + 9},
 			{Source: 1, Url: "/dup", LastModifiedAt: lm + 3},
@@ -261,7 +280,86 @@ func TestSplitPopulatesModifiedAt(t *testing.T) {
 	if got["category|uid:1"] != lm || got["manga|1|/m"] != lm+1 || got["chapter|"+ChapterKey("1|/m", "/c")] != lm+2 {
 		t.Errorf("ModifiedAt not extracted: %v", got)
 	}
+	if got["chapter|"+ChapterKey("1|/m", "/c2")] != lm+2 {
+		t.Errorf("a chapter must compare on last_modified_at, not date_fetch: %v", got)
+	}
 	if got["manga|1|/dup"] != lm+9 {
 		t.Errorf("dedupe kept the older timestamp: %v", got["manga|1|/dup"])
+	}
+}
+
+func TestSplitMovesHistoryIntoItems(t *testing.T) {
+	b := &pb.Backup{BackupManga: []*pb.BackupManga{{
+		Source: 1, Url: "/m",
+		History: []*pb.BackupHistory{{Url: "/c1", LastRead: 100, ReadDuration: 7}, {Url: "", LastRead: 5}},
+	}}}
+
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var history []*merge.Item
+	for _, it := range items {
+		switch it.Kind {
+		case merge.KindManga:
+			m := &pb.BackupManga{}
+			if err := proto.Unmarshal(it.Payload, m); err != nil {
+				t.Fatal(err)
+			}
+			if len(m.History) != 0 {
+				t.Errorf("manga payload still carries history: %v", m.History)
+			}
+		case merge.KindHistory:
+			history = append(history, it)
+		}
+	}
+	if len(history) != 1 {
+		t.Fatalf("history items = %v, want one (empty url dropped)", history)
+	}
+	h := history[0]
+	if h.Key != HistoryKey("1|/m", "/c1") || h.ParentKey != "1|/m" || h.ModifiedAt != 100 {
+		t.Errorf("history item = %+v", h)
+	}
+}
+
+func TestRenderAttachesHistoryKeepingNewestPerChapter(t *testing.T) {
+	embedded := []*pb.BackupHistory{{Url: "/c1", LastRead: 300}, {Url: "/c2", LastRead: 100}, {Url: "/c3", LastRead: 50}}
+	items := []*merge.Item{
+		{Kind: merge.KindManga, Key: "1|/m", Payload: mustEncode(t, &pb.BackupManga{Source: 1, Url: "/m", History: embedded})},
+		{Kind: merge.KindHistory, Key: HistoryKey("1|/m", "/c1"), ParentKey: "1|/m", Payload: mustEncode(t, &pb.BackupHistory{Url: "/c1", LastRead: 200})},
+		{Kind: merge.KindHistory, Key: HistoryKey("1|/m", "/c2"), ParentKey: "1|/m", Payload: mustEncode(t, &pb.BackupHistory{Url: "/c2", LastRead: 400})},
+		{Kind: merge.KindHistory, Key: HistoryKey("9|/x", "/c9"), ParentKey: "9|/x", Payload: mustEncode(t, &pb.BackupHistory{Url: "/c9", LastRead: 1})},
+	}
+
+	b, err := Render(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(b.BackupManga) != 1 {
+		t.Fatalf("manga = %v", b.BackupManga)
+	}
+	lastRead := map[string]int64{}
+	for _, h := range b.BackupManga[0].History {
+		lastRead[h.Url] = h.LastRead
+	}
+	want := map[string]int64{"/c1": 300, "/c2": 400, "/c3": 50}
+	if len(lastRead) != len(want) {
+		t.Fatalf("history = %v, want %v", lastRead, want)
+	}
+	for url, at := range want {
+		if lastRead[url] != at {
+			t.Errorf("%s last read = %d, want %d", url, lastRead[url], at)
+		}
+	}
+}
+
+func TestSameContentIgnoresEmbeddedHistory(t *testing.T) {
+	withHistory := mustEncode(t, &pb.BackupManga{Source: 1, Url: "/m", History: []*pb.BackupHistory{{Url: "/c1", LastRead: 1}}})
+	without := mustEncode(t, &pb.BackupManga{Source: 1, Url: "/m"})
+
+	if !SameContent(merge.KindManga, withHistory, without) {
+		t.Error("history moved to its own items must not make a stored manga differ")
 	}
 }

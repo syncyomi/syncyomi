@@ -170,7 +170,7 @@ func (t *syncStoreTx) ItemsByKeys(ctx context.Context, keys map[merge.Kind][]str
 	return out, nil
 }
 
-func (t *syncStoreTx) ChaptersOf(ctx context.Context, mangaKeys []string) ([]*merge.Item, error) {
+func (t *syncStoreTx) ChildrenOf(ctx context.Context, mangaKeys []string) ([]*merge.Item, error) {
 	var out []*merge.Item
 	for start := 0; start < len(mangaKeys); start += sqlBatchSize {
 		end := min(start+sqlBatchSize, len(mangaKeys))

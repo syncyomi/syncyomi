@@ -1,0 +1,17 @@
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp:
+    permissions: {}
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "Library"
+- longPressOn: ${TITLE}
+- tapOn: "Delete"
+- tapOn: "From library"
+- tapOn: "OK"

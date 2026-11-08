@@ -37,7 +37,9 @@ sequenceDiagram
     participant S as Server (v2)
     C->>S: GET /api/sync/v2/capabilities
     S-->>C: 200 (404 on an old server: fall back to v1)
-    C->>S: POST /api/sync/v2/deletions<br/>body: pending tombstones (if any)
+    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: pending tombstones (if any)
+    S->>S: tombstone each key (idempotent)
+    S-->>C: 200 {"acknowledged":n,"applied":m} — 404 on an old server: keep them pending
     C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full]<br/>body: backup with changed items (or everything)
     S->>S: merge item by item, assign seq
     S-->>C: 200 backup with missing items<br/>X-Sync-Cursor, X-Sync-Changed, [X-Sync-Full-Requested]
@@ -75,8 +77,8 @@ Body: a backup with everything the client is missing:
 
 - all live categories (so the client can map category numbers and delete categories that
   vanished),
-- manga changed since the cursor by other devices (each with its complete chapter list, also
-  when only one chapter changed), settings changed since the cursor, and any item where the
+- manga changed since the cursor by other devices (each with its complete chapter list and
+  history, also when only one chapter or history entry changed), settings changed since the cursor, and any item where the
   server copy won over the client's,
 - with `X-Sync-Cursor: 0` or `X-Sync-Full: true`: the complete library.
 
@@ -88,7 +90,26 @@ Body: a backup with everything the client is missing:
 | `ETag` | `seq=<cursor>`, the same value v1 clients see |
 
 Clients apply the response with their normal restore (upsert). Deleted categories are
-detected by their absence from the response's category list, which is complete.
+detected by their absence from the response's category list, which is complete. Deleted
+chapters are detected the same way: the manga arrives with its complete (remaining) chapter
+list, so a client can drop the chapters it no longer sees.
+
+## Chapter deletions
+
+`POST /api/sync/v2/deletions` takes the chapter keys a client deleted since its last sync, as
+`{"deletedChapters": ["<key>", ...]}`, and tombstones them before the client's merge. Keys are
+the raw `<source id>|<manga url>` + `0x1f` + `<chapter url>` values, so the separator and any
+control characters inside urls are JSON-escaped here instead of needing base64 to fit in a
+request header — and a body has no header size limits, so a batch of thousands is fine.
+
+The submission is one transaction, so success (`200 {"acknowledged": n}`) means every key was
+processed: unknown and already-deleted keys are no-ops, so a retry is safe. A chapter tombstone
+is dropped from every sync response (the manga is still returned, with its remaining chapters),
+so a chapter a source removed stops reappearing on the other devices.
+
+Older servers have no such route and answer `404`. Clients therefore only call it when they have
+pending deletions and keep a deletion pending until the call succeeds: an older server queues
+it, and it is applied as soon as the server is upgraded.
 
 ## Merge rules
 
@@ -101,7 +122,7 @@ flowchart TD
     V -- equal --> KEEP[server keeps, nothing returned]
     V -- lower --> R[server copy returned to client]
     T[deletion posted to /sync/v2/deletions] --> TB[tombstone]
-    TB --> RES{category: higher version?<br/>manga/chapter: higher version or newer modified_at?}
+    TB --> RES{category: higher version?<br/>manga/chapter/history: higher version or newer modified_at?}
     RES -- yes --> RESURRECT[resurrect]
     RES -- no --> STAY[stays deleted, dropped from responses]
 ```
@@ -109,8 +130,21 @@ flowchart TD
 - Manga are keyed by `source|url`, chapters by their url within the manga, categories by
   `uid` (falling back to name for uid-less categories). Category membership is stored as
   references to categories, so it survives different category orders on different devices.
+- A chapter key is `<source id>|<manga url>` + `0x1f` + `<chapter url>`, sent to
+  `POST /api/sync/v2/deletions` as a raw string (JSON-escaped). A chapter tombstone is dropped
+  from every response (the manga is still returned, with its remaining chapters), so a chapter a
+  source removed stops reappearing on the other devices.
+- A tombstone records its deletion time, and only yields to a genuinely newer copy: a higher
+  `version` (an edit after the delete), or, for chapters, a `last_modified_at` the client stamped
+  after that time. A chapter the source drops and later re-adds comes back this way: the client
+  re-inserts it at `version = 1` and stamps `last_modified_at`, which beats the tombstone.
+- A category tombstone only yields to a higher `version`: categories ride every upload, so a
+  device that has not applied the delete yet resends its copy unchanged.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
   changes); the server stores the winning copy and never bumps it.
+- Reading history is merged per chapter, apart from its manga: reading never bumps the manga's
+  `version`, so history inside the manga would be dropped as an unchanged copy. Entries have no
+  version; the later `last_read` wins.
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a
   deletion. Chapters are deleted only by an explicit `chapter` tombstone (see
   [Deletions](#deletions)); a chapter missing from the body never deletes it.
@@ -169,6 +203,7 @@ bytes; `401` for a missing or invalid API key.
 |---|---|
 | `manga` | `<source>\|<url>` |
 | `chapter` | `<manga key>` + `0x1f` + `<chapter url>` |
+| `history` | `<manga key>` + `0x1f` + `<chapter url>` |
 | `category` | `uid:<uid>` or `name:<name>` |
 | `source` | `<source_id>` |
 | `app_pref` | `<key>` |
@@ -186,10 +221,11 @@ and does not advance the sequence.
 
 ### Resurrection
 
-- `manga` and `chapter` come back for a higher `version`, or for a `modified_at` newer than the
-  deletion, regardless of version. This matters for re-added items: a chapter or manga
-  re-created after deletion starts again at `version = 1` while the tombstoned row may sit at
-  a higher version, so the timestamp is what resurrects it.
+- `manga`, `chapter` and `history` come back for a higher `version`, or for a `modified_at`
+  newer than the deletion, regardless of version. This matters for re-added items: a chapter or
+  manga re-created after deletion starts again at `version = 1` while the tombstoned row may sit
+  at a higher version, so the timestamp is what resurrects it. A history entry carries no
+  version at all; its `modified_at` is `last_read`, so only that timestamp can revive it.
 - `category` comes back only for a higher `version`. Categories are uploaded whole on every
   sync, so a device that has not applied the delete resends its copy unchanged, and restores
   or reorders bump `last_modified_at`; a newer timestamp must not bring a deleted category
@@ -226,7 +262,8 @@ deleting them is durable on the server but not yet propagated to clients.
 
 ## Idempotency and concurrency
 
-- Retrying a request is safe: identical items produce no writes and the cursor does not move.
+- Retrying a request is safe: identical items produce no writes and the cursor does not move,
+  and `/v2/deletions` tombstones are idempotent.
 - Merges for one API key run one at a time (in-process lock plus a row lock on Postgres).
 - A cursor ahead of the server's (database restored from an older backup) is treated as 0
   and `X-Sync-Full-Requested` is returned.
