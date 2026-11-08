@@ -519,9 +519,6 @@ paths:
                   snapshot:
                     type: string
                     example: /api/sync/v2/snapshot
-                  deletions:
-                    type: string
-                    example: /api/sync/v2/deletions
   /sync/v2/merge:
     post:
       tags:
@@ -638,6 +635,9 @@ paths:
         a higher `version`. Unversioned kinds (`source`, `app_pref`, `source_pref`,
         `ext_store`, `saved_search`, `extra`) resurrect only for a payload that differs from
         the tombstoned one.
+
+        `modified_at` is always Unix seconds: a history `last_read` in epoch milliseconds is
+        normalized on upload, so client writes and tombstone stamps compare in one unit.
       operationId: syncV2Deletions
       security:
         - ApiKeyAuth: []

@@ -73,3 +73,40 @@ jobs:
           name: e2e-v1-failure-artifacts
           path: e2e/artifacts/
           retention-days: 7
+
+  # Go test matrix for the database package: SQLite (default) and Postgres.
+  # Neither step needs web/dist; only the server packages are built.
+  go-test-postgres:
+    needs: changes
+    if: needs.changes.outputs.sync == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15.1-alpine
+        env:
+          POSTGRES_USER: SyncYomi
+          POSTGRES_PASSWORD: SyncYomi
+          POSTGRES_DB: syncyomi
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U SyncYomi -d syncyomi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Run database tests (SQLite, default)
+        run: go test ./internal/database/... -count=1
+
+      - name: Run database tests (Postgres)
+        env:
+          SYNCYOMI_TEST_POSTGRES_DSN: "postgres://SyncYomi:SyncYomi@127.0.0.1:5434/syncyomi?sslmode=disable"
+        run: go test ./internal/database/... -count=1 -v

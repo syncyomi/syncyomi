@@ -56,7 +56,7 @@ One row per merged item. `kind` is one of `manga`, `chapter`, `history`, `catego
 | `payload` | the item's protobuf message (a manga payload carries neither chapters, history nor category numbers) |
 | `seq` | the key's `sync_state.seq` at the last change of this row |
 | `origin_device` | device that made the last change (`legacy`, `migration`, `restore` for server-side writes); for a tombstone, the device that posted it |
-| `modified_at` | the payload's `last_modified_at` (`last_read` for history entries), the tiebreaker for equal-version conflicts; for a tombstone, the Unix time in seconds when it was set |
+| `modified_at` | always Unix **seconds** (the canonical unit): the payload's `last_modified_at`, or `last_read` for history entries (a millisecond client value is normalized on upload); the tiebreaker for equal-version conflicts; for a tombstone, the Unix time in seconds when it was set |
 
 The server never parses the payload beyond what the merge keys need, which is what will let
 end-to-end encryption reuse the same store.

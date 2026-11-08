@@ -93,6 +93,81 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 	return backup.Decode(data)
 }
 
+// DeletionItem is one canonical tombstone: the kind of sync item and its key.
+type DeletionItem struct {
+	Kind string `json:"kind"`
+	Key  string `json:"key"`
+}
+
+// DeletionsOptions carries the canonical item list, the legacy chapter/category shapes,
+// or a raw body. RawBody, when non-nil, is sent verbatim instead of marshalling the
+// fields: use []byte{} to exercise the empty-body no-op and []byte("{") for malformed JSON.
+type DeletionsOptions struct {
+	Items             []DeletionItem `json:"items,omitempty"`
+	DeletedChapters   []string       `json:"deletedChapters,omitempty"`
+	DeletedCategories []int64        `json:"deletedCategories,omitempty"`
+	RawBody           []byte         `json:"-"`
+}
+
+// DeletionsResult is the server's answer. A 400 is data, not an error: the caller decides
+// what the status means for the case it exercises.
+type DeletionsResult struct {
+	StatusCode   int
+	Acknowledged int
+	Applied      int
+	Body         []byte
+}
+
+// Deletions posts tombstones to /api/sync/v2/deletions. An error means the request could
+// not be built, marshalled or sent, or a 200 response body was not the expected JSON;
+// every other HTTP answer (including 400) is returned as a result.
+func (c *SyntheticClient) Deletions(ctx context.Context, opts DeletionsOptions) (DeletionsResult, error) {
+	var body []byte
+	if opts.RawBody != nil {
+		body = opts.RawBody
+	} else {
+		encoded, err := json.Marshal(opts)
+		if err != nil {
+			return DeletionsResult{}, err
+		}
+		body = encoded
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.Server.BaseURL+"/api/sync/v2/deletions", bytes.NewReader(body))
+	if err != nil {
+		return DeletionsResult{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Token", c.Server.APIKey)
+	req.Header.Set("X-Device-ID", c.DeviceID)
+	if c.DeviceName != "" {
+		req.Header.Set("X-Device-Name", c.DeviceName)
+	}
+
+	resp, err := legacyClient.Do(req)
+	if err != nil {
+		return DeletionsResult{}, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return DeletionsResult{}, err
+	}
+	res := DeletionsResult{StatusCode: resp.StatusCode, Body: data}
+	if resp.StatusCode == http.StatusOK {
+		var payload struct {
+			Acknowledged int `json:"acknowledged"`
+			Applied      int `json:"applied"`
+		}
+		if err := json.Unmarshal(data, &payload); err != nil {
+			return res, fmt.Errorf("deletions: decode response: %w", err)
+		}
+		res.Acknowledged = payload.Acknowledged
+		res.Applied = payload.Applied
+	}
+	return res, nil
+}
+
 func requestBody(b *pb.Backup, streamed, gzipBody bool) (io.Reader, error) {
 	if b == nil {
 		return bytes.NewReader(nil), nil

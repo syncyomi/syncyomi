@@ -216,6 +216,9 @@ bytes; `401` for a missing or invalid API key.
 
 A tombstone updates the existing `sync_item` row: `deleted=true`, `modified_at` = the current
 Unix time in seconds, `seq` = the key's next sequence, `origin_device` = the requesting device.
+`sync_item.modified_at` is always Unix seconds: client writes store `last_modified_at` as-is,
+and a `BackupHistory.last_read` (epoch milliseconds from `java.util.Date.time`) is divided by
+1000 on upload, so tombstone and client values compare in the same unit.
 There is no new table and no new column. A missing row, or a row already deleted, is a no-op
 and does not advance the sequence.
 

@@ -327,4 +327,7 @@ ALTER TABLE sync_status ADD COLUMN last_protocol TEXT NOT NULL DEFAULT '';
 	`
 ALTER TABLE sync_data ADD COLUMN raw_pending BOOLEAN NOT NULL DEFAULT FALSE;
 `,
+	`
+UPDATE sync_item SET modified_at = modified_at / 1000 WHERE modified_at >= 100000000000;
+`,
 }

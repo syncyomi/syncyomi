@@ -6,6 +6,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,9 +17,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// newTestDB opens a fresh sqlite database in a temp dir with the full schema applied.
+// newTestDB opens a fresh database with the full schema applied. It uses
+// Postgres when SYNCYOMI_TEST_POSTGRES_DSN is set, SQLite otherwise.
 func newTestDB(t *testing.T) *DB {
 	t.Helper()
+
+	if testPostgresDSN() != "" {
+		return newTestPostgresDB(t)
+	}
 
 	databaseDriver = "sqlite"
 
@@ -55,6 +61,7 @@ func countRows(t *testing.T, db *DB, table, apiKey string) int {
 }
 
 func TestSQLiteSchemaVersion(t *testing.T) {
+	requireSQLite(t)
 	db := newTestDB(t)
 
 	var version int
@@ -491,6 +498,7 @@ func TestSyncRepo_StatusStoreFields(t *testing.T) {
 
 // Upgrading a database that is already at the previous schema version must only run the new migration.
 func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
+	requireSQLite(t)
 	databaseDriver = "sqlite"
 	db := &DB{
 		squirrel: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
@@ -504,15 +512,11 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	if err := db.openSQLite(); err != nil {
 		t.Fatal(err)
 	}
-	// rewind to the previous version by dropping what the last migration added
+	// a database at the previous version already has every earlier schema change; the last
+	// migration is data-only, so rewinding the version is enough to re-run it
 	previous := len(sqliteMigrations) - 1
-	for _, stmt := range []string{
-		"ALTER TABLE sync_data DROP COLUMN raw_pending",
-		fmt.Sprintf("PRAGMA user_version = %d", previous),
-	} {
-		if _, err := db.handler.Exec(stmt); err != nil {
-			t.Fatalf("%s: %v", stmt, err)
-		}
+	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", previous)); err != nil {
+		t.Fatalf("rewind user_version: %v", err)
 	}
 	insertTestAPIKey(t, db, "key1")
 	if _, err := db.handler.Exec(`INSERT INTO sync_data (user_api_key, data, data_etag) VALUES ('key1', X'01', 'uuid=old')`); err != nil {
@@ -542,6 +546,57 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	}
 	if _, err := repo.SetSyncData(ctx, "key1", []byte{2}); err != nil {
 		t.Errorf("history write after migration: %v", err)
+	}
+}
+
+// A history row written before timestamps were normalized can hold epoch milliseconds;
+// the migration must rewrite it to seconds while leaving seconds-based rows untouched.
+func TestSQLiteMigrationNormalizesModifiedAtToSeconds(t *testing.T) {
+	requireSQLite(t)
+	databaseDriver = "sqlite"
+	db := &DB{
+		squirrel: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		log:      zerolog.Nop(),
+		Driver:   "sqlite",
+		DSN:      filepath.Join(t.TempDir(), "ms.db"),
+	}
+	db.ctx, db.cancel = context.WithCancel(context.Background())
+	t.Cleanup(func() { _ = db.Close() })
+
+	if err := db.openSQLite(); err != nil {
+		t.Fatal(err)
+	}
+	insertTestAPIKey(t, db, "key1")
+
+	want := map[string]int64{
+		"history|1|/m\x1f/c": 1_700_000_000, // written in milliseconds
+		"manga|1|/m":         1_700_000_000, // already seconds, must not change
+	}
+	for id, at := range map[string]int64{"history|1|/m\x1f/c": 1_700_000_000_123, "manga|1|/m": 1_700_000_000} {
+		kind, key, _ := strings.Cut(id, "|")
+		if _, err := db.handler.Exec(
+			`INSERT INTO sync_item (user_api_key, kind, key, version, modified_at, payload, seq, origin_device) VALUES ($1, $2, $3, 0, $4, X'01', 1, '')`,
+			"key1", kind, key, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.migrateSQLite(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	for id, expected := range want {
+		kind, key, _ := strings.Cut(id, "|")
+		var got int64
+		if err := db.handler.QueryRow(`SELECT modified_at FROM sync_item WHERE user_api_key = $1 AND kind = $2 AND key = $3`, "key1", kind, key).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != expected {
+			t.Errorf("%s modified_at = %d, want %d", id, got, expected)
+		}
 	}
 }
 

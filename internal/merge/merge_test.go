@@ -661,3 +661,30 @@ func TestHistoryOlderReadGetsServerCopyBack(t *testing.T) {
 		t.Errorf("B must receive the newer entry: %+v", res)
 	}
 }
+
+// A history re-upload carries the client's millisecond last_read. Normalized to seconds it
+// must not resurrect a tombstone stamped in seconds; a genuinely newer read does.
+func TestHistoryTombstoneIgnoresStaleMillisecondReupload(t *testing.T) {
+	const tombstone = int64(1_700_000_000)
+	s := newMemStore()
+	s.now = tombstone
+	s.merge("A", history("1|/m", "/c1", tombstone-10))
+
+	res := Merge(s, Request{DeviceID: "B", Tombstones: []Tombstone{{Kind: KindHistory, Key: "/c1"}}})
+	if len(res.Tombstones) != 1 {
+		t.Fatalf("tombstones = %v", res.Tombstones)
+	}
+	s.apply(res, "B")
+
+	// 1_600_000_000_123 ms is 1_600_000_000 s, older than the 1_700_000_000 s tombstone
+	res = s.merge("A", history("1|/m", "/c1", NormalizeTimestamp(1_600_000_000_123)))
+	if len(res.Writes) != 0 || !s.Get(KindHistory, "/c1").Deleted {
+		t.Errorf("stale millisecond re-upload resurrected the tombstone: %+v", res)
+	}
+
+	// 1_800_000_000_123 ms is 1_800_000_000 s, newer than the tombstone
+	res = s.merge("A", history("1|/m", "/c1", NormalizeTimestamp(1_800_000_000_123)))
+	if len(res.Writes) != 1 || s.Get(KindHistory, "/c1").Deleted {
+		t.Errorf("newer millisecond read did not resurrect: %+v", res)
+	}
+}

@@ -515,7 +515,7 @@ func TestSyncStore_RenderCacheAndHistory(t *testing.T) {
 	ctx := context.Background()
 
 	// a pre-v2 blob has no rendered_seq
-	if _, err := db.handler.Exec(`INSERT INTO sync_data (user_api_key, data, data_etag) VALUES ('key1', X'01', 'uuid=old')`); err != nil {
+	if _, err := db.handler.Exec(`INSERT INTO sync_data (user_api_key, data, data_etag) VALUES ('key1', $1, 'uuid=old')`, []byte{1}); err != nil {
 		t.Fatal(err)
 	}
 
