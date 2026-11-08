@@ -14,6 +14,7 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup"
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"github.com/SyncYomi/SyncYomi/internal/sync"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -33,6 +34,12 @@ type mockSyncService struct {
 	mergeErr       error
 	mergeReq       *sync.MergeRequest
 	reportEventErr error
+
+	deleteReq     []merge.Tombstone
+	deleteDevice  domain.DeviceInfo
+	deleteAPIKey  string
+	deleteApplied int
+	deleteErr     error
 
 	reportedDevice domain.DeviceInfo
 	accessDevice   domain.DeviceInfo
@@ -55,6 +62,14 @@ func (m *mockSyncService) Merge(ctx context.Context, req sync.MergeRequest) (*sy
 		return nil, m.mergeErr
 	}
 	return m.mergeResp, nil
+}
+
+func (m *mockSyncService) DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error) {
+	m.deleteReq, m.deleteDevice, m.deleteAPIKey = tombstones, dev, apiKey
+	if m.deleteErr != nil {
+		return 0, m.deleteErr
+	}
+	return m.deleteApplied, nil
 }
 
 func (m *mockSyncService) Snapshot(ctx context.Context, apiKey string, cursor int64) (*sync.Snapshot, error) {

@@ -516,6 +516,9 @@ paths:
                   snapshot:
                     type: string
                     example: /api/sync/v2/snapshot
+                  deletions:
+                    type: string
+                    example: /api/sync/v2/deletions
   /sync/v2/merge:
     post:
       tags:
@@ -525,8 +528,9 @@ paths:
         The body is a Tachiyomi backup (protobuf, optionally gzip-compressed) holding the
         client's full library or only what changed since its last successful upload. Items
         present are merged item by item (higher `version` wins, ties keep the server copy);
-        items absent are left untouched. Only explicit tombstones delete: category uids listed
-        in `X-Sync-Deleted-Categories`.
+        items absent are left untouched. Only explicit tombstones delete: post them to
+        `POST /sync/v2/deletions` (the `X-Sync-Deleted-Categories` header remains a deprecated
+        alias for category tombstones).
 
         The response is a backup with everything the client is missing: all live categories
         plus manga, chapters and settings changed since `X-Sync-Cursor` by other devices and
@@ -560,9 +564,10 @@ paths:
         - name: X-Sync-Deleted-Categories
           in: header
           required: false
+          deprecated: true
           schema:
             type: string
-          description: Comma-separated category uids the client deleted since its last sync
+          description: Comma-separated category uids the client deleted since its last sync. Deprecated alias for category tombstones posted to `/sync/v2/deletions`.
         - name: Content-Encoding
           in: header
           required: false
@@ -607,6 +612,57 @@ paths:
           description: Unauthorized
         '413':
           description: Body larger than the configured limit
+        '500':
+          description: Internal server error
+  /sync/v2/deletions:
+    post:
+      tags:
+        - Sync v2
+      summary: Post tombstones for deleted items
+      description: |
+        Records explicit deletions for any of the nine kinds. Each tombstone updates the
+        existing item (`deleted=true`, the tombstone time in `modified_at`, the key's next
+        `seq`, the posting device in `origin_device`) and the item is omitted from later
+        rendered backups. Unknown or never-seen keys are acknowledged but not applied. An empty
+        body is a valid no-op.
+
+        The canonical `items` array may be combined with the legacy `deletedChapters` and
+        `deletedCategories` fields; all entries are merged and deduplicated.
+
+        `manga` and `chapter` resurrect for a higher `version`, or for a `modified_at` newer
+        than the deletion, regardless of version (a re-added item restarts at version 1).
+        `category` resurrects only for a higher `version`. Unversioned kinds (`source`,
+        `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra`) resurrect only for a
+        payload that differs from the tombstoned one.
+      operationId: syncV2Deletions
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: X-Device-ID
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+          description: Stable identifier of the device
+        - $ref: '#/components/parameters/DeviceName'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletionRequest'
+      responses:
+        '200':
+          description: Tombstones processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionResponse'
+        '400':
+          description: Malformed JSON, unknown kind, empty key, or key longer than 4096 bytes
+        '401':
+          description: Unauthorized
         '500':
           description: Internal server error
   /sync/v2/snapshot:
@@ -1118,3 +1174,62 @@ components:
         message:
           type: string
           description: Optional detail (e.g. error message for SYNC_FAILED, reason for SYNC_CANCELLED)
+    DeletionRequest:
+      type: object
+      description: Body for POST /sync/v2/deletions
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletionItem'
+        deletedChapters:
+          type: array
+          description: Legacy chapter keys to delete (the shape deployed clients send), in `<manga key>` + 0x1f + `<chapter url>` form
+          items:
+            type: string
+        deletedCategories:
+          type: array
+          description: Legacy category uids to delete; each number `n` becomes the key `uid:<n>`
+          items:
+            type: integer
+            format: int64
+    DeletionItem:
+      type: object
+      required:
+        - kind
+        - key
+      properties:
+        kind:
+          type: string
+          enum:
+            - manga
+            - chapter
+            - category
+            - source
+            - app_pref
+            - source_pref
+            - ext_store
+            - saved_search
+            - extra
+        key:
+          type: string
+          maxLength: 4096
+          description: |
+            Kind-specific key: `manga` = `<source>|<url>`; `chapter` = `<manga key>` + 0x1f +
+            `<chapter url>`; `category` = `uid:<uid>` or `name:<name>`; `source` =
+            `<source_id>`; `app_pref` = `<key>`; `source_pref` = `<source_key>` + 0x1f +
+            `<key>`; `ext_store` = `<index_url>`; `saved_search` = `<name>|<source>`;
+            `extra` = `extra`.
+    DeletionResponse:
+      type: object
+      description: Result of POST /sync/v2/deletions
+      required:
+        - acknowledged
+        - applied
+      properties:
+        acknowledged:
+          type: integer
+          description: Accepted input entries before deduplication (duplicates still count)
+        applied:
+          type: integer
+          description: Rows that actually transitioned from live to deleted

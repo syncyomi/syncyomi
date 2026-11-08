@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/SyncYomi/SyncYomi/internal/backup"
+	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"github.com/rs/zerolog"
+	"google.golang.org/protobuf/proto"
 )
 
 func newTestStore(t *testing.T) (*SyncStoreRepo, *DB) {
@@ -116,7 +120,7 @@ func TestSyncStore_TombstoneAndResurrect(t *testing.T) {
 		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Version: 1, Payload: []byte("c")}), "A"); err != nil {
 			return err
 		}
-		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []string{"uid:1"}, ReturnKeys: map[merge.Kind][]string{}}, "B"); err != nil {
+		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindCategory, Key: "uid:1"}}, ReturnKeys: map[merge.Kind][]string{}}, "B"); err != nil {
 			return err
 		}
 		cats, err := tx.Categories(ctx)
@@ -132,6 +136,372 @@ func TestSyncStore_TombstoneAndResurrect(t *testing.T) {
 		cats, _ = tx.Categories(ctx)
 		if cats[0].Deleted || cats[0].Name != "R2" {
 			t.Errorf("after resurrect: %+v", cats[0])
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// mergeStore adapts a live store transaction to merge.Store, so a test drives the
+// production path (merge.Merge -> tx.Apply) instead of hand-building a Result.
+type mergeStore struct {
+	ctx context.Context
+	tx  domain.SyncStoreTx
+}
+
+func (s *mergeStore) Get(kind merge.Kind, key string) *merge.Item {
+	items, err := s.tx.GetItems(s.ctx, kind, []string{key})
+	if err != nil {
+		return nil
+	}
+	return items[key]
+}
+
+func (s *mergeStore) CategoryByName(name string) *merge.Item {
+	cats, err := s.tx.Categories(s.ctx)
+	if err != nil {
+		return nil
+	}
+	for _, c := range cats {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
+func (s *mergeStore) SameContent(a, b *merge.Item) bool {
+	return bytes.Equal(a.Payload, b.Payload) && slices.Equal(a.Refs, b.Refs)
+}
+
+func renderChapterCount(t *testing.T, tx domain.SyncStoreTx) int {
+	t.Helper()
+	all, err := tx.AllItems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := backup.Render(all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupManga) != 1 {
+		t.Fatalf("rendered manga = %d, want 1", len(b.BackupManga))
+	}
+	return len(b.BackupManga[0].Chapters)
+}
+
+// A chapter re-added after a tombstone restarts at version 1. Through the real Apply path
+// the deletion stamps modified_at with the server clock, so a newer re-add must resurrect
+// the row and render, while an older one must stay deleted and not render.
+func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey         = "1|/m"
+		chapterKey       = "1|/m\x1f/c"
+		t0         int64 = 1000
+	)
+	mangaItem := &merge.Item{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: t0, Payload: pbPayload(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})}
+	chapterItem := &merge.Item{Kind: merge.KindChapter, Key: chapterKey, ParentKey: mangaKey, Version: 3, ModifiedAt: t0, Payload: pbPayload(t, &pb.BackupChapter{Url: "/c", Name: "/c"})}
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		view := &mergeStore{ctx: ctx, tx: tx}
+		if _, err := tx.Apply(ctx, write(mangaItem, chapterItem), "A"); err != nil {
+			return err
+		}
+
+		tombstone := func() (int64, error) {
+			res := merge.Merge(view, merge.Request{DeviceID: "B", Tombstones: []merge.Tombstone{{Kind: merge.KindChapter, Key: chapterKey}}})
+			if _, err := tx.Apply(ctx, res, "B"); err != nil {
+				return 0, err
+			}
+			items, err := tx.GetItems(ctx, merge.KindChapter, []string{chapterKey})
+			if err != nil {
+				return 0, err
+			}
+			if !items[chapterKey].Deleted {
+				t.Fatalf("chapter not tombstoned: %+v", items[chapterKey])
+			}
+			return items[chapterKey].ModifiedAt, nil
+		}
+
+		deletedAt, err := tombstone()
+		if err != nil {
+			return err
+		}
+		now := time.Now().Unix()
+		if deletedAt < now-5 || deletedAt > now+5 {
+			t.Fatalf("tombstone modified_at = %d, want the server clock near %d", deletedAt, now)
+		}
+		if got := renderChapterCount(t, tx); got != 0 {
+			t.Errorf("tombstoned chapter rendered: %d chapters", got)
+		}
+
+		// version 1 with a newer timestamp resurrects and renders
+		readd := &merge.Item{Kind: merge.KindChapter, Key: chapterKey, ParentKey: mangaKey, Version: 1, ModifiedAt: deletedAt + 1, Payload: pbPayload(t, &pb.BackupChapter{Url: "/c", Name: "/c", Read: true})}
+		res := merge.Merge(view, merge.Request{DeviceID: "A", Items: []*merge.Item{readd}})
+		if len(res.Writes) != 1 {
+			t.Fatalf("re-add writes = %v, want 1", res.Writes)
+		}
+		if _, err := tx.Apply(ctx, res, "A"); err != nil {
+			return err
+		}
+		if got := renderChapterCount(t, tx); got != 1 {
+			t.Errorf("resurrected chapter did not render: %d chapters", got)
+		}
+
+		// a re-add older than the fresh deletion stays dead and does not render
+		if _, err := tombstone(); err != nil {
+			return err
+		}
+		stale := &merge.Item{Kind: merge.KindChapter, Key: chapterKey, ParentKey: mangaKey, Version: 1, ModifiedAt: deletedAt - 100, Payload: pbPayload(t, &pb.BackupChapter{Url: "/c", Name: "/c", Read: true})}
+		res = merge.Merge(view, merge.Request{DeviceID: "A", Items: []*merge.Item{stale}})
+		if len(res.Writes) != 0 {
+			t.Fatalf("older re-add wrote: %v", res.Writes)
+		}
+		if _, err := tx.Apply(ctx, res, "A"); err != nil {
+			return err
+		}
+		if got := renderChapterCount(t, tx); got != 0 {
+			t.Errorf("older re-add rendered: %d chapters", got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func pbPayload(t *testing.T, m proto.Message) []byte {
+	t.Helper()
+	b, err := proto.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// A tombstone names its kind, so Apply marks the requested row and only that one.
+func TestSyncStore_TombstoneKinds(t *testing.T) {
+	const (
+		mangaKey   = "1|/m"
+		chapterKey = "1|/m\x1f/c"
+		catKey     = "uid:7"
+	)
+	mangaItem := &merge.Item{Kind: merge.KindManga, Key: mangaKey, Payload: pbPayload(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})}
+
+	cases := []struct {
+		name    string
+		kind    merge.Kind
+		key     string
+		seed    []*merge.Item
+		omitted func(t *testing.T, b *pb.Backup)
+	}{
+		{
+			name: "manga",
+			kind: merge.KindManga,
+			key:  mangaKey,
+			seed: []*merge.Item{mangaItem},
+			omitted: func(t *testing.T, b *pb.Backup) {
+				if len(b.BackupManga) != 0 {
+					t.Errorf("render kept the tombstoned manga: %v", b.BackupManga)
+				}
+			},
+		},
+		{
+			name: "chapter",
+			kind: merge.KindChapter,
+			key:  chapterKey,
+			seed: []*merge.Item{
+				mangaItem,
+				{Kind: merge.KindChapter, Key: chapterKey, ParentKey: mangaKey, Payload: pbPayload(t, &pb.BackupChapter{Url: "/c", Name: "/c"})},
+			},
+			omitted: func(t *testing.T, b *pb.Backup) {
+				if len(b.BackupManga) != 1 || len(b.BackupManga[0].Chapters) != 0 {
+					t.Errorf("render kept the tombstoned chapter: %v", b.BackupManga)
+				}
+			},
+		},
+		{
+			name: "category",
+			kind: merge.KindCategory,
+			key:  catKey,
+			seed: []*merge.Item{{Kind: merge.KindCategory, Key: catKey, Name: "Reading", Payload: pbPayload(t, &pb.BackupCategory{Name: "Reading", Uid: 7})}},
+			omitted: func(t *testing.T, b *pb.Backup) {
+				if len(b.BackupCategories) != 0 {
+					t.Errorf("render kept the tombstoned category: %v", b.BackupCategories)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, _ := newTestStore(t)
+			ctx := context.Background()
+
+			err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+				if _, err := tx.Apply(ctx, write(tc.seed...), "A"); err != nil {
+					return err
+				}
+				seq, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: tc.kind, Key: tc.key}}}, "B")
+				if err != nil {
+					return err
+				}
+				if seq != 2 {
+					t.Errorf("apply seq = %d, want 2 (one increment per Apply)", seq)
+				}
+
+				got, err := tx.GetItems(ctx, tc.kind, []string{tc.key})
+				if err != nil {
+					return err
+				}
+				it := got[tc.key]
+				if it == nil {
+					t.Fatalf("%s %s missing after tombstone", tc.kind, tc.key)
+				}
+				if !it.Deleted || it.Seq != 2 || it.OriginDevice != "B" {
+					t.Errorf("tombstoned row = kind=%s key=%s deleted=%v seq=%d origin=%s", it.Kind, it.Key, it.Deleted, it.Seq, it.OriginDevice)
+				}
+				now := time.Now().Unix()
+				if it.ModifiedAt <= 0 || it.ModifiedAt > now || it.ModifiedAt < now-60 {
+					t.Errorf("modified_at = %d, want unix seconds near %d", it.ModifiedAt, now)
+				}
+
+				since, err := tx.ItemsSince(ctx, 1)
+				if err != nil {
+					return err
+				}
+				var seen *merge.Item
+				for _, s := range since {
+					if s.Kind == tc.kind && s.Key == tc.key {
+						seen = s
+					}
+				}
+				if seen == nil || seen.Seq != 2 {
+					t.Errorf("ItemsSince(1) = %+v, want the tombstoned row at seq 2", seen)
+				}
+
+				all, err := tx.AllItems(ctx)
+				if err != nil {
+					return err
+				}
+				b, err := backup.Render(all)
+				if err != nil {
+					return err
+				}
+				tc.omitted(t, b)
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// An unknown key matches no row, so a tombstone for it leaves the store content alone.
+func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", ModifiedAt: 100, Payload: []byte("m")}), "A"); err != nil {
+			return err
+		}
+		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "missing"}}}, "B"); err != nil {
+			return err
+		}
+		all, err := tx.AllItems(ctx)
+		if err != nil {
+			return err
+		}
+		if len(all) != 1 || all[0].Deleted || all[0].Seq != 1 || all[0].OriginDevice != "A" || all[0].ModifiedAt != 100 {
+			t.Errorf("unknown key tombstone touched rows: %+v", all)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A deletion matching no row must not advance the seq: otherwise a no-op request wakes
+// every device.
+func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
+			return err
+		}
+		seq, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "missing"}}}, "B")
+		if err != nil {
+			return err
+		}
+		if seq != 1 || tx.Seq() != 1 {
+			t.Errorf("seq = %d tx.seq = %d, want 1 (no bump for an unmatched tombstone)", seq, tx.Seq())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// the persisted state is unchanged too
+	if err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if tx.Seq() != 1 {
+			t.Errorf("reloaded seq = %d, want 1", tx.Seq())
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Several tombstones in one Apply share a single seq increment.
+func TestSyncStore_MultipleTombstonesBumpSeqOnce(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(
+			&merge.Item{Kind: merge.KindManga, Key: "m1", Payload: []byte("a")},
+			&merge.Item{Kind: merge.KindManga, Key: "m2", Payload: []byte("b")},
+			&merge.Item{Kind: merge.KindSource, Key: "s", Payload: []byte("c")},
+		), "A"); err != nil {
+			return err
+		}
+		seq, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{
+			{Kind: merge.KindManga, Key: "m1"},
+			{Kind: merge.KindManga, Key: "m2"},
+			{Kind: merge.KindSource, Key: "s"},
+		}}, "B")
+		if err != nil {
+			return err
+		}
+		if seq != 2 {
+			t.Errorf("seq = %d, want 2 (one increment for the whole call)", seq)
+		}
+		for _, kind := range []merge.Kind{merge.KindManga, merge.KindSource} {
+			keys := []string{"m1", "m2"}
+			if kind == merge.KindSource {
+				keys = []string{"s"}
+			}
+			got, err := tx.GetItems(ctx, kind, keys)
+			if err != nil {
+				return err
+			}
+			for _, key := range keys {
+				it := got[key]
+				if it == nil || !it.Deleted || it.Seq != 2 || it.OriginDevice != "B" {
+					t.Errorf("%s %s after tombstone = %+v", kind, key, it)
+				}
+			}
 		}
 		return nil
 	})

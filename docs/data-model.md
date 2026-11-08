@@ -51,15 +51,21 @@ One row per merged item. `kind` is one of `manga`, `chapter`, `category`, `sourc
 | `parent_key` | manga key for chapters, source key for source preferences |
 | `name` | category name (used for the uid-less fallback match) |
 | `version` | the client's counter; higher wins |
-| `deleted` | category tombstone |
+| `deleted` | tombstone flag for all nine kinds; a deleted item is omitted from rendered backups |
 | `refs` | manga → category keys, `\x1f`-separated |
 | `payload` | the item's protobuf message (a manga payload carries neither chapters nor category numbers) |
 | `seq` | the key's `sync_state.seq` at the last change of this row |
-| `origin_device` | device that made the last change (`legacy`, `migration`, `restore` for server-side writes) |
-| `modified_at` | the payload's `last_modified_at`, the tiebreaker for equal-version conflicts |
+| `origin_device` | device that made the last change (`legacy`, `migration`, `restore` for server-side writes); for a tombstone, the device that posted it |
+| `modified_at` | the payload's `last_modified_at`, the tiebreaker for equal-version conflicts; for a tombstone, the Unix time in seconds when it was set |
 
 The server never parses the payload beyond what the merge keys need, which is what will let
 end-to-end encryption reuse the same store.
+
+A tombstone sets `deleted=true` on the existing row for any of the nine kinds; it never inserts a
+row for an unknown key. `modified_at` then holds the tombstone time and `origin_device` the
+posting device. `manga` and `chapter` resurrect only for a higher `version` or a `modified_at`
+newer than the deletion; `category` resurrects only for a higher `version`; unversioned kinds
+only for a payload that differs from the tombstoned one.
 
 ## seq and cursors
 

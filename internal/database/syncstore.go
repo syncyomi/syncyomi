@@ -232,18 +232,38 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 		return 0, err
 	}
 
-	for _, key := range res.Tombstones {
-		_, err := t.repo.db.squirrel.
+	deletedAt := time.Now().UTC().Unix()
+	applied := len(res.Writes) > 0
+	for _, tb := range res.Tombstones {
+		result, err := t.repo.db.squirrel.
 			Update("sync_item").
 			Set("deleted", true).
+			Set("modified_at", deletedAt).
 			Set("seq", newSeq).
 			Set("origin_device", device).
-			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(merge.KindCategory), "key": key}).
+			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(tb.Kind), "key": tb.Key}).
 			RunWith(t.tx).
 			ExecContext(ctx)
 		if err != nil {
-			return 0, errors.Wrap(err, "error tombstoning category")
+			return 0, errors.Wrap(err, "error tombstoning item")
 		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return 0, errors.Wrap(err, "error counting tombstoned items")
+		}
+		if n > 0 {
+			applied = true
+		}
+	}
+
+	if !applied {
+		// a deletion that matched no row must not advance the seq and wake every device
+		if !t.exists {
+			if err := t.ensureState(ctx); err != nil {
+				return 0, err
+			}
+		}
+		return t.seq, nil
 	}
 
 	if err := t.ensureState(ctx); err != nil {

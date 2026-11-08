@@ -156,6 +156,31 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
+// Render must omit tombstoned rows for every section kind, not just the versioned ones.
+func TestRenderSkipsDeletedSectionKinds(t *testing.T) {
+	deleted := []*merge.Item{
+		{Kind: merge.KindSource, Key: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupSource{SourceId: 1})},
+		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Payload: mustEncode(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindSourcePref, Key: "theme", ParentKey: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindExtStore, Key: "ext", Deleted: true, Payload: mustEncode(t, &pb.BackupExtensionStore{})},
+		{Kind: merge.KindSavedSearch, Key: "q", Deleted: true, Payload: mustEncode(t, &pb.BackupSavedSearch{Name: "q"})},
+		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Deleted: true, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
+	}
+
+	b, err := Render(deleted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupSources) != 0 || len(b.BackupPreferences) != 0 || len(b.BackupSourcePreferences) != 0 ||
+		len(b.BackupExtensionStores) != 0 || len(b.BackupSavedSearches) != 0 {
+		t.Errorf("deleted section rows rendered: sources=%v prefs=%v sourcePrefs=%v ext=%v searches=%v",
+			b.BackupSources, b.BackupPreferences, b.BackupSourcePreferences, b.BackupExtensionStores, b.BackupSavedSearches)
+	}
+	if len(b.ProtoReflect().GetUnknown()) != 0 {
+		t.Errorf("deleted extra rendered: %x", b.ProtoReflect().GetUnknown())
+	}
+}
+
 func TestSplitKeepsUnknownTopLevelFields(t *testing.T) {
 	b := &pb.Backup{}
 	b.ProtoReflect().SetUnknown([]byte{0xc2, 0xb2, 0x04, 0x01, 0x41}) // field 9000 bytes "A"

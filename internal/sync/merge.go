@@ -503,17 +503,52 @@ func splitBackup(b *pb.Backup) ([]*merge.Item, error) {
 }
 
 func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64) (*merge.Result, error) {
-	view, err := loadStoreView(ctx, tx, items)
+	tombstones := make([]merge.Tombstone, 0, len(deletedCategories))
+	for _, uid := range deletedCategories {
+		tombstones = append(tombstones, merge.Tombstone{Kind: merge.KindCategory, Key: "uid:" + strconv.FormatInt(uid, 10)})
+	}
+
+	view, err := loadStoreView(ctx, tx, items, tombstones)
 	if err != nil {
 		return nil, err
 	}
 
-	deleted := make([]string, 0, len(deletedCategories))
-	for _, uid := range deletedCategories {
-		deleted = append(deleted, "uid:"+strconv.FormatInt(uid, 10))
-	}
+	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, Tombstones: tombstones}), nil
+}
 
-	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, DeletedCategories: deleted}), nil
+// DeleteItems tombstones the given items for the key and reports how many rows actually
+// transitioned from live to deleted. Unknown or already deleted keys are acknowledged by
+// the handler but are not part of the returned count.
+func (s *service) DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error) {
+	unlock, err := s.locks.lock(ctx, apiKey)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+
+	applied := 0
+	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		if err := s.promoteLegacy(ctx, tx); err != nil {
+			return err
+		}
+		if _, err := s.importPending(ctx, tx); err != nil {
+			return err
+		}
+		view, err := loadStoreView(ctx, tx, nil, tombstones)
+		if err != nil {
+			return err
+		}
+		res := merge.Merge(view, merge.Request{DeviceID: dev.Key(), Tombstones: tombstones})
+		if _, err := tx.Apply(ctx, res, dev.Key()); err != nil {
+			return err
+		}
+		applied = len(res.Tombstones)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return applied, nil
 }
 
 // storeView is the merge's window on the server state: the stored items matching the
@@ -523,11 +558,17 @@ type storeView struct {
 	categories []*merge.Item
 }
 
-func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item) (*storeView, error) {
+func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, tombstones []merge.Tombstone) (*storeView, error) {
 	keys := map[merge.Kind][]string{}
 	for _, it := range items {
 		if it.Kind != merge.KindCategory {
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
+		}
+	}
+	// tombstones must resolve their target row too, so a deletion can flip it
+	for _, tb := range tombstones {
+		if tb.Kind != merge.KindCategory {
+			keys[tb.Kind] = append(keys[tb.Kind], tb.Key)
 		}
 	}
 	view := &storeView{items: map[merge.Kind]map[string]*merge.Item{}}

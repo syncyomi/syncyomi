@@ -17,11 +17,18 @@ See [sync-protocol-v2.md](sync-protocol-v2.md) for the protocol.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"snapshot":…}`; old servers answer `404` |
-| `POST /sync/v2/merge` | merge the uploaded backup, receive what the client lacks (`X-Device-ID` required; `X-Sync-Cursor`, `X-Sync-Full`, `X-Sync-Deleted-Categories`; responds with `X-Sync-Cursor`, `X-Sync-Changed`, `X-Sync-Full-Requested`) |
+| `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"snapshot":…,"deletions":…}`; old servers answer `404` |
+| `POST /sync/v2/merge` | merge the uploaded backup, receive what the client lacks (`X-Device-ID` required; `X-Sync-Cursor`, `X-Sync-Full`; responds with `X-Sync-Cursor`, `X-Sync-Changed`, `X-Sync-Full-Requested`). `X-Sync-Deleted-Categories` still works as a deprecated alias for category tombstones. |
+| `POST /sync/v2/deletions` | post tombstones for any of the nine kinds; body `{"items":[{"kind":"…","key":"…"}]}` plus the legacy `deletedChapters`/`deletedCategories` fields; responds `200 {"acknowledged":…,"applied":…}` |
 | `GET /sync/v2/snapshot` | the whole merged library; `304` when `X-Sync-Cursor` is current |
 
-Errors: `400` missing device id / invalid cursor / body not a backup, `401`, `413`, `404` (snapshot, nothing stored).
+`POST /sync/v2/deletions` accepts an empty body as a no-op. It answers `400` for malformed JSON,
+an unknown `kind`, an empty `key`, or a key longer than 4096 bytes. `X-API-Token` is required;
+`X-Device-ID` is required (max 128 characters) and `X-Device-Name` is optional, as on merge.
+Keys and resurrection rules are documented in
+[sync-protocol-v2.md](sync-protocol-v2.md#deletions).
+
+Errors: `400` missing device id / invalid cursor / body not a backup / invalid tombstone, `401`, `413`, `404` (snapshot, nothing stored).
 
 ## Sync v1 (clients, deprecated)
 

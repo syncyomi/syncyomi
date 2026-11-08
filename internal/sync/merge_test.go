@@ -13,6 +13,7 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/database"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -207,6 +208,130 @@ func TestMerge_CategoryDeleteAndRefs(t *testing.T) {
 	}
 	if mm := urls(a.Backup)["/m"]; mm != nil && len(mm.Categories) != 0 {
 		t.Errorf("manga still references deleted category: %v", mm.Categories)
+	}
+}
+
+func TestMerge_CategoryTombstoneMarksStoreRow(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	cats := []*pb.BackupCategory{{Name: "Done", Order: 0, Uid: 20, Version: 1}}
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupCategories: cats})
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{BackupCategories: cats})
+
+	// the deleted-categories header is applied as a KindCategory tombstone
+	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{}, 20)
+
+	var row *merge.Item
+	if err := svc.store.ReadTx(ctx, "key1", func(tx domain.SyncStoreReader) error {
+		found, err := tx.GetItems(ctx, merge.KindCategory, []string{"uid:20"})
+		if err != nil {
+			return err
+		}
+		row = found["uid:20"]
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if row == nil || !row.Deleted || row.Seq != b.Cursor || row.OriginDevice != "B" {
+		t.Fatalf("tombstoned category row = %+v (cursor %d)", row, b.Cursor)
+	}
+	now := time.Now().Unix()
+	if row.ModifiedAt <= 0 || row.ModifiedAt > now || row.ModifiedAt < now-60 {
+		t.Errorf("modified_at = %d, want unix seconds near %d", row.ModifiedAt, now)
+	}
+
+	// a fresh device does not receive the deleted category
+	c := sync2(t, svc, "C", 0, true, &pb.Backup{})
+	if len(c.Backup.BackupCategories) != 0 {
+		t.Errorf("render kept the deleted category: %v", c.Backup.BackupCategories)
+	}
+}
+
+func mustMarshal(t *testing.T, m proto.Message) []byte {
+	t.Helper()
+	data, err := proto.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// DeleteItems resolves tombstone targets for every kind, including the non-category rows
+// that the merge view only loads because the tombstones name them.
+func TestDeleteItemsAppliesAllKinds(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	dev := domain.DeviceInfo{ID: "B", Name: "B"}
+
+	seed := []*merge.Item{
+		{Kind: merge.KindManga, Key: "1|/m", Payload: mustMarshal(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})},
+		{Kind: merge.KindChapter, Key: "1|/m\x1f/c", ParentKey: "1|/m", Payload: mustMarshal(t, &pb.BackupChapter{Url: "/c", Name: "/c"})},
+		{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Payload: mustMarshal(t, &pb.BackupCategory{Name: "R", Uid: 1})},
+		{Kind: merge.KindSource, Key: "1", Payload: mustMarshal(t, &pb.BackupSource{SourceId: 1})},
+		{Kind: merge.KindAppPref, Key: "theme", Payload: mustMarshal(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindSourcePref, Key: "theme", ParentKey: "1", Payload: mustMarshal(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindExtStore, Key: "ext", Payload: mustMarshal(t, &pb.BackupExtensionStore{})},
+		{Kind: merge.KindSavedSearch, Key: "q", Payload: mustMarshal(t, &pb.BackupSavedSearch{Name: "q"})},
+		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
+	}
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	tombstones := make([]merge.Tombstone, 0, len(seed)+1)
+	for _, it := range seed {
+		tombstones = append(tombstones, merge.Tombstone{Kind: it.Kind, Key: it.Key})
+	}
+	tombstones = append(tombstones, merge.Tombstone{Kind: merge.KindManga, Key: "missing"})
+
+	applied, err := svc.DeleteItems(ctx, "key1", dev, tombstones)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != len(seed) {
+		t.Fatalf("applied = %d, want %d (unknown key must not count)", applied, len(seed))
+	}
+
+	deleted := map[merge.Kind]int{}
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		all, err := tx.AllItems(ctx)
+		if err != nil {
+			return err
+		}
+		for _, it := range all {
+			if !it.Deleted || it.OriginDevice != "B" {
+				t.Errorf("%s %s not tombstoned: %+v", it.Kind, it.Key, it)
+			}
+			deleted[it.Kind]++
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range seed {
+		if deleted[it.Kind] == 0 {
+			t.Errorf("%s row missing after delete", it.Kind)
+		}
+	}
+
+	// nothing tombstoned may appear in the full snapshot
+	snap, err := svc.Snapshot(ctx, "key1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := backup.Decode(snap.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rendered.BackupManga) != 0 || len(rendered.BackupCategories) != 0 || len(rendered.BackupSources) != 0 ||
+		len(rendered.BackupPreferences) != 0 || len(rendered.BackupSourcePreferences) != 0 ||
+		len(rendered.BackupExtensionStores) != 0 || len(rendered.BackupSavedSearches) != 0 ||
+		len(rendered.ProtoReflect().GetUnknown()) != 0 {
+		t.Errorf("deleted rows rendered: %+v", rendered)
 	}
 }
 

@@ -1,12 +1,15 @@
 package http
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/SyncYomi/SyncYomi/internal/backup"
+	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"github.com/SyncYomi/SyncYomi/internal/sync"
 	"github.com/go-chi/render"
 )
@@ -19,13 +22,39 @@ const (
 	headerChanged           = "X-Sync-Changed"
 	headerDeletedCategories = "X-Sync-Deleted-Categories"
 	maxDeviceIDLen          = 128
+	maxDeletionKeyLen       = 4096
 )
+
+// deletionsRequest accepts the canonical item list and the legacy shapes deployed
+// clients already send, all in the same object.
+type deletionsRequest struct {
+	Items             []deletionItem `json:"items"`
+	DeletedChapters   []string       `json:"deletedChapters"`
+	DeletedCategories []int64        `json:"deletedCategories"`
+}
+
+type deletionItem struct {
+	Kind string `json:"kind"`
+	Key  string `json:"key"`
+}
+
+func knownDeletionKind(name string) (merge.Kind, bool) {
+	kind := merge.Kind(name)
+	switch kind {
+	case merge.KindManga, merge.KindChapter, merge.KindCategory,
+		merge.KindSource, merge.KindAppPref, merge.KindSourcePref,
+		merge.KindExtStore, merge.KindSavedSearch, merge.KindExtra:
+		return kind, true
+	}
+	return "", false
+}
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, map[string]any{
-		"version":  2,
-		"merge":    "/api/sync/v2/merge",
-		"snapshot": "/api/sync/v2/snapshot",
+		"version":   2,
+		"merge":     "/api/sync/v2/merge",
+		"snapshot":  "/api/sync/v2/snapshot",
+		"deletions": "/api/sync/v2/deletions",
 	})
 }
 
@@ -103,6 +132,91 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(out); err != nil {
 		h.log.Debug().Err(err).Msg("failed to write merge response")
 	}
+}
+
+// deletions applies generic tombstones for any of the nine item kinds. The canonical
+// {"items":[...]} shape and the legacy chapter/category shapes are merged and deduplicated
+// by (kind, key); unknown or absent keys are acknowledged but apply nothing.
+func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	bad := func(msg string) {
+		h.encoder.StatusResponse(ctx, w, map[string]string{"message": msg}, http.StatusBadRequest)
+	}
+
+	dev := deviceFromRequest(r)
+	if dev.ID == "" || len(dev.ID) > maxDeviceIDLen {
+		bad("missing or invalid " + headerDeviceID)
+		return
+	}
+
+	data, ok := h.readBody(w, r)
+	if !ok {
+		return
+	}
+
+	var body deletionsRequest
+	if len(bytes.TrimSpace(data)) > 0 {
+		if err := json.Unmarshal(data, &body); err != nil {
+			bad("invalid JSON body")
+			return
+		}
+	}
+
+	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
+	seen := make(map[merge.Tombstone]struct{}, cap(tombstones))
+	// acknowledged counts accepted input entries before dedupe: a legacy client compares it
+	// with its pending queue length, which still holds the duplicates
+	acknowledged := 0
+	add := func(kind merge.Kind, key string) bool {
+		if key == "" || len(key) > maxDeletionKeyLen {
+			return false
+		}
+		acknowledged++
+		tb := merge.Tombstone{Kind: kind, Key: key}
+		if _, dup := seen[tb]; dup {
+			return true
+		}
+		seen[tb] = struct{}{}
+		tombstones = append(tombstones, tb)
+		return true
+	}
+
+	for _, it := range body.Items {
+		kind, known := knownDeletionKind(it.Kind)
+		if !known {
+			bad("unknown deletion kind")
+			return
+		}
+		if !add(kind, it.Key) {
+			bad("invalid deletion key")
+			return
+		}
+	}
+	for _, key := range body.DeletedChapters {
+		if !add(merge.KindChapter, key) {
+			bad("invalid deletion key")
+			return
+		}
+	}
+	for _, uid := range body.DeletedCategories {
+		if !add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10)) {
+			bad("invalid deletion key")
+			return
+		}
+	}
+
+	applied := 0
+	if len(tombstones) > 0 {
+		var err error
+		applied, err = h.syncService.DeleteItems(ctx, r.Header.Get("X-API-Token"), dev, tombstones)
+		if err != nil {
+			h.log.Error().Err(err).Msg("deletions failed")
+			h.encoder.StatusInternalError(w)
+			return
+		}
+	}
+
+	render.JSON(w, r, map[string]int{"acknowledged": acknowledged, "applied": applied})
 }
 
 func (h syncHandler) snapshot(w http.ResponseWriter, r *http.Request) {
