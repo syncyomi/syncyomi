@@ -54,8 +54,8 @@ jobs:
         env:
           TACHIYOMI_REPO: ${{ vars.E2E_TACHIYOMI_REPO || 'syncyomi/TachiyomiSY' }}
           TACHIYOMI_REF: ${{ inputs.tachiyomi_ref || vars.E2E_TACHIYOMI_REF || 'feat/syncyomi-v2' }}
-          SUWAYOMI_REPO: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
-          SUWAYOMI_REF: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'fix/syncyomi-streamed-upload' }}
+          SUWAYOMI_REPO: ${{ vars.E2E_SUWAYOMI_REPO || 'Suwayomi/Suwayomi-Server' }}
+          SUWAYOMI_REF: ${{ inputs.suwayomi_ref || vars.E2E_SUWAYOMI_REF || 'master' }}
 
   build-apk:
     needs: changes
@@ -134,7 +134,7 @@ jobs:
       - uses: actions/checkout@v7
         if: steps.jar.outputs.cache-hit != 'true'
         with:
-          repository: ${{ vars.E2E_SUWAYOMI_REPO || 'syncyomi/Suwayomi-Server' }}
+          repository: ${{ vars.E2E_SUWAYOMI_REPO || 'Suwayomi/Suwayomi-Server' }}
           ref: ${{ needs.changes.outputs.suwayomi_sha }}
 
       - uses: actions/setup-java@v6
