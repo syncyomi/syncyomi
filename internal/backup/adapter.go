@@ -54,7 +54,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, &merge.Item{Kind: merge.KindCategory, Key: key, Name: c.Name, Version: c.Version, ModifiedAt: c.GetLastModifiedAt(), Payload: payload})
+		items = append(items, &merge.Item{Kind: merge.KindCategory, Key: key, Name: c.Name, Version: c.Version, ModifiedAt: merge.NormalizeTimestamp(c.GetLastModifiedAt()), Payload: payload})
 	}
 
 	for _, m := range b.BackupManga {
@@ -76,7 +76,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, &merge.Item{Kind: merge.KindManga, Key: key, Version: m.Version, ModifiedAt: m.GetLastModifiedAt(), Refs: refs, Payload: payload})
+		items = append(items, &merge.Item{Kind: merge.KindManga, Key: key, Version: m.Version, ModifiedAt: merge.NormalizeTimestamp(m.GetLastModifiedAt()), Refs: refs, Payload: payload})
 
 		for _, ch := range m.Chapters {
 			if ch.Url == "" {
@@ -86,7 +86,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: ch.GetLastModifiedAt(), Payload: payload})
+			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: merge.NormalizeTimestamp(ch.GetLastModifiedAt()), Payload: payload})
 		}
 
 		for _, h := range m.History {
@@ -97,7 +97,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, &merge.Item{Kind: merge.KindHistory, Key: HistoryKey(key, h.Url), ParentKey: key, ModifiedAt: h.LastRead, Payload: payload})
+			items = append(items, &merge.Item{Kind: merge.KindHistory, Key: HistoryKey(key, h.Url), ParentKey: key, ModifiedAt: merge.NormalizeTimestamp(h.LastRead), Payload: payload})
 		}
 	}
 
@@ -170,9 +170,9 @@ func dedupe(items []*merge.Item) []*merge.Item {
 	return out
 }
 
-// Render assembles a Backup from items. Tombstoned categories are skipped and manga
-// refs pointing at them are dropped. Tombstoned chapters are skipped. Chapters and
-// history are attached to their manga; one whose manga is not in the list is ignored.
+// Render assembles a Backup from items. Tombstoned items of any kind are skipped and manga
+// refs pointing at deleted categories are dropped. Chapters and history are attached to
+// their manga; one whose manga is not in the list is ignored.
 func Render(items []*merge.Item) (*pb.Backup, error) {
 	b := &pb.Backup{}
 
@@ -227,7 +227,7 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 	sourcesSeen := map[int64]bool{}
 	var mangaSources []int64
 	for _, it := range items {
-		if it.Kind != merge.KindManga {
+		if it.Kind != merge.KindManga || it.Deleted {
 			continue
 		}
 		m := &pb.BackupManga{}
@@ -261,6 +261,9 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 	var sourcePrefOrder []string
 	var extra []byte
 	for _, it := range items {
+		if it.Deleted {
+			continue
+		}
 		switch it.Kind {
 		case merge.KindSource:
 			s := &pb.BackupSource{}

@@ -528,8 +528,9 @@ paths:
         The body is a Tachiyomi backup (protobuf, optionally gzip-compressed) holding the
         client's full library or only what changed since its last successful upload. Items
         present are merged item by item (higher `version` wins, ties keep the server copy);
-        items absent are left untouched. Only explicit tombstones delete: category uids listed
-        in `X-Sync-Deleted-Categories`, and chapter keys reported to `sync/v2/deletions`.
+        items absent are left untouched. Only explicit tombstones delete: post them to
+        `POST /sync/v2/deletions` (the `X-Sync-Deleted-Categories` header remains a deprecated
+        alias for category tombstones).
 
         The response is a backup with everything the client is missing: all live categories
         plus manga, chapters and settings changed since `X-Sync-Cursor` by other devices and
@@ -563,9 +564,10 @@ paths:
         - name: X-Sync-Deleted-Categories
           in: header
           required: false
+          deprecated: true
           schema:
             type: string
-          description: Comma-separated category uids the client deleted since its last sync
+          description: Comma-separated category uids the client deleted since its last sync. Deprecated alias for category tombstones posted to `/sync/v2/deletions`.
         - name: Content-Encoding
           in: header
           required: false
@@ -616,17 +618,26 @@ paths:
     post:
       tags:
         - Sync v2
-      summary: Report the chapters the client deleted
+      summary: Post tombstones for deleted items
       description: |
-        The client reports chapter keys it deleted since its last successful sync, before it
-        merges, so the server tombstones them and the other devices stop receiving them. Each key
-        is `<source id>|<manga url>` + `0x1f` + `<chapter url>` (the same key the server stores),
-        sent as a raw string.
+        Records explicit deletions for any of the ten kinds. Each tombstone updates the
+        existing item (`deleted=true`, the tombstone time in `modified_at`, the key's next
+        `seq`, the posting device in `origin_device`) and the item is omitted from later
+        rendered backups. Unknown or never-seen keys are acknowledged but not applied. An empty
+        body is a valid no-op.
 
-        The whole submission is one transaction, so a 200 means every key was processed: unknown
-        and already-deleted keys are no-ops, which makes a retry safe. An older server has no such
-        route and answers 404; a client must keep its deletions pending in that case and apply them
-        once the server is upgraded.
+        The canonical `items` array may be combined with the legacy `deletedChapters` and
+        `deletedCategories` fields; all entries are merged and deduplicated.
+
+        `manga`, `chapter` and `history` resurrect for a higher `version`, or for a
+        `modified_at` newer than the deletion, regardless of version (a re-added item restarts
+        at version 1; a history entry only carries `last_read`). `category` resurrects only for
+        a higher `version`. Unversioned kinds (`source`, `app_pref`, `source_pref`,
+        `ext_store`, `saved_search`, `extra`) resurrect only for a payload that differs from
+        the tombstoned one.
+
+        `modified_at` is always Unix seconds: a history `last_read` in epoch milliseconds is
+        normalized on upload, so client writes and tombstone stamps compare in one unit.
       operationId: syncV2Deletions
       security:
         - ApiKeyAuth: []
@@ -646,30 +657,20 @@ paths:
             type: string
             enum: [gzip]
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                deletedChapters:
-                  type: array
-                  items:
-                    type: string
-                  description: Chapter keys (backup.ChapterKey) deleted since the client's last sync; an empty or absent list acknowledges nothing
+              $ref: '#/components/schemas/DeletionRequest'
       responses:
         '200':
-          description: Acknowledged
+          description: Tombstones processed
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  acknowledged:
-                    type: integer
-                    description: Number of keys the server processed
+                $ref: '#/components/schemas/DeletionResponse'
         '400':
-          description: Missing device id or body is not the expected JSON
+          description: Malformed JSON, unknown kind, empty key, or key longer than 4096 bytes
         '401':
           description: Unauthorized
         '413':
@@ -1185,3 +1186,63 @@ components:
         message:
           type: string
           description: Optional detail (e.g. error message for SYNC_FAILED, reason for SYNC_CANCELLED)
+    DeletionRequest:
+      type: object
+      description: Body for POST /sync/v2/deletions
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletionItem'
+        deletedChapters:
+          type: array
+          description: Legacy chapter keys to delete (the shape deployed clients send), in `<manga key>` + 0x1f + `<chapter url>` form
+          items:
+            type: string
+        deletedCategories:
+          type: array
+          description: Legacy category uids to delete; each number `n` becomes the key `uid:<n>`
+          items:
+            type: integer
+            format: int64
+    DeletionItem:
+      type: object
+      required:
+        - kind
+        - key
+      properties:
+        kind:
+          type: string
+          enum:
+            - manga
+            - chapter
+            - history
+            - category
+            - source
+            - app_pref
+            - source_pref
+            - ext_store
+            - saved_search
+            - extra
+        key:
+          type: string
+          maxLength: 4096
+          description: |
+            Kind-specific key: `manga` = `<source>|<url>`; `chapter` and `history` =
+            `<manga key>` + 0x1f + `<url>`; `category` = `uid:<uid>` or `name:<name>`;
+            `source` = `<source_id>`; `app_pref` = `<key>`; `source_pref` =
+            `<source_key>` + 0x1f + `<key>`; `ext_store` = `<index_url>`;
+            `saved_search` = `<name>|<source>`; `extra` = `extra`.
+    DeletionResponse:
+      type: object
+      description: Result of POST /sync/v2/deletions
+      required:
+        - acknowledged
+        - applied
+      properties:
+        acknowledged:
+          type: integer
+          description: Accepted input entries before deduplication (duplicates still count)
+        applied:
+          type: integer
+          description: Rows that actually transitioned from live to deleted

@@ -157,6 +157,31 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
+// Render must omit tombstoned rows for every section kind, not just the versioned ones.
+func TestRenderSkipsDeletedSectionKinds(t *testing.T) {
+	deleted := []*merge.Item{
+		{Kind: merge.KindSource, Key: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupSource{SourceId: 1})},
+		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Payload: mustEncode(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindSourcePref, Key: "theme", ParentKey: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindExtStore, Key: "ext", Deleted: true, Payload: mustEncode(t, &pb.BackupExtensionStore{})},
+		{Kind: merge.KindSavedSearch, Key: "q", Deleted: true, Payload: mustEncode(t, &pb.BackupSavedSearch{Name: "q"})},
+		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Deleted: true, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
+	}
+
+	b, err := Render(deleted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupSources) != 0 || len(b.BackupPreferences) != 0 || len(b.BackupSourcePreferences) != 0 ||
+		len(b.BackupExtensionStores) != 0 || len(b.BackupSavedSearches) != 0 {
+		t.Errorf("deleted section rows rendered: sources=%v prefs=%v sourcePrefs=%v ext=%v searches=%v",
+			b.BackupSources, b.BackupPreferences, b.BackupSourcePreferences, b.BackupExtensionStores, b.BackupSavedSearches)
+	}
+	if len(b.ProtoReflect().GetUnknown()) != 0 {
+		t.Errorf("deleted extra rendered: %x", b.ProtoReflect().GetUnknown())
+	}
+}
+
 func TestRenderSkipsTombstonedChapters(t *testing.T) {
 	items := []*merge.Item{
 		{Kind: merge.KindManga, Key: "3|/m", Payload: mustEncode(t, &pb.BackupManga{Source: 3, Url: "/m"})},
@@ -295,6 +320,36 @@ func TestSplitMovesHistoryIntoItems(t *testing.T) {
 	h := history[0]
 	if h.Key != HistoryKey("1|/m", "/c1") || h.ParentKey != "1|/m" || h.ModifiedAt != 100 {
 		t.Errorf("history item = %+v", h)
+	}
+}
+
+// BackupHistory.last_read is epoch milliseconds while last_modified_at is seconds;
+// Split normalizes every kind so sync_item.modified_at is always seconds.
+func TestSplitNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
+	const ms = int64(1_700_000_000_123)
+	const sec = int64(1_700_000_000)
+	b := &pb.Backup{BackupManga: []*pb.BackupManga{{
+		Source: 1, Url: "/m", LastModifiedAt: sec,
+		Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: sec}},
+		History:  []*pb.BackupHistory{{Url: "/c", LastRead: ms}},
+	}}}
+
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, it := range items {
+		got[string(it.Kind)+"|"+it.Key] = it.ModifiedAt
+	}
+	if v := got["history|"+HistoryKey("1|/m", "/c")]; v != sec {
+		t.Errorf("history ModifiedAt = %d, want seconds %d", v, sec)
+	}
+	if v := got["manga|1|/m"]; v != sec {
+		t.Errorf("manga seconds timestamp changed: %d", v)
+	}
+	if v := got["chapter|"+ChapterKey("1|/m", "/c")]; v != sec {
+		t.Errorf("chapter seconds timestamp changed: %d", v)
 	}
 }
 

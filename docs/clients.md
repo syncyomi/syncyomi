@@ -37,14 +37,14 @@ server-rendered backup — that is the one case where the zero-default warning b
    send it chunked with `Content-Encoding: gzip`. Encoding a large library into a single byte
    array is what runs Android clients out of memory.
 
-4. **Track deletions**: when the user deletes a category, remember its `uid` and send the
-   pending uids in `X-Sync-Deleted-Categories`; clear them after a 200.
-   When a source drops chapters, report the chapter keys (see
-   [sync-protocol-v2.md](sync-protocol-v2.md)) to `POST /api/sync/v2/deletions` before the merge
-   and clear the keys you sent after a 200. Only call it when there are pending keys: an older
-   server answers 404, which must **keep** the keys pending so they are applied once the server
-   is upgraded — never clear them on a failure. A capabilities response that lists `deletions`
-   confirms the route, so a client can call it directly instead of relying on the 404.
+4. **Track deletions**: when the user deletes a manga, chapter, category or history entry,
+   enqueue `(kind, key)` in a persistent pending-deletion queue. POST the queue to
+   `POST /api/sync/v2/deletions` as
+   `{"items":[{"kind":"…","key":"…"}]}` with the usual device headers, and clear an entry only
+   after a 2xx response. An older server answers 404: keep the entries pending and apply them
+   once the server is upgraded; a capabilities response that lists `deletions` confirms the
+   route. The old `X-Sync-Deleted-Categories` header on merge still works, but it is
+   deprecated and covers categories only.
 5. **`POST /api/sync/v2/merge`** with `X-Sync-Cursor` = the cursor from the last response.
    Do **not** run a local merge on the response.
 6. **Apply the response**: if `X-Sync-Changed` is `false`, record success and stop. Otherwise
@@ -61,9 +61,11 @@ them fails to decode a library that originated elsewhere.
 ### TachiyomiSY specifics
 
 - `SyncPreferences`: add `syncCursor` (Long), `serverSupportsV2` (unknown/yes/no, reset when
-  the host changes), `pendingDeletedCategoryUids` (String set), `lastPushedAt` (Long).
-- Category deletion (`DeleteCategory` interactor): add the `uid` to
-  `pendingDeletedCategoryUids` when sync is enabled.
+  the host changes), `pendingDeletions` (a persisted set of `(kind, key)`), `lastPushedAt` (Long).
+- Category and chapter deletion paths enqueue `(kind, key)` in `pendingDeletions` when sync is
+  enabled; `SyncYomiSyncService` drains the queue to `/api/sync/v2/deletions` and clears each
+  entry only after a 2xx. The settings sections have no client-side deletion queue or consumer
+  yet (see the limitation in [sync-protocol-v2.md](sync-protocol-v2.md#limitation)).
 - `SyncYomiSyncService.doSync`: probe, then either the existing v1 flow or the v2 request; in
   v2 skip `mergeSyncData`.
 - `SyncManager.syncData`: on v2 skip the "first sync, don't restore" branch and the "no data
@@ -75,6 +77,6 @@ them fails to decode a library that originated elsewhere.
 
 Same shape as TachiyomiSY: `global/impl/sync/SyncYomiSyncService.kt` (probe, v2 request,
 skip `mergeSyncData`), `global/impl/sync/SyncManager.kt` (skip restore when unchanged, drop
-the first-sync branch), `Category.removeCategory` (remember the uid), preferences in the
-`sync` `SharedPreferences` (`sync_cursor`, `server_supports_v2`,
-`pending_deleted_category_uids`, `device_id`, `last_pushed_at`).
+the first-sync branch), `Category.removeCategory` (enqueue `(kind, key)` in the pending-deletion
+queue), preferences in the `sync` `SharedPreferences` (`sync_cursor`, `server_supports_v2`,
+`pending_deletions`, `device_id`, `last_pushed_at`).

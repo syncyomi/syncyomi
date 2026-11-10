@@ -119,6 +119,7 @@ Env vars:
 | S26 unread (UI) | Marking read chapters unread on-device reaches the server and the peer |
 | S27 Suwayomi library removal | Removing a manga in Suwayomi reaches the server and Android |
 | S28 Mihon backup restore | A backup with only Mihon fields restores twice through the in-app restore without duplicates, keeping read state, history and non-library entries out of the library |
+| S29 unified tombstones | Canonical /api/sync/v2/deletions for chapter, manga, category and section kinds plus the legacy chapter shape, validation/no-op seq, and kind-specific resurrection |
 
 v1 suite (`scenarios/v1/`, server only):
 

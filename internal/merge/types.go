@@ -37,8 +37,9 @@ type Item struct {
 	Name      string // category display name, used for the uid-less fallback match
 	Version   int64
 	// ModifiedAt breaks equal-version ties (clients that never bump Version would
-	// otherwise be stuck at "first write wins forever"). Extracted by the adapter so the
-	// merge itself still never inspects payloads.
+	// otherwise be stuck at "first write wins forever"). It is always Unix seconds
+	// (NormalizeTimestamp); extracted by the adapter so the merge itself still never
+	// inspects payloads.
 	ModifiedAt int64
 	Deleted    bool
 	Refs       []string // manga -> category keys
@@ -59,16 +60,18 @@ type Store interface {
 	SameContent(a, b *Item) bool
 }
 
-type Request struct {
-	DeviceID          string
-	Items             []*Item
-	DeletedCategories []string // category keys the client deleted
-	DeletedChapters   []string // chapter keys the client deleted
-}
-
+// Tombstone marks a stored item as deleted; the store flips Deleted, bumps Seq and
+// records the deleting device.
 type Tombstone struct {
 	Kind Kind
 	Key  string
+}
+
+type Request struct {
+	DeviceID string
+	Items    []*Item
+	// Tombstones are items the client explicitly deleted.
+	Tombstones []Tombstone
 }
 
 type Result struct {

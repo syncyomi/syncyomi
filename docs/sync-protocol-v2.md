@@ -37,10 +37,10 @@ sequenceDiagram
     participant S as Server (v2)
     C->>S: GET /api/sync/v2/capabilities
     S-->>C: 200 (404 on an old server: fall back to v1)
-    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"deletedChapters":[...]}<br/>(only when there are pending deletions)
+    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: pending tombstones (if any)
     S->>S: tombstone each key (idempotent)
-    S-->>C: 200 {"acknowledged":n} — 404 on an old server: keep them pending
-    C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full], [X-Sync-Deleted-Categories]<br/>body: backup with changed items (or everything)
+    S-->>C: 200 {"acknowledged":n,"applied":m} — 404 on an old server: keep them pending
+    C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full]<br/>body: backup with changed items (or everything)
     S->>S: merge item by item, assign seq
     S-->>C: 200 backup with missing items<br/>X-Sync-Cursor, X-Sync-Changed, [X-Sync-Full-Requested]
     C->>C: restore the response (upsert), store the cursor
@@ -55,7 +55,7 @@ sequenceDiagram
 | `X-Device-Name` | shown in the web UI |
 | `X-Sync-Cursor` | cursor from the previous response; 0 or absent on the first sync |
 | `X-Sync-Full` | `true` when the body holds the complete library |
-| `X-Sync-Deleted-Categories` | comma-separated category uids deleted on the client since the last sync |
+| `X-Sync-Deleted-Categories` | deprecated alias for category tombstones: comma-separated category uids deleted since the last sync. Prefer `POST /api/sync/v2/deletions`. |
 | `Content-Encoding: gzip` | optional |
 
 Body: a Tachiyomi backup (protobuf), the same bytes the client already produces for v1.
@@ -86,7 +86,7 @@ Body: a backup with everything the client is missing:
 |---|---|
 | `X-Sync-Cursor` | send it back next time |
 | `X-Sync-Changed` | `false` when the body carries nothing new; the client can skip the restore |
-| `X-Sync-Full-Requested` | `true` when the server wants a full library next time (after an import or a server-side restore) |
+| `X-Sync-Full-Requested` | `true` when the server wants a full library next time (after an import, a server-side restore, or a delta that carries a tombstone which absence alone cannot convey — see [Delta observability by kind](#delta-observability-by-kind)) |
 | `ETag` | `seq=<cursor>`, the same value v1 clients see |
 
 Clients apply the response with their normal restore (upsert). Deleted categories are
@@ -121,9 +121,8 @@ flowchart TD
     V -- higher --> W[client copy wins]
     V -- equal --> KEEP[server keeps, nothing returned]
     V -- lower --> R[server copy returned to client]
-    T[category uid in X-Sync-Deleted-Categories] --> TB[tombstone]
-    C[chapter key in /v2/deletions] --> TB
-    TB --> RES{client copy newer?}
+    T[deletion posted to /sync/v2/deletions] --> TB[tombstone]
+    TB --> RES{category: higher version?<br/>manga/chapter/history: higher version or newer modified_at?}
     RES -- yes --> RESURRECT[resurrect]
     RES -- no --> STAY[stays deleted, dropped from responses]
 ```
@@ -147,11 +146,140 @@ flowchart TD
   `version`, so history inside the manga would be dropped as an unchanged copy. Entries have no
   version; the later `last_read` wins.
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a
-  deletion.
+  deletion. Chapters are deleted only by an explicit `chapter` tombstone (see
+  [Deletions](#deletions)); a chapter missing from the body never deletes it.
 - Settings (sources, preferences, source preferences, extension repos, saved searches) have
   no version: the client copy wins.
 - Every write gets the key's next `seq`; the cursor is the current `seq`. "Changed since
   cursor" is a single indexed query.
+
+## Deletions
+
+Deletion is explicit: an item is deleted only when a client posts a tombstone. Absence from an
+upload still means nothing (see [Why](#why)), and absence from a response is how a client
+learns that an item was deleted.
+
+### `POST /api/sync/v2/deletions`
+
+One endpoint covers every kind. It uses the same authentication and device middleware as
+`/api/sync/v2/merge`: `X-API-Token`; `X-Device-ID` is required (at most 128 characters);
+`X-Device-Name` is optional.
+
+Canonical body:
+
+```json
+{"items":[{"kind":"chapter","key":"…"},{"kind":"category","key":"uid:17"},{"kind":"manga","key":"…"}]}
+```
+
+The legacy fields that deployed clients already send are accepted in the same body and merged
+and deduplicated with `items`:
+
+```json
+{"deletedChapters":["<key>", "…"], "deletedCategories":[17, 18]}
+```
+
+- `deletedChapters` is the array of chapter keys the client deleted (the same
+  `<manga key>` + `0x1f` + `<chapter url>` key format).
+- `deletedCategories` holds category uids; each number `n` becomes the key `uid:<n>`.
+
+An empty body is a valid no-op.
+
+Response `200`:
+
+```json
+{"acknowledged": 3, "applied": 1}
+```
+
+`acknowledged` is the number of accepted input entries before deduplication (duplicates still
+count); `applied` is the number of rows that actually transitioned from live to deleted.
+Unknown or never-seen keys are not errors: they count as acknowledged, but not as applied.
+
+Errors: `400` for malformed JSON, an unknown `kind`, an empty `key`, or a key longer than 4096
+bytes; `401` for a missing or invalid API key.
+
+### Kinds and key formats
+
+| `kind` | `key` |
+|---|---|
+| `manga` | `<source>\|<url>` |
+| `chapter` | `<manga key>` + `0x1f` + `<chapter url>` |
+| `history` | `<manga key>` + `0x1f` + `<chapter url>` |
+| `category` | `uid:<uid>` or `name:<name>` |
+| `source` | `<source_id>` |
+| `app_pref` | `<key>` |
+| `source_pref` | `<source_key>` + `0x1f` + `<key>` |
+| `ext_store` | `<index_url>` |
+| `saved_search` | `<name>\|<source>` |
+| `extra` | `extra` |
+
+### Tombstone semantics
+
+A tombstone updates the existing `sync_item` row: `deleted=true`, `modified_at` = the current
+Unix time in seconds, `seq` = the key's next sequence, `origin_device` = the requesting device.
+`sync_item.modified_at` is always Unix seconds: client writes store `last_modified_at` as-is,
+and a `BackupHistory.last_read` (epoch milliseconds from `java.util.Date.time`) is divided by
+1000 on upload, so tombstone and client values compare in the same unit.
+There is no new table and no new column. A missing row, or a row already deleted, is a no-op
+and does not advance the sequence.
+
+### Resurrection
+
+- `manga`, `chapter` and `history` come back for a higher `version`, or for a `modified_at`
+  newer than the deletion, regardless of version. This matters for re-added items: a chapter or
+  manga re-created after deletion starts again at `version = 1` while the tombstoned row may sit
+  at a higher version, so the timestamp is what resurrects it. A history entry carries no
+  version at all; its `modified_at` is `last_read`, so only that timestamp can revive it.
+- `category` comes back only for a higher `version`. Categories are uploaded whole on every
+  sync, so a device that has not applied the delete resends its copy unchanged, and restores
+  or reorders bump `last_modified_at`; a newer timestamp must not bring a deleted category
+  back.
+- A `name:<name>` category tombstone resolves to the stored key: if no row is stored under
+  the exact `name:` key, the server looks the category up by name and tombstones the matching
+  `uid:<uid>` row. A `name:` that matches no row is a no-op.
+- Unversioned kinds (`source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra`)
+  come back only for a write whose payload differs from the tombstoned payload. A byte-identical
+  re-upload from a stale device stays deleted.
+
+### Output
+
+Deleted items are omitted from the rendered backup, both for a delta and for a snapshot. There
+is no per-item tombstone marker in the response body; clients infer deletion from absence, as
+before.
+
+### Delta observability by kind
+
+How a client learns about a tombstone in a **delta** depends on the kind:
+
+| Tombstoned kind | Observable in a delta | How |
+|---|---|---|
+| `chapter` | yes | the parent manga arrives with its complete chapter list minus the deleted chapter |
+| `category` | yes | the category list in every response is complete, so the deleted category is missing from it |
+| `history` | yes | the parent manga arrives with its complete history list minus the deleted entry |
+| `manga` | no | `X-Sync-Full-Requested: true`; the absence is only visible in the full snapshot the client then requests |
+| `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra` | no | `X-Sync-Full-Requested: true`; the absence is only visible in the full snapshot the client then requests |
+
+A chapter, category or history tombstone never asks for a full sync: the delta already shows
+what changed. A `manga` or section tombstone sets `X-Sync-Full-Requested`, because rendering
+drops the tombstoned item silently, so a delta carries no trace of it.
+
+### Compatibility
+
+`X-Sync-Deleted-Categories` on `/api/sync/v2/merge` remains supported as a deprecated alias for
+`{"items":[{"kind":"category","key":"uid:<n>"}]}`. `POST /api/sync/v2/deletions` with
+`{"deletedChapters":["…"]}` is likewise supported for the deployed client.
+
+A `manga` tombstone means the item is gone; it is not "removed from the library". Removing a
+manga from the library remains a normal manga payload with `favorite=false`, which keeps its
+chapters and history. Unlike a chapter tombstone, a `manga` tombstone renders nothing, so a
+delta cannot convey it: the server sets `X-Sync-Full-Requested` and the client's next full
+snapshot omits it. No currently deployed client emits or acts on a manga tombstone (a client
+that ignores the flag simply keeps its stale copy until its next full sync).
+
+### Limitation
+
+The unversioned section kinds have no client-side pending-deletion queue and no consumer, so
+deleting them is durable on the server; a delta cannot express the absence, so it sets
+`X-Sync-Full-Requested`, but no deployed client yet acts on that for a section item.
 
 ## Idempotency and concurrency
 

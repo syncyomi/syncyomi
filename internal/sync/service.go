@@ -9,6 +9,7 @@ import (
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"github.com/SyncYomi/SyncYomi/internal/notification"
 	"github.com/rs/zerolog"
 )
@@ -19,7 +20,6 @@ var ErrInvalidSyncEvent = errors.New("invalid sync event")
 type Service interface {
 	// v2 protocol
 	Merge(ctx context.Context, req MergeRequest) (*MergeResponse, error)
-	DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error)
 	Snapshot(ctx context.Context, apiKey string, cursor int64) (*Snapshot, error)
 	// v1 protocol, served from the same item store
 	GetContent(ctx context.Context, apiKey string) (*Snapshot, error)
@@ -39,6 +39,9 @@ type Service interface {
 	// DeleteDevice removes a device row. domain.ErrNotFound if id is unknown for the key.
 	DeleteDevice(ctx context.Context, apiKey string, id int) error
 	GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error)
+	// DeleteItems tombstones the given generic items and returns how many rows actually
+	// transitioned from live to deleted.
+	DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error)
 	// Flush waits for the bookkeeping writes that RecordContentAccess and ReportSyncEvent
 	// run in the background.
 	Flush()
