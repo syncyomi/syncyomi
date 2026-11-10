@@ -86,7 +86,7 @@ Body: a backup with everything the client is missing:
 |---|---|
 | `X-Sync-Cursor` | send it back next time |
 | `X-Sync-Changed` | `false` when the body carries nothing new; the client can skip the restore |
-| `X-Sync-Full-Requested` | `true` when the server wants a full library next time (after an import or a server-side restore) |
+| `X-Sync-Full-Requested` | `true` when the server wants a full library next time (after an import, a server-side restore, or a delta that carries a tombstone which absence alone cannot convey — see [Delta observability by kind](#delta-observability-by-kind)) |
 | `ETag` | `seq=<cursor>`, the same value v1 clients see |
 
 Clients apply the response with their normal restore (upsert). Deleted categories are
@@ -246,6 +246,22 @@ Deleted items are omitted from the rendered backup, both for a delta and for a s
 is no per-item tombstone marker in the response body; clients infer deletion from absence, as
 before.
 
+### Delta observability by kind
+
+How a client learns about a tombstone in a **delta** depends on the kind:
+
+| Tombstoned kind | Observable in a delta | How |
+|---|---|---|
+| `chapter` | yes | the parent manga arrives with its complete chapter list minus the deleted chapter |
+| `category` | yes | the category list in every response is complete, so the deleted category is missing from it |
+| `history` | yes | the parent manga arrives with its complete history list minus the deleted entry |
+| `manga` | no | `X-Sync-Full-Requested: true`; the absence is only visible in the full snapshot the client then requests |
+| `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra` | no | `X-Sync-Full-Requested: true`; the absence is only visible in the full snapshot the client then requests |
+
+A chapter, category or history tombstone never asks for a full sync: the delta already shows
+what changed. A `manga` or section tombstone sets `X-Sync-Full-Requested`, because rendering
+drops the tombstoned item silently, so a delta carries no trace of it.
+
 ### Compatibility
 
 `X-Sync-Deleted-Categories` on `/api/sync/v2/merge` remains supported as a deprecated alias for
@@ -254,14 +270,16 @@ before.
 
 A `manga` tombstone means the item is gone; it is not "removed from the library". Removing a
 manga from the library remains a normal manga payload with `favorite=false`, which keeps its
-chapters and history. Unlike a chapter tombstone, a `manga` tombstone is not visible in a delta
-response (there is no per-item marker); only its absence from a full snapshot reveals it. No
-currently deployed client emits or acts on a manga tombstone.
+chapters and history. Unlike a chapter tombstone, a `manga` tombstone renders nothing, so a
+delta cannot convey it: the server sets `X-Sync-Full-Requested` and the client's next full
+snapshot omits it. No currently deployed client emits or acts on a manga tombstone (a client
+that ignores the flag simply keeps its stale copy until its next full sync).
 
 ### Limitation
 
 The unversioned section kinds have no client-side pending-deletion queue and no consumer, so
-deleting them is durable on the server but not yet propagated to clients.
+deleting them is durable on the server; a delta cannot express the absence, so it sets
+`X-Sync-Full-Requested`, but no deployed client yet acts on that for a section item.
 
 ## Idempotency and concurrency
 

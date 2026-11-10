@@ -75,6 +75,12 @@ by that request carry the new `seq`. A client's cursor is the `seq` it last saw;
 receives is `seq > cursor` (plus all categories). `sync_device.last_cursor` records it per
 device for the web UI.
 
+A tombstoned row is in that delta too, but rendering omits it: a deleted category, chapter or
+history entry is visible because the parent list or the category list comes back complete, while
+a deleted manga or section item leaves no trace, so the merge answers with
+`X-Sync-Full-Requested` and only the next full snapshot shows the absence (see
+[delta observability by kind](sync-protocol-v2.md#delta-observability-by-kind)).
+
 ## Raw blob, render cache and history
 
 `sync_data` carries two payloads per key. `raw_data`/`raw_etag`/`raw_seq` hold the last v1

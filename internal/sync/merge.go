@@ -157,10 +157,14 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			}
 			changed = true
 		} else {
-			out, changed, err = s.delta(ctx, tx, cursor, req.Device.Key(), res)
+			var unexpressible bool
+			out, changed, unexpressible, err = s.delta(ctx, tx, cursor, req.Device.Key(), res)
 			if err != nil {
 				return err
 			}
+			// a tombstone that leaves no trace in a delta can only be learned from a full
+			// snapshot, so ask the client for one
+			fullRequested = fullRequested || unexpressible
 		}
 
 		if newSeq != start.seq {
@@ -654,11 +658,12 @@ func (v *storeView) CategoryByName(name string) *merge.Item {
 }
 
 // delta builds the response for a client at cursor: everything changed since by other
-// devices, the items the server won during this merge, and all live categories.
-func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64, device string, res *merge.Result) (*pb.Backup, bool, error) {
+// devices, the items the server won during this merge, and all live categories. unexpressible
+// reports that the item set holds a tombstone which absence from a delta cannot convey.
+func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64, device string, res *merge.Result) (out *pb.Backup, changed bool, unexpressible bool, err error) {
 	since, err := tx.ItemsSince(ctx, cursor)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 
 	want := map[merge.Kind]map[string]*merge.Item{}
@@ -669,7 +674,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		want[it.Kind][it.Key] = it
 	}
 
-	changed := res.ChangedForClient
+	changed = res.ChangedForClient
 	for _, it := range since {
 		switch {
 		case it.Kind == merge.KindCategory:
@@ -688,7 +693,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 	if len(res.ReturnKeys) > 0 {
 		returned, err := tx.ItemsByKeys(ctx, res.ReturnKeys)
 		if err != nil {
-			return nil, false, err
+			return nil, false, false, err
 		}
 		for _, it := range returned {
 			add(it)
@@ -708,7 +713,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 	if len(parents) > 0 {
 		mangas, err := tx.GetItems(ctx, merge.KindManga, parents)
 		if err != nil {
-			return nil, false, err
+			return nil, false, false, err
 		}
 		for _, m := range mangas {
 			add(m)
@@ -721,7 +726,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		}
 		children, err := tx.ChildrenOf(ctx, keys)
 		if err != nil {
-			return nil, false, err
+			return nil, false, false, err
 		}
 		for _, child := range children {
 			add(child)
@@ -734,11 +739,26 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 			items = append(items, it)
 		}
 	}
-	out, err := backup.Render(items)
+	out, err = backup.Render(items)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
-	return out, changed, nil
+	return out, changed, tombstoneNeedsFull(want), nil
+}
+
+// tombstoneNeedsFull reports whether the delta's item set holds a deleted manga or section
+// item. Rendering drops those silently, so the client sees no trace of them in a delta. A
+// deleted chapter, category or history entry is delta-observable instead: the category list is
+// always complete, and a chapter or history tombstone changes the parent manga's child list.
+func tombstoneNeedsFull(want map[merge.Kind]map[string]*merge.Item) bool {
+	for _, kind := range append([]merge.Kind{merge.KindManga}, merge.SectionKinds...) {
+		for _, it := range want[kind] {
+			if it.Deleted {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // refreshRenderCache stores the full backup for v1 clients and the history. rendered can be

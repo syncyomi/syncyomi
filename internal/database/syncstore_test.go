@@ -743,6 +743,73 @@ func TestSyncStore_KindQueries(t *testing.T) {
 	}
 }
 
+// ChildrenOf is the parent expansion of a delta: it must return both the chapters and the
+// history entries of the requested manga, across the batch boundary.
+func TestSyncStore_ChildrenOfIncludesHistory(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(
+			&merge.Item{Kind: merge.KindManga, Key: "1|/a", Payload: []byte("a")},
+			&merge.Item{Kind: merge.KindManga, Key: "1|/b", Payload: []byte("b")},
+			&merge.Item{Kind: merge.KindChapter, Key: "1|/a\x1f/c", ParentKey: "1|/a", Payload: []byte("c")},
+			&merge.Item{Kind: merge.KindHistory, Key: "1|/a\x1f/c", ParentKey: "1|/a", Payload: []byte("h1")},
+			&merge.Item{Kind: merge.KindHistory, Key: "1|/a\x1f/d", ParentKey: "1|/a", Payload: []byte("h2")},
+			&merge.Item{Kind: merge.KindHistory, Key: "1|/b\x1f/c", ParentKey: "1|/b", Payload: []byte("h3")},
+			&merge.Item{Kind: merge.KindSource, Key: "1", Payload: []byte("s")},
+		), "A"); err != nil {
+			return err
+		}
+
+		got, err := tx.ChildrenOf(ctx, []string{"1|/a"})
+		if err != nil {
+			return err
+		}
+		kinds := map[merge.Kind][]string{}
+		for _, it := range got {
+			kinds[it.Kind] = append(kinds[it.Kind], it.Key)
+		}
+		slices.Sort(kinds[merge.KindChapter])
+		slices.Sort(kinds[merge.KindHistory])
+		if !slices.Equal(kinds[merge.KindChapter], []string{"1|/a\x1f/c"}) {
+			t.Errorf("chapters = %v, want the one chapter of 1|/a", kinds[merge.KindChapter])
+		}
+		if !slices.Equal(kinds[merge.KindHistory], []string{"1|/a\x1f/c", "1|/a\x1f/d"}) {
+			t.Errorf("history = %v, want both history entries of 1|/a and none of 1|/b", kinds[merge.KindHistory])
+		}
+		if len(kinds) != 2 {
+			t.Errorf("children kinds = %v, want chapter and history only", kinds)
+		}
+
+		// the parent list is chunked, so every child of a >500 parent request must come back
+		var many []*merge.Item
+		parents := make([]string, 0, sqlBatchSize+100)
+		for i := 0; i < sqlBatchSize+100; i++ {
+			key := fmt.Sprintf("1|/p%d", i)
+			parents = append(parents, key)
+			many = append(many,
+				&merge.Item{Kind: merge.KindChapter, Key: key + "\x1f/c", ParentKey: key, Payload: []byte("c")},
+				&merge.Item{Kind: merge.KindHistory, Key: key + "\x1f/c", ParentKey: key, Payload: []byte("h")},
+			)
+		}
+		if _, err := tx.Apply(ctx, write(many...), "A"); err != nil {
+			return err
+		}
+		chunked, err := tx.ChildrenOf(ctx, parents)
+		if err != nil {
+			return err
+		}
+		if len(chunked) != 2*len(parents) {
+			t.Errorf("chunked children = %d, want %d", len(chunked), 2*len(parents))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSyncStore_ReadTxDoesNotWaitForWriters(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()

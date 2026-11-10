@@ -4,6 +4,7 @@ package scenarios
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -148,8 +149,9 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("peer delta still carries the legacy-tombstoned chapter %s: %v", ch02URL, urls)
 	}
 
-	// 6. Canonical manga tombstone: the manga and its chapters leave the snapshot and the
-	// peer's delta.
+	// 6. Canonical manga tombstone: the manga and its chapters leave the snapshot. A delta has
+	// no per-item marker, so the server asks for a full sync instead; that snapshot is what
+	// makes the absence visible to the peer.
 	manga02Key := backup.MangaKey(harness.FixtureSource, "/e2e/E2E Tomb/02")
 	requireAppliedDeletion(t, ctx, srv, seeder, "manga 02",
 		harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: manga02Key}}})
@@ -163,11 +165,26 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("titles after manga tombstone = %v, want %v", got, want)
 	}
 
-	delta = peerDelta(t, ctx, peer)
+	delta, header := peerDeltaHeaders(t, ctx, peer)
+	if got := header.Get("X-Sync-Full-Requested"); got != "true" {
+		t.Errorf("peer delta after a manga tombstone: X-Sync-Full-Requested = %q, want \"true\"", got)
+	}
 	if m := mangaByTitle(delta, "E2E Tomb 02"); m != nil {
 		t.Errorf("peer delta still has E2E Tomb 02")
 	}
 	assertNoChapterURL(t, delta, "/e2e/E2E Tomb/02/ch01")
+
+	// the peer does what the flag asks: a full sync, which omits the tombstoned manga
+	full, _, err := peer.MergeHeaders(ctx, nil, harness.MergeOptions{Full: true})
+	if err != nil {
+		t.Fatalf("peer full sync: %v", err)
+	}
+	if m := mangaByTitle(full, "E2E Tomb 02"); m != nil {
+		t.Errorf("full sync after the manga tombstone still has E2E Tomb 02 with %d chapters", len(m.Chapters))
+	}
+	if got, want := harness.SnapshotTitles(full), []string{"E2E Tomb 01", "E2E Tomb 03"}; !slices.Equal(got, want) {
+		t.Errorf("full sync titles = %v, want %v", got, want)
+	}
 
 	// 7. Section tombstone: the saved search is a keyed section item, not a versioned one.
 	searchName := "E2E Search"
@@ -180,7 +197,10 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("snapshot still has saved search %q: %v", searchName, names)
 	}
 
-	delta = peerDelta(t, ctx, peer)
+	delta, header = peerDeltaHeaders(t, ctx, peer)
+	if got := header.Get("X-Sync-Full-Requested"); got != "true" {
+		t.Errorf("peer delta after a section tombstone: X-Sync-Full-Requested = %q, want \"true\"", got)
+	}
 	if names := savedSearchNames(delta); slices.Contains(names, searchName) {
 		t.Errorf("peer delta still has saved search %q: %v", searchName, names)
 	}
@@ -281,6 +301,7 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 	// tombstone, while a genuinely newer one must.
 	histMangaKey := backup.MangaKey(harness.FixtureSource, "/e2e/E2E Tomb/04")
 	histURL := "/e2e/E2E Tomb/04/ch01"
+	histOtherURL := "/e2e/E2E Tomb/04/ch02"
 	histKey := backup.HistoryKey(histMangaKey, histURL)
 	histBackup := func(lastRead int64) *pb.Backup {
 		return &pb.Backup{BackupManga: []*pb.BackupManga{{
@@ -289,11 +310,27 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 			History: []*pb.BackupHistory{{Url: histURL, LastRead: lastRead}},
 		}}}
 	}
-	if _, err := seeder.Merge(ctx, histBackup(time.Now().UnixMilli()), harness.MergeOptions{}); err != nil {
+	// a second entry, so the delta below proves the parent arrives with the *remaining* history
+	histSeed := histBackup(time.Now().UnixMilli())
+	histSeed.BackupManga[0].History = append(histSeed.BackupManga[0].History,
+		&pb.BackupHistory{Url: histOtherURL, LastRead: time.Now().Add(-time.Hour).UnixMilli()})
+	if _, err := seeder.Merge(ctx, histSeed, harness.MergeOptions{}); err != nil {
 		t.Fatalf("merge history: %v", err)
 	}
+	// park the peer's cursor after the seed, so the tombstone below is the only changed row
+	peerDelta(t, ctx, peer)
 	requireAppliedDeletion(t, ctx, srv, seeder, "history entry",
 		harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "history", Key: histKey}}})
+
+	// A history tombstone stays delta-observable: the peer receives the parent manga with the
+	// history list that remains, so the missing entry is the deletion signal.
+	delta, header = peerDeltaHeaders(t, ctx, peer)
+	if got := header.Get("X-Sync-Full-Requested"); got != "" {
+		t.Errorf("peer delta after a history tombstone: X-Sync-Full-Requested = %q, want none", got)
+	}
+	if urls := historyURLs(requireManga(t, delta, "E2E Tomb 04")); !slices.Equal(urls, []string{histOtherURL}) {
+		t.Errorf("peer delta history = %v, want only the surviving %s", urls, histOtherURL)
+	}
 
 	if _, err := seeder.Merge(ctx, histBackup(time.Now().Add(-time.Hour).UnixMilli()), harness.MergeOptions{}); err != nil {
 		t.Fatalf("merge stale history: %v", err)
@@ -357,6 +394,16 @@ func peerDelta(t *testing.T, ctx context.Context, c *harness.SyntheticClient) *p
 		t.Fatalf("peer delta: %v", err)
 	}
 	return b
+}
+
+// peerDeltaHeaders is peerDelta with the response headers, for the signals a client acts on.
+func peerDeltaHeaders(t *testing.T, ctx context.Context, c *harness.SyntheticClient) (*pb.Backup, http.Header) {
+	t.Helper()
+	b, header, err := c.MergeHeaders(ctx, nil, harness.MergeOptions{})
+	if err != nil {
+		t.Fatalf("peer delta: %v", err)
+	}
+	return b, header
 }
 
 func mangaByTitle(b *pb.Backup, title string) *pb.BackupManga {

@@ -40,15 +40,17 @@ type MergeOptions struct {
 	Gzip              bool
 }
 
-func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOptions) (*pb.Backup, error) {
+// MergeHeaders is Merge plus the response headers, so a test can assert the signals a client
+// is expected to act on (X-Sync-Full-Requested, X-Sync-Changed, X-Sync-Cursor).
+func (c *SyntheticClient) MergeHeaders(ctx context.Context, b *pb.Backup, opts MergeOptions) (*pb.Backup, http.Header, error) {
 	body, err := requestBody(b, opts.Streamed, opts.Gzip)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.Server.BaseURL+"/api/sync/v2/merge", body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("X-API-Token", c.Server.APIKey)
@@ -71,12 +73,12 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		payload, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("merge: status %d: %s", resp.StatusCode, payload)
+		return nil, resp.Header, fmt.Errorf("merge: status %d: %s", resp.StatusCode, payload)
 	}
 	if v := resp.Header.Get("X-Sync-Cursor"); v != "" {
 		if cur, err := strconv.ParseInt(v, 10, 64); err == nil {
@@ -85,12 +87,18 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, resp.Header, err
 	}
 	if len(data) == 0 {
-		return &pb.Backup{}, nil
+		return &pb.Backup{}, resp.Header, nil
 	}
-	return backup.Decode(data)
+	out, err := backup.Decode(data)
+	return out, resp.Header, err
+}
+
+func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOptions) (*pb.Backup, error) {
+	out, _, err := c.MergeHeaders(ctx, b, opts)
+	return out, err
 }
 
 // DeletionItem is one canonical tombstone: the kind of sync item and its key.

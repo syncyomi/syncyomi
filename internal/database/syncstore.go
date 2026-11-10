@@ -175,7 +175,7 @@ func (t *syncStoreTx) ChildrenOf(ctx context.Context, mangaKeys []string) ([]*me
 	for start := 0; start < len(mangaKeys); start += sqlBatchSize {
 		end := min(start+sqlBatchSize, len(mangaKeys))
 		items, err := t.queryItems(ctx, sq.And{
-			sq.Eq{"user_api_key": t.apiKey, "kind": string(merge.KindChapter)},
+			sq.Eq{"user_api_key": t.apiKey, "kind": []string{string(merge.KindChapter), string(merge.KindHistory)}},
 			sq.Eq{"parent_key": mangaKeys[start:end]},
 		})
 		if err != nil {
