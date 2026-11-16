@@ -16,9 +16,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// newTestDB opens a fresh sqlite database in a temp dir with the full schema applied.
+// newTestDB opens a fresh database with the full schema applied. It uses
+// Postgres when SYNCYOMI_TEST_POSTGRES_DSN is set, SQLite otherwise.
 func newTestDB(t *testing.T) *DB {
 	t.Helper()
+
+	if testPostgresDSN() != "" {
+		return newTestPostgresDB(t)
+	}
 
 	databaseDriver = "sqlite"
 
@@ -55,6 +60,7 @@ func countRows(t *testing.T, db *DB, table, apiKey string) int {
 }
 
 func TestSQLiteSchemaVersion(t *testing.T) {
+	requireSQLite(t)
 	db := newTestDB(t)
 
 	var version int
@@ -491,6 +497,7 @@ func TestSyncRepo_StatusStoreFields(t *testing.T) {
 
 // Upgrading a database that is already at the previous schema version must only run the new migration.
 func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
+	requireSQLite(t)
 	databaseDriver = "sqlite"
 	db := &DB{
 		squirrel: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
