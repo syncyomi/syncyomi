@@ -13,6 +13,7 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/database"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
+	"github.com/SyncYomi/SyncYomi/internal/merge"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -348,6 +349,123 @@ func TestMerge_ChapterDeletePropagates(t *testing.T) {
 	mm = urls(a.Backup)["/m"]
 	if mm == nil || len(mm.Chapters) != 2 {
 		t.Fatalf("A chapters after the re-add = %v, want /c1 and /c2", mm)
+	}
+}
+
+func historyURLs(m *pb.BackupManga) []string {
+	out := make([]string, 0, len(m.History))
+	for _, h := range m.History {
+		out = append(out, h.Url)
+	}
+	return out
+}
+
+func mustPayload(t *testing.T, m proto.Message) []byte {
+	t.Helper()
+	raw, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// applyTombstones marks items deleted through the store, the way an item deletion reaches it: a
+// merge result carrying tombstones and no writes.
+func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tombstone) {
+	t.Helper()
+	ctx := context.Background()
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, err := tx.Apply(ctx, &merge.Result{Tombstones: tbs}, device)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A history tombstone stays delta-observable: the parent manga is rendered with the complete
+// remaining history, so the deleted entry's absence tells the client it is gone.
+func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	seed := mangaOf(1, "/m", 1, true, chapterOf("/c1", 1, true), chapterOf("/c2", 1, false))
+	seed.History = []*pb.BackupHistory{{Url: "/c1", LastRead: 100}, {Url: "/c2", LastRead: 200}}
+	a := sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{seed}})
+	b := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if m := urls(b.Backup)["/m"]; m == nil || len(m.History) != 2 {
+		t.Fatalf("B history = %v", b.Backup.BackupManga)
+	}
+
+	applyTombstones(t, svc, "B", merge.Tombstone{Kind: merge.KindHistory, Key: backup.HistoryKey("1|/m", "/c1")})
+
+	a = sync2(t, svc, "A", a.Cursor, false, &pb.Backup{})
+	m := urls(a.Backup)["/m"]
+	if m == nil {
+		t.Fatalf("manga missing from the delta after a history tombstone: %v", a.Backup.BackupManga)
+	}
+	if a.FullRequested {
+		t.Error("history tombstone asked for a full sync; it is delta-observable")
+	}
+	if got := historyURLs(m); len(got) != 1 || got[0] != "/c2" {
+		t.Errorf("delta history = %v, want only the surviving /c2", got)
+	}
+	if len(m.Chapters) != 2 {
+		t.Errorf("delta chapters = %v, want the unchanged chapter list", m.Chapters)
+	}
+}
+
+// A delta carries no per-item marker: a deleted manga or section item still renders as a live
+// item, so the response must ask for a full snapshot. Chapter, category and history tombstones
+// are visible through what a delta does render.
+func TestMerge_DeltaTombstoneFullRequest(t *testing.T) {
+	seed := []*merge.Item{
+		{Kind: merge.KindManga, Key: "1|/m", Payload: mustPayload(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})},
+		{Kind: merge.KindChapter, Key: "1|/m\x1f/c", ParentKey: "1|/m", Payload: mustPayload(t, &pb.BackupChapter{Url: "/c"})},
+		{Kind: merge.KindHistory, Key: "1|/m\x1f/h", ParentKey: "1|/m", Payload: mustPayload(t, &pb.BackupHistory{Url: "/h", LastRead: 1})},
+		{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Payload: mustPayload(t, &pb.BackupCategory{Name: "R", Uid: 1})},
+		{Kind: merge.KindSource, Key: "1", Payload: mustPayload(t, &pb.BackupSource{SourceId: 1})},
+		{Kind: merge.KindAppPref, Key: "theme", Payload: mustPayload(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindSourcePref, Key: "1\x1ftheme", ParentKey: "1", Payload: mustPayload(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindExtStore, Key: "ext", Payload: mustPayload(t, &pb.BackupExtensionStore{})},
+		{Kind: merge.KindSavedSearch, Key: "q|1", Payload: mustPayload(t, &pb.BackupSavedSearch{Name: "q", Source: 1})},
+		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
+	}
+
+	cases := []struct {
+		name     string
+		tb       merge.Tombstone
+		wantFull bool
+	}{
+		{"manga", merge.Tombstone{Kind: merge.KindManga, Key: "1|/m"}, true},
+		{"source", merge.Tombstone{Kind: merge.KindSource, Key: "1"}, true},
+		{"app_pref", merge.Tombstone{Kind: merge.KindAppPref, Key: "theme"}, true},
+		{"source_pref", merge.Tombstone{Kind: merge.KindSourcePref, Key: "1\x1ftheme"}, true},
+		{"ext_store", merge.Tombstone{Kind: merge.KindExtStore, Key: "ext"}, true},
+		{"saved_search", merge.Tombstone{Kind: merge.KindSavedSearch, Key: "q|1"}, true},
+		{"extra", merge.Tombstone{Kind: merge.KindExtra, Key: merge.ExtraItemKey}, true},
+		{"chapter", merge.Tombstone{Kind: merge.KindChapter, Key: "1|/m\x1f/c"}, false},
+		{"category", merge.Tombstone{Kind: merge.KindCategory, Key: "uid:1"}, false},
+		{"history", merge.Tombstone{Kind: merge.KindHistory, Key: "1|/m\x1f/h"}, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _ := newTestService(t)
+			ctx := context.Background()
+			if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+				_, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
+			applyTombstones(t, svc, "C", tc.tb)
+
+			resp := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+			if resp.FullRequested != tc.wantFull {
+				t.Errorf("%s tombstone: fullRequested = %v, want %v", tc.name, resp.FullRequested, tc.wantFull)
+			}
+		})
 	}
 }
 
