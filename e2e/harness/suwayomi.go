@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -166,12 +167,60 @@ func (s *Suwayomi) GraphQL(ctx context.Context, query string, variables map[stri
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+const (
+	// restoreBackupMutation is the GraphQL Upload mutation that replaced the removed
+	// POST /api/v1/backup/import route.
+	restoreBackupMutation = `mutation($backup: Upload!) { restoreBackup(input: {backup: $backup}) { id } }`
+
+	// restorePollTimeout bounds the async restore poll. A large library takes minutes to
+	// decode and write, and the server keeps the result queryable for only 60s after it
+	// finishes, so a fast poll observes the terminal state well inside this window.
+	restorePollTimeout = 15 * time.Minute
+
+	restorePollInterval = time.Second
+)
+
+// restoreBackupBody builds the GraphQL multipart request body: the operations document,
+// the map that binds the file part to the top-level variable, and the backup bytes.
+func restoreBackupBody(gz []byte) (*bytes.Buffer, string, error) {
+	operations, err := json.Marshal(map[string]any{
+		"query":     restoreBackupMutation,
+		"variables": map[string]any{"backup": nil},
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if err := w.WriteField("operations", string(operations)); err != nil {
+		return nil, "", err
+	}
+	if err := w.WriteField("map", `{"0":["variables.backup"]}`); err != nil {
+		return nil, "", err
+	}
+	part, err := w.CreateFormFile("0", "backup.tachibk")
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := part.Write(gz); err != nil {
+		return nil, "", err
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return &buf, w.FormDataContentType(), nil
+}
+
 func (s *Suwayomi) ImportBackup(ctx context.Context, gz []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/api/v1/backup/import", bytes.NewReader(gz))
+	body, contentType, err := restoreBackupBody(gz)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/octet-stream")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/api/graphql", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -179,10 +228,76 @@ func (s *Suwayomi) ImportBackup(ctx context.Context, gz []byte) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		payload, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("import backup: status %d: %s", resp.StatusCode, payload)
+		return fmt.Errorf("restore backup: status %d: %s", resp.StatusCode, payload)
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return nil
+	var out struct {
+		Data struct {
+			RestoreBackup *struct {
+				ID string `json:"id"`
+			} `json:"restoreBackup"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("restore backup: decode response: %w", err)
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("restoreBackup: %s", out.Errors[0].Message)
+	}
+	if out.Data.RestoreBackup == nil || out.Data.RestoreBackup.ID == "" {
+		return fmt.Errorf("restoreBackup: response carried no restore id")
+	}
+	return s.waitForRestore(ctx, out.Data.RestoreBackup.ID)
+}
+
+// waitForRestore polls restoreStatus until the restore reaches a terminal state. The
+// server drops the id 60s after the restore finishes, so a missing state is reported
+// rather than being polled for the whole timeout.
+func (s *Suwayomi) waitForRestore(ctx context.Context, id string) error {
+	pollCtx, cancel := context.WithTimeout(ctx, restorePollTimeout)
+	defer cancel()
+	lastState := "none"
+	var lastErr error
+	for {
+		var out struct {
+			Data struct {
+				RestoreStatus *struct {
+					State string `json:"state"`
+				} `json:"restoreStatus"`
+			} `json:"data"`
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		}
+		err := s.GraphQL(pollCtx, `query($id: String!) { restoreStatus(id: $id) { state } }`, map[string]any{"id": id}, &out)
+		switch {
+		case err != nil:
+			lastErr = err
+			if pollCtx.Err() != nil {
+				return fmt.Errorf("suwayomi restore %s: poll failed: %w", id, err)
+			}
+		case len(out.Errors) > 0:
+			return fmt.Errorf("restoreStatus: %s", out.Errors[0].Message)
+		case out.Data.RestoreStatus == nil:
+			return fmt.Errorf("suwayomi restore %s: server has no state for the id (restore finished and was cleaned up)", id)
+		default:
+			lastState = out.Data.RestoreStatus.State
+			lastErr = nil
+			switch lastState {
+			case "SUCCESS":
+				return nil
+			case "FAILURE":
+				return fmt.Errorf("suwayomi restore %s: state FAILURE", id)
+			}
+		}
+		select {
+		case <-pollCtx.Done():
+			return fmt.Errorf("suwayomi restore %s not finished within %s (last state %q, last poll error %v)", id, restorePollTimeout, lastState, lastErr)
+		case <-time.After(restorePollInterval):
+		}
+	}
 }
 
 func (s *Suwayomi) StartSync(ctx context.Context) (string, error) {
