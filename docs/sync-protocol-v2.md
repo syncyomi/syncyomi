@@ -80,19 +80,62 @@ Body: a backup with everything the client is missing:
 - manga changed since the cursor by other devices (each with its complete chapter list and
   history, also when only one chapter or history entry changed), settings changed since the cursor, and any item where the
   server copy won over the client's,
+- every tombstone in that set, listed explicitly in `deletions`,
 - with `X-Sync-Cursor: 0` or `X-Sync-Full: true`: the complete library.
 
 | Header | Meaning |
 |---|---|
 | `X-Sync-Cursor` | send it back next time |
 | `X-Sync-Changed` | `false` when the body carries nothing new; the client can skip the restore |
-| `X-Sync-Full-Requested` | `true` when the server wants a full library next time (after an import or a server-side restore) |
+| `X-Sync-Full-Requested` | `true` when the server wants a full library next time: after a legacy import, a server-side restore, or a client cursor ahead of the server's `seq`. A tombstone is never a reason — it travels in `deletions` |
 | `ETag` | `seq=<cursor>`, the same value v1 clients see |
 
 Clients apply the response with their normal restore (upsert). Deleted categories are
 detected by their absence from the response's category list, which is complete. Deleted
 chapters are detected the same way: the manga arrives with its complete (remaining) chapter
 list, so a client can drop the chapters it no longer sees.
+
+### The deletions list
+
+A chapter, category or history tombstone is also visible through those complete lists. A
+deleted manga or section item is not: the delta renders no live item for it and no child
+list reveals its absence, so a client could keep its stale copy forever. The delta therefore
+carries every tombstone of its item set explicitly:
+
+```proto
+message BackupDeletedItem {
+  string kind = 1;
+  string key  = 2;
+  int64  seq  = 3;
+}
+
+message Backup {
+  // existing fields unchanged
+  repeated BackupDeletedItem deletions = 11000;
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | the sync item kind: `manga`, `chapter`, `history`, `category`, `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search` or `extra` |
+| `key` | the item's merge key, the same one `/v2/deletions` accepts: `source\|url`, `<manga key>\x1f<url>`, `uid:<uid>`, natural keys for settings |
+| `seq` | the `seq` of the deletion, so a client can tell it from a newer resurrection |
+
+- A client applies the list by deleting its local row for `kind`/`key` (a manga takes its
+  chapters and history with it), in the same pass as the restore, before or after it does not
+  matter as long as both are applied.
+- Every tombstone of the delta's item set appears exactly once, sorted by `kind` then `key`.
+  It is this delta's tombstones, not the key's whole deletion history: an unchanged delta
+  carries none.
+- The list is a delta field only. A full snapshot, the render cache and the v1 payload never
+  carry it; absence there already conveys the deletion, and v1 clients would drop the unknown
+  field anyway.
+- Field number 11000 is in the root-envelope band SyncYomi reserves for itself, 11000–11099.
+  No fork borrows it: Aniyomi uses 500+, TachiyomiSY 600+, Komikku 610+ (620–632 nested),
+  Chimahon 700+, TachiyomiJ2K 800+ (nested fields only), Suwayomi 9000+, and komi-kun
+  10000–10999 (`BackupManga` 10000–10099, root `Backup` 10500–10599). The number is therefore
+  free across Mihon, TachiyomiSY, Komikku, komi-kun, chimahon, TachiyomiJ2K, Aniyomi and
+  Suwayomi, and their parsers keep it as an unknown field instead of misreading it.
 
 ## Chapter deletions
 

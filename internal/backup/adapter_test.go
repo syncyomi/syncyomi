@@ -363,3 +363,39 @@ func TestSameContentIgnoresEmbeddedHistory(t *testing.T) {
 		t.Error("history moved to its own items must not make a stored manga differ")
 	}
 }
+
+// DeletedItems lists only tombstones, in a stable kind-then-key order with the deletion seq
+// attached: a delta must carry the same list for the same item set regardless of the map
+// iteration order it was assembled from.
+func TestDeletedItems(t *testing.T) {
+	if got := DeletedItems(nil); got != nil {
+		t.Errorf("empty item list = %v, want nil", got)
+	}
+	if got := DeletedItems([]*merge.Item{{Kind: merge.KindChapter, Key: "1|/m\x1f/c", Seq: 8}}); got != nil {
+		t.Errorf("live items only = %v, want nil", got)
+	}
+
+	items := []*merge.Item{
+		{Kind: merge.KindSavedSearch, Key: "b|1", Deleted: true, Seq: 7},
+		{Kind: merge.KindManga, Key: "1|/x", Deleted: true, Seq: 5},
+		{Kind: merge.KindManga, Key: "1|/a", Deleted: true, Seq: 6},
+		{Kind: merge.KindChapter, Key: "1|/a\x1f/c", Seq: 9},
+		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Seq: 4},
+	}
+	want := []*pb.BackupDeletedItem{
+		{Kind: string(merge.KindAppPref), Key: "theme", Seq: 4},
+		{Kind: string(merge.KindManga), Key: "1|/a", Seq: 6},
+		{Kind: string(merge.KindManga), Key: "1|/x", Seq: 5},
+		{Kind: string(merge.KindSavedSearch), Key: "b|1", Seq: 7},
+	}
+	got := DeletedItems(items)
+	if len(got) != len(want) {
+		t.Fatalf("deletions = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Kind != want[i].Kind || got[i].Key != want[i].Key || got[i].Seq != want[i].Seq {
+			t.Errorf("deletion %d = {%s %s %d}, want {%s %s %d}", i,
+				got[i].Kind, got[i].Key, got[i].Seq, want[i].Kind, want[i].Key, want[i].Seq)
+		}
+	}
+}

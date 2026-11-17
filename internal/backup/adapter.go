@@ -321,6 +321,28 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 	return b, nil
 }
 
+// DeletedItems lists the tombstones among items as explicit kind/key/seq entries, so a delta
+// can carry deletions that rendering alone cannot express (a deleted manga or section has no
+// live item and no child list to reveal its absence). It is sorted by kind and key because the
+// caller builds items from map iteration, and it is separate from Render because Render feeds
+// the render cache and the v1 payloads, which must stay free of SyncYomi-only fields.
+func DeletedItems(items []*merge.Item) []*pb.BackupDeletedItem {
+	var out []*pb.BackupDeletedItem
+	for _, it := range items {
+		if !it.Deleted {
+			continue
+		}
+		out = append(out, &pb.BackupDeletedItem{Kind: string(it.Kind), Key: it.Key, Seq: it.Seq})
+	}
+	slices.SortFunc(out, func(a, b *pb.BackupDeletedItem) int {
+		if c := strings.Compare(a.Kind, b.Kind); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Key, b.Key)
+	})
+	return out
+}
+
 func newestHistory(embedded, items []*pb.BackupHistory) []*pb.BackupHistory {
 	if len(embedded) == 0 {
 		return sortedHistory(items)
