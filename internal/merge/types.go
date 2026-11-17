@@ -59,16 +59,18 @@ type Store interface {
 	SameContent(a, b *Item) bool
 }
 
-type Request struct {
-	DeviceID          string
-	Items             []*Item
-	DeletedCategories []string // category keys the client deleted
-	DeletedChapters   []string // chapter keys the client deleted
-}
-
+// Tombstone marks a stored item as deleted; the store flips Deleted, bumps Seq and
+// records the deleting device.
 type Tombstone struct {
 	Kind Kind
 	Key  string
+}
+
+type Request struct {
+	DeviceID string
+	Items    []*Item
+	// Tombstones are items the client explicitly deleted.
+	Tombstones []Tombstone
 }
 
 type Result struct {

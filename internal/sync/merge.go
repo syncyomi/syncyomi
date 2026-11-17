@@ -39,12 +39,6 @@ type MergeRequest struct {
 	DeletedCategories []int64
 }
 
-type DeleteChaptersRequest struct {
-	APIKey          string
-	Device          domain.DeviceInfo
-	DeletedChapters []string
-}
-
 type MergeResponse struct {
 	Backup        *pb.Backup
 	Cursor        int64
@@ -139,7 +133,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		}
 		full := req.Full || cursor == 0
 
-		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories, nil)
+		res, err := s.mergeBackup(ctx, tx, items, req.Device.Key(), req.DeletedCategories)
 		if err != nil {
 			return err
 		}
@@ -182,28 +176,6 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		return nil
 	})
 	return resp, err
-}
-
-// DeleteChapters tombstones the keys in one transaction; unknown and already-deleted keys are no-ops.
-func (s *service) DeleteChapters(ctx context.Context, req DeleteChaptersRequest) (int, error) {
-	var applied int
-	err := s.writeTx(ctx, req.APIKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
-		res, err := s.mergeBackup(ctx, tx, nil, req.Device.Key(), nil, req.DeletedChapters)
-		if err != nil {
-			return err
-		}
-		newSeq, err := tx.Apply(ctx, res, req.Device.Key())
-		if err != nil {
-			return err
-		}
-		applied = len(req.DeletedChapters)
-
-		if newSeq != start.seq {
-			return s.refreshRenderCache(ctx, tx, false, nil)
-		}
-		return nil
-	})
-	return applied, err
 }
 
 // Snapshot renders the whole store for v2 clients. ErrNoData when nothing was ever stored.
@@ -422,7 +394,7 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		if err := tx.Clear(ctx); err != nil {
 			return err
 		}
-		res, err := s.mergeBackup(ctx, tx, items, deviceRestore, nil, nil)
+		res, err := s.mergeBackup(ctx, tx, items, deviceRestore, nil)
 		if err != nil {
 			return err
 		}
@@ -505,7 +477,7 @@ func (s *service) prepareImport(ctx context.Context, tx domain.SyncStoreReader) 
 		p.garbage = true
 		return p, nil
 	}
-	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil, nil)
+	p.res, err = s.mergeBackup(ctx, tx, p.items, deviceLegacy, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -542,23 +514,53 @@ func splitBackup(b *pb.Backup) ([]*merge.Item, error) {
 	return items, nil
 }
 
-func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64, deletedChapters []string) (*merge.Result, error) {
-	view, err := loadStoreView(ctx, tx, items, deletedChapters)
+func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, device string, deletedCategories []int64) (*merge.Result, error) {
+	tombstones := make([]merge.Tombstone, 0, len(deletedCategories))
+	for _, uid := range deletedCategories {
+		tombstones = append(tombstones, merge.Tombstone{Kind: merge.KindCategory, Key: "uid:" + strconv.FormatInt(uid, 10)})
+	}
+
+	view, err := loadStoreView(ctx, tx, items, tombstones)
 	if err != nil {
 		return nil, err
 	}
 
-	deleted := make([]string, 0, len(deletedCategories))
-	for _, uid := range deletedCategories {
-		deleted = append(deleted, "uid:"+strconv.FormatInt(uid, 10))
-	}
+	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, Tombstones: tombstones}), nil
+}
 
-	return merge.Merge(view, merge.Request{
-		DeviceID:          device,
-		Items:             items,
-		DeletedCategories: deleted,
-		DeletedChapters:   deletedChapters,
-	}), nil
+// DeleteItems tombstones the given items for the key and reports how many rows actually
+// transitioned from live to deleted. Unknown or already deleted keys are acknowledged by
+// the handler but are not part of the returned count.
+func (s *service) DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error) {
+	unlock, err := s.locks.lock(ctx, apiKey)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+
+	applied := 0
+	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
+		if err := s.promoteLegacy(ctx, tx); err != nil {
+			return err
+		}
+		if _, err := s.importPending(ctx, tx); err != nil {
+			return err
+		}
+		view, err := loadStoreView(ctx, tx, nil, tombstones)
+		if err != nil {
+			return err
+		}
+		res := merge.Merge(view, merge.Request{DeviceID: dev.Key(), Tombstones: tombstones})
+		if _, err := tx.Apply(ctx, res, dev.Key()); err != nil {
+			return err
+		}
+		applied = len(res.Tombstones)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return applied, nil
 }
 
 // storeView is the merge's window on the server state: the stored items matching the
@@ -568,15 +570,18 @@ type storeView struct {
 	categories []*merge.Item
 }
 
-func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, deletedChapters []string) (*storeView, error) {
+func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merge.Item, tombstones []merge.Tombstone) (*storeView, error) {
 	keys := map[merge.Kind][]string{}
 	for _, it := range items {
 		if it.Kind != merge.KindCategory {
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
 		}
 	}
-	if len(deletedChapters) > 0 {
-		keys[merge.KindChapter] = append(keys[merge.KindChapter], deletedChapters...)
+	// tombstones must resolve their target row too, so a deletion can flip it
+	for _, tb := range tombstones {
+		if tb.Kind != merge.KindCategory {
+			keys[tb.Kind] = append(keys[tb.Kind], tb.Key)
+		}
 	}
 	view := &storeView{items: map[merge.Kind]map[string]*merge.Item{}}
 	for kind, ks := range keys {
