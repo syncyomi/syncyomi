@@ -159,7 +159,10 @@ func dedupe(items []*merge.Item) []*merge.Item {
 		k := id{it.Kind, it.Key}
 		if i, ok := index[k]; ok {
 			cur := out[i]
-			if it.Version > cur.Version || (it.Version == cur.Version && it.ModifiedAt >= cur.ModifiedAt) {
+			// dedupe runs before Merge normalizes, so it normalizes its own comparison:
+			// two copies of one key that differ only below a second must tie here, as they
+			// did when Split normalized them on the way out.
+			if it.Version > cur.Version || (it.Version == cur.Version && merge.NormalizeTimestamp(it.ModifiedAt) >= merge.NormalizeTimestamp(cur.ModifiedAt)) {
 				out[i] = it
 			}
 			continue

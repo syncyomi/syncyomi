@@ -389,3 +389,57 @@ func TestHistoryOlderReadGetsServerCopyBack(t *testing.T) {
 		t.Errorf("B must receive the newer entry: %+v", res)
 	}
 }
+
+func TestHistoryTombstoneIgnoresStaleMillisecondReupload(t *testing.T) {
+	const deletedAt = int64(1_700_000_000)
+	s := newMemStore()
+	s.items[KindHistory] = map[string]*Item{
+		"/c1": {Kind: KindHistory, Key: "/c1", ParentKey: "1|/m", ModifiedAt: deletedAt, Deleted: true, Payload: []byte("/c1@old")},
+	}
+
+	res := s.merge("A", history("1|/m", "/c1", 1_600_000_000_123))
+	if len(res.Writes) != 0 || !s.Get(KindHistory, "/c1").Deleted {
+		t.Errorf("stale millisecond re-upload resurrected the tombstone: %+v", res)
+	}
+	if !res.ChangedForClient {
+		t.Errorf("stale re-upload must tell the client to re-pull the tombstoned copy: %+v", res)
+	}
+
+	res = s.merge("A", history("1|/m", "/c1", 1_800_000_000_123))
+	if len(res.Writes) != 1 || s.Get(KindHistory, "/c1").Deleted {
+		t.Errorf("newer millisecond read did not resurrect: %+v", res)
+	}
+}
+
+func TestMergeNormalizesModifiedAtForEveryKind(t *testing.T) {
+	const ms = int64(1_700_000_000_123)
+	const sec = int64(1_700_000_000)
+
+	cat := category("uid:1", "Reading", 0)
+	m := manga("1|/m", 0, "m")
+	ch := chapter("1|/m", "/c", 0, "c")
+	for _, it := range []*Item{cat, m, ch} {
+		it.ModifiedAt = ms
+	}
+
+	s := newMemStore()
+	res := s.merge("A", cat, m, ch, history("1|/m", "/c", ms))
+
+	if len(res.Writes) != 4 {
+		t.Fatalf("writes = %+v, want all four kinds inserted", res.Writes)
+	}
+	for _, it := range []*Item{cat, m, ch} {
+		if got := s.Get(it.Kind, it.Key).ModifiedAt; got != sec {
+			t.Errorf("%s %s modified_at = %d, want seconds %d", it.Kind, it.Key, got, sec)
+		}
+	}
+	if got := s.Get(KindHistory, "/c").ModifiedAt; got != sec {
+		t.Errorf("history modified_at = %d, want seconds %d", got, sec)
+	}
+
+	fresh := newMemStore()
+	fresh.merge("B", history("1|/m", "/c", sec))
+	if got := fresh.Get(KindHistory, "/c"); got == nil || got.ModifiedAt != sec {
+		t.Errorf("a seconds timestamp was altered: %+v", got)
+	}
+}
