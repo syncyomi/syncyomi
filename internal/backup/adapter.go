@@ -54,7 +54,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, &merge.Item{Kind: merge.KindCategory, Key: key, Name: c.Name, Version: c.Version, ModifiedAt: merge.NormalizeTimestamp(c.GetLastModifiedAt()), Payload: payload})
+		items = append(items, &merge.Item{Kind: merge.KindCategory, Key: key, Name: c.Name, Version: c.Version, ModifiedAt: c.GetLastModifiedAt(), Payload: payload})
 	}
 
 	for _, m := range b.BackupManga {
@@ -76,7 +76,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, &merge.Item{Kind: merge.KindManga, Key: key, Version: m.Version, ModifiedAt: merge.NormalizeTimestamp(m.GetLastModifiedAt()), Refs: refs, Payload: payload})
+		items = append(items, &merge.Item{Kind: merge.KindManga, Key: key, Version: m.Version, ModifiedAt: m.GetLastModifiedAt(), Refs: refs, Payload: payload})
 
 		for _, ch := range m.Chapters {
 			if ch.Url == "" {
@@ -86,7 +86,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: merge.NormalizeTimestamp(ch.GetLastModifiedAt()), Payload: payload})
+			items = append(items, &merge.Item{Kind: merge.KindChapter, Key: ChapterKey(key, ch.Url), ParentKey: key, Version: ch.Version, ModifiedAt: ch.GetLastModifiedAt(), Payload: payload})
 		}
 
 		for _, h := range m.History {
@@ -97,7 +97,7 @@ func Split(b *pb.Backup) ([]*merge.Item, error) {
 			if err != nil {
 				return nil, err
 			}
-			items = append(items, &merge.Item{Kind: merge.KindHistory, Key: HistoryKey(key, h.Url), ParentKey: key, ModifiedAt: merge.NormalizeTimestamp(h.LastRead), Payload: payload})
+			items = append(items, &merge.Item{Kind: merge.KindHistory, Key: HistoryKey(key, h.Url), ParentKey: key, ModifiedAt: h.LastRead, Payload: payload})
 		}
 	}
 
@@ -159,7 +159,10 @@ func dedupe(items []*merge.Item) []*merge.Item {
 		k := id{it.Kind, it.Key}
 		if i, ok := index[k]; ok {
 			cur := out[i]
-			if it.Version > cur.Version || (it.Version == cur.Version && it.ModifiedAt >= cur.ModifiedAt) {
+			// dedupe runs before Merge normalizes, so it normalizes its own comparison:
+			// two copies of one key that differ only below a second must tie here, as they
+			// did when Split normalized them on the way out.
+			if it.Version > cur.Version || (it.Version == cur.Version && merge.NormalizeTimestamp(it.ModifiedAt) >= merge.NormalizeTimestamp(cur.ModifiedAt)) {
 				out[i] = it
 			}
 			continue

@@ -298,7 +298,14 @@ func TestSplitMovesHistoryIntoItems(t *testing.T) {
 	}
 }
 
-func TestSplitNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
+// splitStore serves an empty merge store, so Merge writes every item it is given.
+type splitStore struct{}
+
+func (splitStore) Get(merge.Kind, string) *merge.Item { return nil }
+func (splitStore) CategoryByName(string) *merge.Item  { return nil }
+func (splitStore) SameContent(a, b *merge.Item) bool  { return false }
+
+func TestIngestionNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
 	const ms = int64(1_700_000_000_123)
 	const sec = int64(1_700_000_000)
 	b := &pb.Backup{BackupManga: []*pb.BackupManga{{
@@ -311,8 +318,9 @@ func TestSplitNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res := merge.Merge(splitStore{}, merge.Request{Items: items})
 	got := map[string]int64{}
-	for _, it := range items {
+	for _, it := range res.Writes {
 		got[string(it.Kind)+"|"+it.Key] = it.ModifiedAt
 	}
 	if v := got["history|"+HistoryKey("1|/m", "/c")]; v != sec {
