@@ -298,8 +298,6 @@ func TestSplitMovesHistoryIntoItems(t *testing.T) {
 	}
 }
 
-// BackupHistory.last_read is epoch milliseconds while last_modified_at is seconds;
-// Split normalizes every kind so sync_item.modified_at is always seconds.
 func TestSplitNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
 	const ms = int64(1_700_000_000_123)
 	const sec = int64(1_700_000_000)

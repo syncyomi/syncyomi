@@ -390,29 +390,21 @@ func TestHistoryOlderReadGetsServerCopyBack(t *testing.T) {
 	}
 }
 
-// A history re-upload carries the client's millisecond last_read. Normalized to seconds it
-// must not resurrect a tombstone stamped in seconds; a genuinely newer read does.
 func TestHistoryTombstoneIgnoresStaleMillisecondReupload(t *testing.T) {
 	const deletedAt = int64(1_700_000_000)
 	s := newMemStore()
-	// seeded directly: the tombstone request API is not part of this change, and the
-	// deletion stamp is what the merge compares a re-upload against
 	s.items[KindHistory] = map[string]*Item{
 		"/c1": {Kind: KindHistory, Key: "/c1", ParentKey: "1|/m", ModifiedAt: deletedAt, Deleted: true, Payload: []byte("/c1@old")},
 	}
 
-	// 1_600_000_000_123 ms is 1_600_000_000 s, older than the 1_700_000_000 s tombstone
 	res := s.merge("A", history("1|/m", "/c1", NormalizeTimestamp(1_600_000_000_123)))
 	if len(res.Writes) != 0 || !s.Get(KindHistory, "/c1").Deleted {
 		t.Errorf("stale millisecond re-upload resurrected the tombstone: %+v", res)
 	}
-	// the client must learn its copy is stale: this base reports that through
-	// ChangedForClient, and the tombstone request API later also lists the key in ReturnKeys
 	if !res.ChangedForClient {
 		t.Errorf("stale re-upload must tell the client to re-pull the tombstoned copy: %+v", res)
 	}
 
-	// 1_800_000_000_123 ms is 1_800_000_000 s, newer than the tombstone
 	res = s.merge("A", history("1|/m", "/c1", NormalizeTimestamp(1_800_000_000_123)))
 	if len(res.Writes) != 1 || s.Get(KindHistory, "/c1").Deleted {
 		t.Errorf("newer millisecond read did not resurrect: %+v", res)

@@ -506,8 +506,6 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	if err := db.openSQLite(); err != nil {
 		t.Fatal(err)
 	}
-	// a database at the previous version already has every earlier schema change; the last
-	// migration is data-only, so rewinding the version is enough to re-run it
 	previous := len(sqliteMigrations) - 1
 	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", previous)); err != nil {
 		t.Fatalf("rewind user_version: %v", err)
@@ -543,8 +541,6 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 	}
 }
 
-// A history row written before timestamps were normalized can hold epoch milliseconds;
-// the migration must rewrite it to seconds while leaving seconds-based rows untouched.
 func TestSQLiteMigrationNormalizesModifiedAtToSeconds(t *testing.T) {
 	// SQLite-only: this test drives PRAGMA user_version and the sqlite migration list.
 	if os.Getenv("SYNCYOMI_TEST_POSTGRES_DSN") != "" {
@@ -566,8 +562,8 @@ func TestSQLiteMigrationNormalizesModifiedAtToSeconds(t *testing.T) {
 	insertTestAPIKey(t, db, "key1")
 
 	want := map[string]int64{
-		"history|1|/m\x1f/c": 1_700_000_000, // written in milliseconds
-		"manga|1|/m":         1_700_000_000, // already seconds, must not change
+		"history|1|/m\x1f/c": 1_700_000_000,
+		"manga|1|/m":         1_700_000_000,
 	}
 	for id, at := range map[string]int64{"history|1|/m\x1f/c": 1_700_000_000_123, "manga|1|/m": 1_700_000_000} {
 		kind, key, _ := strings.Cut(id, "|")
