@@ -531,29 +531,21 @@ func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, it
 }
 
 func (s *service) DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error) {
-	unlock, err := s.locks.lock(ctx, apiKey)
-	if err != nil {
-		return 0, err
-	}
-	defer unlock()
-
-	applied := 0
-	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
-		if err := s.promoteLegacy(ctx, tx); err != nil {
-			return err
-		}
-		if _, err := s.importPending(ctx, tx); err != nil {
-			return err
-		}
+	var applied int
+	err := s.writeTx(ctx, apiKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		view, err := loadStoreView(ctx, tx, nil, tombstones)
 		if err != nil {
 			return err
 		}
 		res := merge.Merge(view, merge.Request{DeviceID: dev.Key(), Tombstones: tombstones})
-		if _, err := tx.Apply(ctx, res, dev.Key()); err != nil {
+		newSeq, err := tx.Apply(ctx, res, dev.Key())
+		if err != nil {
 			return err
 		}
 		applied = len(res.Tombstones)
+		if newSeq != start.seq {
+			return s.refreshRenderCache(ctx, tx, false, nil)
+		}
 		return nil
 	})
 	if err != nil {

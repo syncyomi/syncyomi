@@ -399,6 +399,41 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 	}
 }
 
+// A deletion that moves the seq must rewrite the render cache, or v1 clients and the
+// history keep serving the pre-delete library.
+func TestDeleteItemsRefreshRenderCache(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+
+	if _, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "B", Name: "B"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: "1|/m"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.store.ReadTx(ctx, "key1", func(tx domain.SyncStoreReader) error {
+		rc, err := tx.RenderCache(ctx)
+		if err != nil {
+			return err
+		}
+		if rc == nil || rc.RenderedSeq == nil || *rc.RenderedSeq != tx.Seq() {
+			t.Errorf("render cache not refreshed to seq %d: %+v", tx.Seq(), rc)
+			return nil
+		}
+		b, err := backup.Decode(rc.Data)
+		if err != nil {
+			return err
+		}
+		if len(b.BackupManga) != 0 {
+			t.Errorf("deleted manga still in the render cache: %v", b.BackupManga)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMerge_ChapterDeletePropagates(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
