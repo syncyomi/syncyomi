@@ -287,7 +287,6 @@ func TestMerge_CategoryTombstoneMarksStoreRow(t *testing.T) {
 	sync2(t, svc, "A", 0, true, &pb.Backup{BackupCategories: cats})
 	b := sync2(t, svc, "B", 0, true, &pb.Backup{BackupCategories: cats})
 
-	// the deleted-categories header is applied as a KindCategory tombstone
 	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{}, 20)
 
 	var row *merge.Item
@@ -309,7 +308,6 @@ func TestMerge_CategoryTombstoneMarksStoreRow(t *testing.T) {
 		t.Errorf("modified_at = %d, want unix seconds near %d", row.ModifiedAt, now)
 	}
 
-	// a fresh device does not receive the deleted category
 	c := sync2(t, svc, "C", 0, true, &pb.Backup{})
 	if len(c.Backup.BackupCategories) != 0 {
 		t.Errorf("render kept the deleted category: %v", c.Backup.BackupCategories)
@@ -325,8 +323,6 @@ func mustMarshal(t *testing.T, m proto.Message) []byte {
 	return data
 }
 
-// DeleteItems resolves tombstone targets for every kind, including the non-category rows
-// that the merge view only loads because the tombstones name them.
 func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
@@ -387,7 +383,6 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 		}
 	}
 
-	// nothing tombstoned may appear in the full snapshot
 	snap, err := svc.Snapshot(ctx, "key1", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -491,8 +486,6 @@ func mustPayload(t *testing.T, m proto.Message) []byte {
 	return raw
 }
 
-// applyTombstones marks items deleted through the store, the way an item deletion reaches it: a
-// merge result carrying tombstones and no writes.
 func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tombstone) {
 	t.Helper()
 	ctx := context.Background()
@@ -504,8 +497,6 @@ func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tom
 	}
 }
 
-// A history tombstone stays delta-observable: the parent manga is rendered with the complete
-// remaining history, so the deleted entry's absence tells the client it is gone.
 func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	svc, _ := newTestService(t)
 
@@ -535,9 +526,6 @@ func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	}
 }
 
-// A delta carries no per-item marker: a deleted manga or section item still renders as a live
-// item, so the response must ask for a full snapshot. Chapter, category and history tombstones
-// are visible through what a delta does render.
 func TestMerge_DeltaTombstoneFullRequest(t *testing.T) {
 	seed := []*merge.Item{
 		{Kind: merge.KindManga, Key: "1|/m", Payload: mustPayload(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})},

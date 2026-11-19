@@ -157,7 +157,6 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
-// Render must omit tombstoned rows for every section kind, not just the versioned ones.
 func TestRenderSkipsDeletedSectionKinds(t *testing.T) {
 	deleted := []*merge.Item{
 		{Kind: merge.KindSource, Key: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupSource{SourceId: 1})},

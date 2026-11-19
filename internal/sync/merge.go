@@ -162,8 +162,6 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			if err != nil {
 				return err
 			}
-			// a tombstone that leaves no trace in a delta can only be learned from a full
-			// snapshot, so ask the client for one
 			fullRequested = fullRequested || unexpressible
 		}
 
@@ -532,9 +530,6 @@ func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, it
 	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, Tombstones: tombstones}), nil
 }
 
-// DeleteItems tombstones the given items for the key and reports how many rows actually
-// transitioned from live to deleted. Unknown or already deleted keys are acknowledged by
-// the handler but are not part of the returned count.
 func (s *service) DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error) {
 	unlock, err := s.locks.lock(ctx, apiKey)
 	if err != nil {
@@ -581,7 +576,6 @@ func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merg
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
 		}
 	}
-	// tombstones must resolve their target row too, so a deletion can flip it
 	for _, tb := range tombstones {
 		if tb.Kind != merge.KindCategory {
 			keys[tb.Kind] = append(keys[tb.Kind], tb.Key)
@@ -658,8 +652,7 @@ func (v *storeView) CategoryByName(name string) *merge.Item {
 }
 
 // delta builds the response for a client at cursor: everything changed since by other
-// devices, the items the server won during this merge, and all live categories. unexpressible
-// reports that the item set holds a tombstone which absence from a delta cannot convey.
+// devices, the items the server won during this merge, and all live categories.
 func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64, device string, res *merge.Result) (out *pb.Backup, changed bool, unexpressible bool, err error) {
 	since, err := tx.ItemsSince(ctx, cursor)
 	if err != nil {
@@ -746,12 +739,6 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 	return out, changed, tombstoneNeedsFull(want), nil
 }
 
-// tombstoneNeedsFull reports whether the delta's item set holds a deleted manga or section
-// item. A delta carries no per-item tombstone marker, and these kinds are rendered from their
-// payload alone with no child list that could reveal the removal, so the client cannot observe
-// the deletion and keeps its stale live copy. The response asks for a full snapshot instead of
-// returning a delta that silently omits the change. Chapter, category and history tombstones
-// stay delta-observable via the complete category list and the parent manga's child list.
 func tombstoneNeedsFull(want map[merge.Kind]map[string]*merge.Item) bool {
 	for _, kind := range append([]merge.Kind{merge.KindManga}, merge.SectionKinds...) {
 		for _, it := range want[kind] {

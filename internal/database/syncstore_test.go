@@ -144,8 +144,6 @@ func TestSyncStore_TombstoneAndResurrect(t *testing.T) {
 	}
 }
 
-// mergeStore adapts a live store transaction to merge.Store, so a test drives the
-// production path (merge.Merge -> tx.Apply) instead of hand-building a Result.
 type mergeStore struct {
 	ctx context.Context
 	tx  domain.SyncStoreTx
@@ -192,9 +190,6 @@ func renderChapterCount(t *testing.T, tx domain.SyncStoreTx) int {
 	return len(b.BackupManga[0].Chapters)
 }
 
-// A chapter re-added after a tombstone restarts at version 1. Through the real Apply path
-// the deletion stamps modified_at with the server clock, so a newer re-add must resurrect
-// the row and render, while an older one must stay deleted and not render.
 func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -240,7 +235,6 @@ func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
 			t.Errorf("tombstoned chapter rendered: %d chapters", got)
 		}
 
-		// version 1 with a newer timestamp resurrects and renders
 		readd := &merge.Item{Kind: merge.KindChapter, Key: chapterKey, ParentKey: mangaKey, Version: 1, ModifiedAt: deletedAt + 1, Payload: pbPayload(t, &pb.BackupChapter{Url: "/c", Name: "/c", Read: true})}
 		res := merge.Merge(view, merge.Request{DeviceID: "A", Items: []*merge.Item{readd}})
 		if len(res.Writes) != 1 {
@@ -253,7 +247,6 @@ func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
 			t.Errorf("resurrected chapter did not render: %d chapters", got)
 		}
 
-		// a re-add older than the fresh deletion stays dead and does not render
 		if _, err := tombstone(); err != nil {
 			return err
 		}
@@ -284,7 +277,6 @@ func pbPayload(t *testing.T, m proto.Message) []byte {
 	return b
 }
 
-// A tombstone names its kind, so Apply marks the requested row and only that one.
 func TestSyncStore_TombstoneKinds(t *testing.T) {
 	const (
 		mangaKey   = "1|/m"
@@ -403,7 +395,6 @@ func TestSyncStore_TombstoneKinds(t *testing.T) {
 	}
 }
 
-// An unknown key matches no row, so a tombstone for it leaves the store content alone.
 func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -429,8 +420,6 @@ func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
 	}
 }
 
-// A deletion matching no row must not advance the seq: otherwise a no-op request wakes
-// every device.
 func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -452,7 +441,6 @@ func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// the persisted state is unchanged too
 	if err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
 		if tx.Seq() != 1 {
 			t.Errorf("reloaded seq = %d, want 1", tx.Seq())
@@ -463,7 +451,6 @@ func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
 	}
 }
 
-// Several tombstones in one Apply share a single seq increment.
 func TestSyncStore_MultipleTombstonesBumpSeqOnce(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -743,8 +730,6 @@ func TestSyncStore_KindQueries(t *testing.T) {
 	}
 }
 
-// ChildrenOf is the parent expansion of a delta: it must return both the chapters and the
-// history entries of the requested manga, across the batch boundary.
 func TestSyncStore_ChildrenOfIncludesHistory(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -782,7 +767,6 @@ func TestSyncStore_ChildrenOfIncludesHistory(t *testing.T) {
 			t.Errorf("children kinds = %v, want chapter and history only", kinds)
 		}
 
-		// the parent list is chunked, so every child of a >500 parent request must come back
 		var many []*merge.Item
 		parents := make([]string, 0, sqlBatchSize+100)
 		for i := 0; i < sqlBatchSize+100; i++ {

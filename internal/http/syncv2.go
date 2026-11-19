@@ -25,8 +25,6 @@ const (
 	maxDeletionKeyLen       = 4096
 )
 
-// deletionsRequest accepts the canonical item list and the legacy shapes deployed
-// clients already send, all in the same object.
 type deletionsRequest struct {
 	Items             []deletionItem `json:"items"`
 	DeletedChapters   []string       `json:"deletedChapters"`
@@ -134,9 +132,7 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// deletions applies generic tombstones for any of the ten item kinds. The canonical
-// {"items":[...]} shape and the legacy chapter/category shapes are merged and deduplicated
-// by (kind, key); unknown or absent keys are acknowledged but apply nothing.
+// deletions reports the accepted entry count, duplicates included, because legacy clients compare it with their pending queue length.
 func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	bad := func(msg string) {
@@ -163,8 +159,6 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
 	seen := make(map[merge.Tombstone]struct{}, cap(tombstones))
-	// acknowledged counts accepted input entries before dedupe: a legacy client compares it
-	// with its pending queue length, which still holds the duplicates
 	acknowledged := 0
 	add := func(kind merge.Kind, key string) bool {
 		if key == "" || len(key) > maxDeletionKeyLen {
