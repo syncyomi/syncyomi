@@ -136,9 +136,10 @@ flowchart TD
   from every response (the manga is still returned, with its remaining chapters), so a chapter a
   source removed stops reappearing on the other devices.
 - A tombstone records its deletion time, and only yields to a genuinely newer copy: a higher
-  `version` (an edit after the delete), or, for chapters, a `last_modified_at` the client stamped
-  after that time. A chapter the source drops and later re-adds comes back this way: the client
-  re-inserts it at `version = 1` and stamps `last_modified_at`, which beats the tombstone.
+  `version` (an edit after the delete), or, for manga, chapters and history entries, a timestamp
+  in seconds after that time. A manga or chapter the source drops and later re-adds comes back
+  this way: the client re-inserts it at `version = 1` and stamps `last_modified_at`, which beats
+  the tombstone. A history entry has no version, only `last_read`.
 - A category tombstone only yields to a higher `version`: categories ride every upload, so a
   device that has not applied the delete yet resends its copy unchanged.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
@@ -149,7 +150,8 @@ flowchart TD
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a
   deletion.
 - Settings (sources, preferences, source preferences, extension repos, saved searches) have
-  no version: the client copy wins.
+  no version: the client copy wins. A deleted setting comes back only when the client sends a
+  different payload; a byte-identical upload from a stale device stays deleted.
 - Every write gets the key's next `seq`; the cursor is the current `seq`. "Changed since
   cursor" is a single indexed query.
 
