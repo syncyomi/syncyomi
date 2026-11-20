@@ -18,6 +18,7 @@ const (
 	ExtraItemKey         = "extra"
 )
 
+// ParseKind reports whether name is one of the ten item kinds.
 func ParseKind(name string) (Kind, bool) {
 	kind := Kind(name)
 	switch kind {
