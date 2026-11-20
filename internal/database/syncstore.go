@@ -257,7 +257,6 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 	}
 
 	if !applied {
-		// a deletion that matched no row must not advance the seq and wake every device
 		if !t.exists {
 			if err := t.ensureState(ctx); err != nil {
 				return 0, err

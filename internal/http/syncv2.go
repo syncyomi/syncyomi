@@ -25,8 +25,6 @@ const (
 	maxDeletionKeyLen       = 4096
 )
 
-// deletionsRequest accepts the canonical item list and the legacy shapes deployed
-// clients already send, all in the same object.
 type deletionsRequest struct {
 	Items             []deletionItem `json:"items"`
 	DeletedChapters   []string       `json:"deletedChapters"`
@@ -36,17 +34,6 @@ type deletionsRequest struct {
 type deletionItem struct {
 	Kind string `json:"kind"`
 	Key  string `json:"key"`
-}
-
-func knownDeletionKind(name string) (merge.Kind, bool) {
-	kind := merge.Kind(name)
-	switch kind {
-	case merge.KindManga, merge.KindChapter, merge.KindCategory, merge.KindHistory,
-		merge.KindSource, merge.KindAppPref, merge.KindSourcePref,
-		merge.KindExtStore, merge.KindSavedSearch, merge.KindExtra:
-		return kind, true
-	}
-	return "", false
 }
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -134,9 +121,7 @@ func (h syncHandler) merge(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// deletions applies generic tombstones for any of the ten item kinds. The canonical
-// {"items":[...]} shape and the legacy chapter/category shapes are merged and deduplicated
-// by (kind, key); unknown or absent keys are acknowledged but apply nothing.
+// deletions reports the accepted entry count, duplicates included, because legacy clients compare it with their pending queue length.
 func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	bad := func(msg string) {
@@ -163,45 +148,35 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
 	seen := make(map[merge.Tombstone]struct{}, cap(tombstones))
-	// acknowledged counts accepted input entries before dedupe: a legacy client compares it
-	// with its pending queue length, which still holds the duplicates
 	acknowledged := 0
-	add := func(kind merge.Kind, key string) bool {
-		if key == "" || len(key) > maxDeletionKeyLen {
-			return false
-		}
+	add := func(kind merge.Kind, key string) {
 		acknowledged++
+		if key == "" || len(key) > maxDeletionKeyLen {
+			return
+		}
 		tb := merge.Tombstone{Kind: kind, Key: key}
 		if _, dup := seen[tb]; dup {
-			return true
+			return
 		}
 		seen[tb] = struct{}{}
 		tombstones = append(tombstones, tb)
-		return true
 	}
 
 	for _, it := range body.Items {
-		kind, known := knownDeletionKind(it.Kind)
+		kind, known := merge.ParseKind(it.Kind)
 		if !known {
-			bad("unknown deletion kind")
-			return
+			// an entry we cannot apply is still acknowledged: a 200 means every key was
+			// processed, so a newer client can clear an entry an older server does not know
+			acknowledged++
+			continue
 		}
-		if !add(kind, it.Key) {
-			bad("invalid deletion key")
-			return
-		}
+		add(kind, it.Key)
 	}
 	for _, key := range body.DeletedChapters {
-		if !add(merge.KindChapter, key) {
-			bad("invalid deletion key")
-			return
-		}
+		add(merge.KindChapter, key)
 	}
 	for _, uid := range body.DeletedCategories {
-		if !add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10)) {
-			bad("invalid deletion key")
-			return
-		}
+		add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10))
 	}
 
 	applied := 0

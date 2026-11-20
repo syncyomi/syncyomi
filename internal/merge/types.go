@@ -18,6 +18,17 @@ const (
 	ExtraItemKey         = "extra"
 )
 
+// ParseKind reports whether name is one of the ten item kinds.
+func ParseKind(name string) (Kind, bool) {
+	kind := Kind(name)
+	switch kind {
+	case KindManga, KindChapter, KindCategory, KindHistory, KindSource, KindAppPref,
+		KindSourcePref, KindExtStore, KindSavedSearch, KindExtra:
+		return kind, true
+	}
+	return "", false
+}
+
 // SectionKinds have no version; on conflict the client wins.
 var SectionKinds = []Kind{KindSource, KindAppPref, KindSourcePref, KindExtStore, KindSavedSearch, KindExtra}
 
@@ -59,17 +70,14 @@ type Store interface {
 	SameContent(a, b *Item) bool
 }
 
-// Tombstone marks a stored item as deleted; the store flips Deleted, bumps Seq and
-// records the deleting device.
 type Tombstone struct {
 	Kind Kind
 	Key  string
 }
 
 type Request struct {
-	DeviceID string
-	Items    []*Item
-	// Tombstones are items the client explicitly deleted.
+	DeviceID   string
+	Items      []*Item
 	Tombstones []Tombstone
 }
 

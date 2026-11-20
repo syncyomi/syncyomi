@@ -528,33 +528,22 @@ func (s *service) mergeBackup(ctx context.Context, tx domain.SyncStoreReader, it
 	return merge.Merge(view, merge.Request{DeviceID: device, Items: items, Tombstones: tombstones}), nil
 }
 
-// DeleteItems tombstones the given items for the key and reports how many rows actually
-// transitioned from live to deleted. Unknown or already deleted keys are acknowledged by
-// the handler but are not part of the returned count.
 func (s *service) DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error) {
-	unlock, err := s.locks.lock(ctx, apiKey)
-	if err != nil {
-		return 0, err
-	}
-	defer unlock()
-
-	applied := 0
-	err = s.store.Tx(ctx, apiKey, func(tx domain.SyncStoreTx) error {
-		if err := s.promoteLegacy(ctx, tx); err != nil {
-			return err
-		}
-		if _, err := s.importPending(ctx, tx); err != nil {
-			return err
-		}
+	var applied int
+	err := s.writeTx(ctx, apiKey, func(ctx context.Context, tx domain.SyncStoreTx, start writeStart) error {
 		view, err := loadStoreView(ctx, tx, nil, tombstones)
 		if err != nil {
 			return err
 		}
 		res := merge.Merge(view, merge.Request{DeviceID: dev.Key(), Tombstones: tombstones})
-		if _, err := tx.Apply(ctx, res, dev.Key()); err != nil {
+		newSeq, err := tx.Apply(ctx, res, dev.Key())
+		if err != nil {
 			return err
 		}
 		applied = len(res.Tombstones)
+		if newSeq != start.seq {
+			return s.refreshRenderCache(ctx, tx, false, nil)
+		}
 		return nil
 	})
 	if err != nil {
@@ -577,7 +566,6 @@ func loadStoreView(ctx context.Context, tx domain.SyncStoreReader, items []*merg
 			keys[it.Kind] = append(keys[it.Kind], it.Key)
 		}
 	}
-	// tombstones must resolve their target row too, so a deletion can flip it
 	for _, tb := range tombstones {
 		if tb.Kind != merge.KindCategory {
 			keys[tb.Kind] = append(keys[tb.Kind], tb.Key)

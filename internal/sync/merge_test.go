@@ -288,7 +288,6 @@ func TestMerge_CategoryTombstoneMarksStoreRow(t *testing.T) {
 	sync2(t, svc, "A", 0, true, &pb.Backup{BackupCategories: cats})
 	b := sync2(t, svc, "B", 0, true, &pb.Backup{BackupCategories: cats})
 
-	// the deleted-categories header is applied as a KindCategory tombstone
 	b = sync2(t, svc, "B", b.Cursor, false, &pb.Backup{}, 20)
 
 	var row *merge.Item
@@ -310,7 +309,6 @@ func TestMerge_CategoryTombstoneMarksStoreRow(t *testing.T) {
 		t.Errorf("modified_at = %d, want unix seconds near %d", row.ModifiedAt, now)
 	}
 
-	// a fresh device does not receive the deleted category
 	c := sync2(t, svc, "C", 0, true, &pb.Backup{})
 	if len(c.Backup.BackupCategories) != 0 {
 		t.Errorf("render kept the deleted category: %v", c.Backup.BackupCategories)
@@ -326,8 +324,6 @@ func mustMarshal(t *testing.T, m proto.Message) []byte {
 	return data
 }
 
-// DeleteItems resolves tombstone targets for every kind, including the non-category rows
-// that the merge view only loads because the tombstones name them.
 func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
@@ -388,7 +384,6 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 		}
 	}
 
-	// nothing tombstoned may appear in the full snapshot
 	snap, err := svc.Snapshot(ctx, "key1", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -402,6 +397,41 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 		len(rendered.BackupExtensionStores) != 0 || len(rendered.BackupSavedSearches) != 0 ||
 		len(rendered.ProtoReflect().GetUnknown()) != 0 {
 		t.Errorf("deleted rows rendered: %+v", rendered)
+	}
+}
+
+// A deletion that moves the seq must rewrite the render cache, or v1 clients and the
+// history keep serving the pre-delete library.
+func TestDeleteItemsRefreshRenderCache(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	sync2(t, svc, "A", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/m", 1, true)}})
+
+	if _, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "B", Name: "B"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: "1|/m"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.store.ReadTx(ctx, "key1", func(tx domain.SyncStoreReader) error {
+		rc, err := tx.RenderCache(ctx)
+		if err != nil {
+			return err
+		}
+		if rc == nil || rc.RenderedSeq == nil || *rc.RenderedSeq != tx.Seq() {
+			t.Errorf("render cache not refreshed to seq %d: %+v", tx.Seq(), rc)
+			return nil
+		}
+		b, err := backup.Decode(rc.Data)
+		if err != nil {
+			return err
+		}
+		if len(b.BackupManga) != 0 {
+			t.Errorf("deleted manga still in the render cache: %v", b.BackupManga)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -492,8 +522,6 @@ func mustPayload(t *testing.T, m proto.Message) []byte {
 	return raw
 }
 
-// applyTombstones marks items deleted through the store, the way an item deletion reaches it: a
-// merge result carrying tombstones and no writes.
 func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tombstone) {
 	t.Helper()
 	ctx := context.Background()
@@ -505,8 +533,6 @@ func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tom
 	}
 }
 
-// A history tombstone stays delta-observable: the parent manga is rendered with the complete
-// remaining history, so the deleted entry's absence tells the client it is gone.
 func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	svc, _ := newTestService(t)
 

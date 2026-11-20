@@ -157,7 +157,6 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
-// Render must omit tombstoned rows for every section kind, not just the versioned ones.
 func TestRenderSkipsDeletedSectionKinds(t *testing.T) {
 	deleted := []*merge.Item{
 		{Kind: merge.KindSource, Key: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupSource{SourceId: 1})},
@@ -320,6 +319,42 @@ func TestSplitMovesHistoryIntoItems(t *testing.T) {
 	h := history[0]
 	if h.Key != HistoryKey("1|/m", "/c1") || h.ParentKey != "1|/m" || h.ModifiedAt != 100 {
 		t.Errorf("history item = %+v", h)
+	}
+}
+
+// splitStore serves an empty merge store, so Merge writes every item it is given.
+type splitStore struct{}
+
+func (splitStore) Get(merge.Kind, string) *merge.Item { return nil }
+func (splitStore) CategoryByName(string) *merge.Item  { return nil }
+func (splitStore) SameContent(a, b *merge.Item) bool  { return false }
+
+func TestIngestionNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
+	const ms = int64(1_700_000_000_123)
+	const sec = int64(1_700_000_000)
+	b := &pb.Backup{BackupManga: []*pb.BackupManga{{
+		Source: 1, Url: "/m", LastModifiedAt: sec,
+		Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: sec}},
+		History:  []*pb.BackupHistory{{Url: "/c", LastRead: ms}},
+	}}}
+
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := merge.Merge(splitStore{}, merge.Request{Items: items})
+	got := map[string]int64{}
+	for _, it := range res.Writes {
+		got[string(it.Kind)+"|"+it.Key] = it.ModifiedAt
+	}
+	if v := got["history|"+HistoryKey("1|/m", "/c")]; v != sec {
+		t.Errorf("history ModifiedAt = %d, want seconds %d", v, sec)
+	}
+	if v := got["manga|1|/m"]; v != sec {
+		t.Errorf("manga seconds timestamp changed: %d", v)
+	}
+	if v := got["chapter|"+ChapterKey("1|/m", "/c")]; v != sec {
+		t.Errorf("chapter seconds timestamp changed: %d", v)
 	}
 }
 

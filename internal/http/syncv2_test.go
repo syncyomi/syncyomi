@@ -184,32 +184,47 @@ func TestSyncV2_deletions(t *testing.T) {
 			wantNoCall: true,
 		},
 		{
-			name:       "unknown kind",
+			name:       "unknown kind is acknowledged but not applied",
 			device:     "d",
 			body:       `{"items":[{"kind":"nope","key":"k"}]}`,
-			wantStatus: http.StatusBadRequest,
+			wantStatus: http.StatusOK,
+			wantAck:    1,
 			wantNoCall: true,
 		},
 		{
-			name:       "empty key",
+			name:       "empty key is acknowledged but not applied",
 			device:     "d",
 			body:       `{"items":[{"kind":"chapter","key":""}]}`,
-			wantStatus: http.StatusBadRequest,
+			wantStatus: http.StatusOK,
+			wantAck:    1,
 			wantNoCall: true,
 		},
 		{
-			name:       "empty legacy chapter key",
+			name:       "empty legacy chapter key is acknowledged but not applied",
 			device:     "d",
 			body:       `{"deletedChapters":[""]}`,
-			wantStatus: http.StatusBadRequest,
+			wantStatus: http.StatusOK,
+			wantAck:    1,
 			wantNoCall: true,
 		},
 		{
-			name:       "key too long",
+			name:       "key too long is acknowledged but not applied",
 			device:     "d",
 			body:       `{"items":[{"kind":"chapter","key":"` + strings.Repeat("x", 4097) + `"}]}`,
-			wantStatus: http.StatusBadRequest,
+			wantStatus: http.StatusOK,
+			wantAck:    1,
 			wantNoCall: true,
+		},
+		{
+			name:        "mixed valid and invalid still acknowledges every entry",
+			device:      "d",
+			body:        `{"items":[{"kind":"chapter","key":"c"},{"kind":"nope","key":"k"},{"kind":"manga","key":""},{"kind":"history","key":"` + strings.Repeat("x", 4097) + `"}]}`,
+			applied:     1,
+			wantStatus:  http.StatusOK,
+			wantAck:     4,
+			wantApplied: 1,
+			wantKinds:   []merge.Kind{merge.KindChapter},
+			wantKeys:    []string{"c"},
 		},
 		{
 			name:       "malformed JSON",
@@ -242,11 +257,8 @@ func TestSyncV2_deletions(t *testing.T) {
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %v, want %v (%s)", rec.Code, tt.wantStatus, rec.Body.String())
 			}
-			if tt.wantNoCall {
-				if mock.deleteReq != nil {
-					t.Errorf("service called with %v", mock.deleteReq)
-				}
-				return
+			if tt.wantNoCall && mock.deleteReq != nil {
+				t.Errorf("service called with %v", mock.deleteReq)
 			}
 			if tt.wantStatus != http.StatusOK {
 				return
@@ -257,6 +269,9 @@ func TestSyncV2_deletions(t *testing.T) {
 			}
 			if got.Acknowledged != tt.wantAck || got.Applied != tt.wantApplied {
 				t.Errorf("response = %+v, want acknowledged=%d applied=%d", got, tt.wantAck, tt.wantApplied)
+			}
+			if tt.wantNoCall {
+				return
 			}
 			if mock.deleteDevice != (domain.DeviceInfo{ID: "d", Name: "Phone"}) || mock.deleteAPIKey != "key1" {
 				t.Errorf("device=%+v apikey=%q", mock.deleteDevice, mock.deleteAPIKey)

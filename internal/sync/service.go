@@ -39,8 +39,6 @@ type Service interface {
 	// DeleteDevice removes a device row. domain.ErrNotFound if id is unknown for the key.
 	DeleteDevice(ctx context.Context, apiKey string, id int) error
 	GetStatus(ctx context.Context, apiKey string) (*domain.SyncStatus, error)
-	// DeleteItems tombstones the given generic items and returns how many rows actually
-	// transitioned from live to deleted.
 	DeleteItems(ctx context.Context, apiKey string, dev domain.DeviceInfo, tombstones []merge.Tombstone) (int, error)
 	// Flush waits for the bookkeeping writes that RecordContentAccess and ReportSyncEvent
 	// run in the background.
