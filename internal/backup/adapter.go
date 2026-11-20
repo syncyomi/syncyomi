@@ -173,9 +173,6 @@ func dedupe(items []*merge.Item) []*merge.Item {
 	return out
 }
 
-// Render assembles a Backup from items. Tombstoned items of any kind are skipped and manga
-// refs pointing at deleted categories are dropped. Chapters and history are attached to
-// their manga; one whose manga is not in the list is ignored.
 func Render(items []*merge.Item) (*pb.Backup, error) {
 	b := &pb.Backup{}
 

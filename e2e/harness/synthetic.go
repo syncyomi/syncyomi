@@ -101,7 +101,6 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 	return out, err
 }
 
-// DeletionItem is one canonical tombstone: the kind of sync item and its key.
 type DeletionItem struct {
 	Kind string `json:"kind"`
 	Key  string `json:"key"`
