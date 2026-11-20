@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0](https://github.com/syncyomi/syncyomi/compare/v1.7.4...v1.8.0) (2026-11-20)
+
+
+### New Features
+
+* **sync:** unified tombstone deletion and delta propagation ([#335](https://github.com/syncyomi/syncyomi/issues/335)) ([bb752c3](https://github.com/syncyomi/syncyomi/commit/bb752c392941b7e8bff9a8ac8456d690afba322e))
+
+
+### Bug Fixes
+
+* **sync:** normalize sync timestamps to seconds ([#336](https://github.com/syncyomi/syncyomi/issues/336)) ([90b4007](https://github.com/syncyomi/syncyomi/commit/90b40072c0823e2b9e10365107552061827c333a))
+
 ## [1.7.4](https://github.com/syncyomi/syncyomi/compare/v1.7.3...v1.7.4) (2026-10-29)
 
 
