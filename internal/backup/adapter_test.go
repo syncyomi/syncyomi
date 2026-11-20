@@ -322,6 +322,42 @@ func TestSplitMovesHistoryIntoItems(t *testing.T) {
 	}
 }
 
+// splitStore serves an empty merge store, so Merge writes every item it is given.
+type splitStore struct{}
+
+func (splitStore) Get(merge.Kind, string) *merge.Item { return nil }
+func (splitStore) CategoryByName(string) *merge.Item  { return nil }
+func (splitStore) SameContent(a, b *merge.Item) bool  { return false }
+
+func TestIngestionNormalizesHistoryModifiedAtToSeconds(t *testing.T) {
+	const ms = int64(1_700_000_000_123)
+	const sec = int64(1_700_000_000)
+	b := &pb.Backup{BackupManga: []*pb.BackupManga{{
+		Source: 1, Url: "/m", LastModifiedAt: sec,
+		Chapters: []*pb.BackupChapter{{Url: "/c", LastModifiedAt: sec}},
+		History:  []*pb.BackupHistory{{Url: "/c", LastRead: ms}},
+	}}}
+
+	items, err := Split(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := merge.Merge(splitStore{}, merge.Request{Items: items})
+	got := map[string]int64{}
+	for _, it := range res.Writes {
+		got[string(it.Kind)+"|"+it.Key] = it.ModifiedAt
+	}
+	if v := got["history|"+HistoryKey("1|/m", "/c")]; v != sec {
+		t.Errorf("history ModifiedAt = %d, want seconds %d", v, sec)
+	}
+	if v := got["manga|1|/m"]; v != sec {
+		t.Errorf("manga seconds timestamp changed: %d", v)
+	}
+	if v := got["chapter|"+ChapterKey("1|/m", "/c")]; v != sec {
+		t.Errorf("chapter seconds timestamp changed: %d", v)
+	}
+}
+
 func TestRenderAttachesHistoryKeepingNewestPerChapter(t *testing.T) {
 	embedded := []*pb.BackupHistory{{Url: "/c1", LastRead: 300}, {Url: "/c2", LastRead: 100}, {Url: "/c3", LastRead: 50}}
 	items := []*merge.Item{

@@ -17,6 +17,12 @@ func Merge(store Store, req Request) *Result {
 	res := &Result{ReturnKeys: map[Kind][]string{}}
 	m := &merger{store: store, req: req, res: res, emitted: map[tombstoneKey]struct{}{}}
 
+	// every ingested item passes through here, so this is the one place ModifiedAt gets its
+	// unit: a future ingestion path cannot skip it. Stored items are already seconds.
+	for _, it := range req.Items {
+		it.ModifiedAt = NormalizeTimestamp(it.ModifiedAt)
+	}
+
 	for _, tb := range req.Tombstones {
 		m.tombstone(tb.Kind, tb.Key)
 	}
