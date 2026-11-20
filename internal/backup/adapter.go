@@ -173,9 +173,9 @@ func dedupe(items []*merge.Item) []*merge.Item {
 	return out
 }
 
-// Render assembles a Backup from items. Tombstoned categories are skipped and manga
-// refs pointing at them are dropped. Tombstoned chapters are skipped. Chapters and
-// history are attached to their manga; one whose manga is not in the list is ignored.
+// Render assembles a Backup from items. Tombstoned items of any kind are skipped and manga
+// refs pointing at deleted categories are dropped. Chapters and history are attached to
+// their manga; one whose manga is not in the list is ignored.
 func Render(items []*merge.Item) (*pb.Backup, error) {
 	b := &pb.Backup{}
 
@@ -230,7 +230,7 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 	sourcesSeen := map[int64]bool{}
 	var mangaSources []int64
 	for _, it := range items {
-		if it.Kind != merge.KindManga {
+		if it.Kind != merge.KindManga || it.Deleted {
 			continue
 		}
 		m := &pb.BackupManga{}
@@ -264,6 +264,9 @@ func Render(items []*merge.Item) (*pb.Backup, error) {
 	var sourcePrefOrder []string
 	var extra []byte
 	for _, it := range items {
+		if it.Deleted {
+			continue
+		}
 		switch it.Kind {
 		case merge.KindSource:
 			s := &pb.BackupSource{}
