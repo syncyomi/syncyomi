@@ -560,8 +560,6 @@ func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	if len(m.Chapters) != 2 {
 		t.Errorf("delta chapters = %v, want the unchanged chapter list", m.Chapters)
 	}
-	// the deletion is also carried explicitly, so a client applying deletions removes the
-	// entry without having to diff the parent's history list
 	if len(a.Backup.Deletions) != 1 {
 		t.Fatalf("delta deletions = %v, want the one history tombstone", a.Backup.Deletions)
 	}
@@ -571,9 +569,6 @@ func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	}
 }
 
-// Every tombstoned kind, including a deleted manga or section item, is carried explicitly in
-// the delta's deletions list, so no tombstone has to be learned from a full snapshot and
-// X-Sync-Full-Requested stays clear of them.
 func TestMerge_DeltaCarriesTombstones(t *testing.T) {
 	seed := []*merge.Item{
 		{Kind: merge.KindManga, Key: "1|/m", Payload: mustPayload(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})},

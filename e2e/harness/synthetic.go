@@ -40,8 +40,6 @@ type MergeOptions struct {
 	Gzip              bool
 }
 
-// MergeHeaders is Merge plus the response headers, so a test can assert the signals a client
-// is expected to act on (X-Sync-Full-Requested, X-Sync-Changed, X-Sync-Cursor).
 func (c *SyntheticClient) MergeHeaders(ctx context.Context, b *pb.Backup, opts MergeOptions) (*pb.Backup, http.Header, error) {
 	body, err := requestBody(b, opts.Streamed, opts.Gzip)
 	if err != nil {
@@ -106,9 +104,6 @@ type DeletionItem struct {
 	Key  string `json:"key"`
 }
 
-// DeletionsOptions carries the canonical item list, the legacy chapter/category shapes,
-// or a raw body. RawBody, when non-nil, is sent verbatim instead of marshalling the
-// fields: use []byte{} to exercise the empty-body no-op and []byte("{") for malformed JSON.
 type DeletionsOptions struct {
 	Items             []DeletionItem `json:"items,omitempty"`
 	DeletedChapters   []string       `json:"deletedChapters,omitempty"`
@@ -116,8 +111,6 @@ type DeletionsOptions struct {
 	RawBody           []byte         `json:"-"`
 }
 
-// DeletionsResult is the server's answer. A 400 is data, not an error: the caller decides
-// what the status means for the case it exercises.
 type DeletionsResult struct {
 	StatusCode   int
 	Acknowledged int
@@ -125,9 +118,6 @@ type DeletionsResult struct {
 	Body         []byte
 }
 
-// Deletions posts tombstones to /api/sync/v2/deletions. An error means the request could
-// not be built, marshalled or sent, or a 200 response body was not the expected JSON;
-// every other HTTP answer (including 400) is returned as a result.
 func (c *SyntheticClient) Deletions(ctx context.Context, opts DeletionsOptions) (DeletionsResult, error) {
 	var body []byte
 	if opts.RawBody != nil {

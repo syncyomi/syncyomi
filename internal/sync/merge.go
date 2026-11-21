@@ -642,9 +642,7 @@ func (v *storeView) CategoryByName(name string) *merge.Item {
 }
 
 // delta builds the response for a client at cursor: everything changed since by other
-// devices, the items the server won during this merge, and all live categories. Tombstones in
-// that item set are carried explicitly in the deletions list, since absence from a delta
-// cannot convey a deleted manga or section.
+// devices, the items the server won during this merge, and all live categories.
 func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64, device string, res *merge.Result) (out *pb.Backup, changed bool, err error) {
 	since, err := tx.ItemsSince(ctx, cursor)
 	if err != nil {

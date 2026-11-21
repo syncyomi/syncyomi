@@ -16,11 +16,6 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/backup/pb"
 )
 
-// TestS29_UnifiedTombstones exercises POST /api/sync/v2/deletions end to end against a
-// real server: the canonical items shape for the versioned, section and category kinds,
-// the legacy chapter shape, the validation/no-op answers that must not wake devices, and
-// the kind-specific resurrection rules. It is device-light: only the synthetic client and
-// the server snapshot/delta assertions are used.
 func TestS29_UnifiedTombstones(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -30,10 +25,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 
 	const prefix = "E2E Tomb"
 
-	// 1. Seed a small library plus a saved search. Manga and chapter versions start at 3 so
-	// that a re-add at version 1 later exercises the modified_at rule instead of a version
-	// win. The category deliberately stays at version 0: the equal-version resurrection
-	// case below relies on a same-version re-add.
 	seed := harness.FixtureBackup(prefix, 3, 3)
 	for _, m := range seed.BackupManga {
 		m.Version = 3
@@ -60,15 +51,11 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("baseline saved searches = %v, want %v", got, want)
 	}
 
-	// 2. A second device fetches the full state and parks its cursor there; later merges
-	// return the delta since that cursor and prove a peer receives the tombstones.
 	peer := harness.NewSyntheticClient(srv, "e2e-tombstone-peer")
 	if _, err := peer.Merge(ctx, nil, harness.MergeOptions{}); err != nil {
 		t.Fatalf("peer initial merge: %v", err)
 	}
 
-	// a delta with nothing changed since the peer's cursor carries no deletions at all: the
-	// list holds this delta's tombstones, not the store's whole deletion history
 	noop := peerDelta(t, ctx, peer)
 	if len(noop.Deletions) != 0 {
 		t.Errorf("no-op delta carries %d deletions, want 0: %v", len(noop.Deletions), noop.Deletions)
@@ -77,8 +64,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("no-op delta carries manga %v, want none", got)
 	}
 
-	// 3. Validation and no-op answers: none of them may advance sync_state.seq, since an
-	// advanced seq wakes every device for nothing.
 	seq0 := seqNow(t, ctx, srv)
 	validation := []struct {
 		name         string
@@ -112,7 +97,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		}
 	}
 
-	// 4. Canonical chapter tombstone.
 	manga01Key := backup.MangaKey(harness.FixtureSource, "/e2e/E2E Tomb/01")
 	ch01URL := "/e2e/E2E Tomb/01/ch01"
 	ch01Key := backup.ChapterKey(manga01Key, ch01URL)
@@ -137,9 +121,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("peer delta E2E Tomb 01 has %d chapters, want %d", got, want)
 	}
 
-	// 5. Legacy deletedChapters. The legacy list carries chapter keys, not bare urls (the
-	// handler posts each entry as merge.KindChapter verbatim), so a row is matched only by
-	// its full backup.ChapterKey.
 	ch02URL := "/e2e/E2E Tomb/01/ch02"
 	ch02Key := backup.ChapterKey(manga01Key, ch02URL)
 	requireAppliedDeletion(t, ctx, srv, seeder, "legacy chapter ch02",
@@ -159,9 +140,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("peer delta still carries the legacy-tombstoned chapter %s: %v", ch02URL, urls)
 	}
 
-	// 6. Canonical manga tombstone: the manga and its chapters leave the snapshot, and the
-	// delta carries the tombstone explicitly: absence from a delta cannot convey a deleted
-	// manga, so the server lists it instead of asking for a full snapshot.
 	manga02Key := backup.MangaKey(harness.FixtureSource, "/e2e/E2E Tomb/02")
 	requireAppliedDeletion(t, ctx, srv, seeder, "manga 02",
 		harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: manga02Key}}})
@@ -185,7 +163,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 	}
 	assertNoChapterURL(t, delta, "/e2e/E2E Tomb/02/ch01")
 
-	// a full snapshot still conveys the deletion by absence, without a deletions list
 	full, fullHeader, err := peer.MergeHeaders(ctx, nil, harness.MergeOptions{Full: true})
 	if err != nil {
 		t.Fatalf("peer full sync: %v", err)
@@ -200,7 +177,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("full sync titles = %v, want %v", got, want)
 	}
 
-	// 7. Section tombstone: the saved search is a keyed section item, not a versioned one.
 	searchName := "E2E Search"
 	searchKey := searchName + "|" + strconv.FormatInt(harness.FixtureSource, 10)
 	requireAppliedDeletion(t, ctx, srv, seeder, "saved search",
@@ -220,8 +196,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("peer delta still has saved search %q: %v", searchName, names)
 	}
 
-	// 8. Category resurrection: only a higher version resurrects. Timestamps are not enough
-	// because categories are uploaded whole on every sync.
 	catUID := harness.FixtureCategoryUID(prefix)
 	catKey := "uid:" + strconv.FormatInt(catUID, 10)
 	requireAppliedDeletion(t, ctx, srv, seeder, "category",
@@ -255,10 +229,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("higher version did not resurrect category %q: %v", prefix, names)
 	}
 
-	// 9. Manga/chapter resurrection happens on a higher version OR a newer modified_at.
-	// This synthetic client sends Unix seconds for manga/chapter/category but milliseconds
-	// for history, whose last_read is java.util.Date.time. The server normalizes every
-	// timestamp to seconds before comparing, so these resurrection values are Unix seconds.
 	manga03Key := backup.MangaKey(harness.FixtureSource, "/e2e/E2E Tomb/03")
 	ch03URL01 := "/e2e/E2E Tomb/03/ch01"
 	manga03ChapterKey := backup.ChapterKey(manga03Key, ch03URL01)
@@ -270,8 +240,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("E2E Tomb 03 has %d chapters after tombstone, want 2", len(got.Chapters))
 	}
 
-	// A re-add restarts at version 1, below the tombstoned version 3, so only the newer
-	// modified_at can bring the chapter back.
 	reAdd := func(version int64, modifiedAt int64) *pb.Backup {
 		return &pb.Backup{BackupManga: []*pb.BackupManga{{
 			Source: harness.FixtureSource, Url: "/e2e/E2E Tomb/03", Title: "E2E Tomb 03",
@@ -298,7 +266,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 	requireAppliedDeletion(t, ctx, srv, seeder, "chapter ch01 of manga 03 again",
 		harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "chapter", Key: manga03ChapterKey}}})
 
-	// Same version, older modified_at: the tombstone stands.
 	if _, err := seeder.Merge(ctx, reAdd(1, time.Now().Add(-time.Hour).Unix()), harness.MergeOptions{}); err != nil {
 		t.Fatalf("merge stale re-add: %v", err)
 	}
@@ -311,9 +278,6 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("stale re-add resurrected %s: %v", ch03URL01, urls)
 	}
 
-	// 10. A history entry carries last_read from the client's own clock, and the server
-	// compares it with the tombstone's deletion time (Unix seconds, as stamped by the store).
-	// A stale re-upload must not resurrect a tombstone, while a genuinely newer one must.
 	histMangaKey := backup.MangaKey(harness.FixtureSource, "/e2e/E2E Tomb/04")
 	histURL := "/e2e/E2E Tomb/04/ch01"
 	histOtherURL := "/e2e/E2E Tomb/04/ch02"
@@ -325,20 +289,16 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 			History: []*pb.BackupHistory{{Url: histURL, LastRead: lastRead}},
 		}}}
 	}
-	// a second entry, so the delta below proves the parent arrives with the *remaining* history
 	histSeed := histBackup(time.Now().Unix())
 	histSeed.BackupManga[0].History = append(histSeed.BackupManga[0].History,
 		&pb.BackupHistory{Url: histOtherURL, LastRead: time.Now().Add(-time.Hour).Unix()})
 	if _, err := seeder.Merge(ctx, histSeed, harness.MergeOptions{}); err != nil {
 		t.Fatalf("merge history: %v", err)
 	}
-	// park the peer's cursor after the seed, so the tombstone below is the only changed row
 	peerDelta(t, ctx, peer)
 	requireAppliedDeletion(t, ctx, srv, seeder, "history entry",
 		harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "history", Key: histKey}}})
 
-	// A history tombstone stays delta-observable: the peer receives the parent manga with the
-	// history list that remains, so the missing entry is the deletion signal.
 	delta, header = peerDeltaHeaders(t, ctx, peer)
 	if got := header.Get("X-Sync-Full-Requested"); got != "" {
 		t.Errorf("peer delta after a history tombstone: X-Sync-Full-Requested = %q, want none", got)
@@ -382,8 +342,6 @@ func seqNow(t *testing.T, ctx context.Context, srv *harness.SyncServer) int64 {
 	return seq
 }
 
-// requireAppliedDeletion posts one tombstone that the contract says must apply, and checks
-// that the store's cursor moved: a no-op would leave every device asleep.
 func requireAppliedDeletion(t *testing.T, ctx context.Context, srv *harness.SyncServer, c *harness.SyntheticClient, what string, opts harness.DeletionsOptions) {
 	t.Helper()
 	before := seqNow(t, ctx, srv)
@@ -411,9 +369,6 @@ func peerDelta(t *testing.T, ctx context.Context, c *harness.SyntheticClient) *p
 	return b
 }
 
-// requireDeletion asserts the delta lists an explicit tombstone for kind/key. A deleted manga
-// or section item leaves no live item and no child list behind, so the deletions entry is the
-// only thing that tells the peer about it.
 func requireDeletion(t *testing.T, b *pb.Backup, kind, key string) {
 	t.Helper()
 	for _, d := range b.Deletions {
@@ -427,7 +382,6 @@ func requireDeletion(t *testing.T, b *pb.Backup, kind, key string) {
 	t.Fatalf("delta omits the %s tombstone %s: deletions = %v", kind, key, b.Deletions)
 }
 
-// peerDeltaHeaders is peerDelta with the response headers, for the signals a client acts on.
 func peerDeltaHeaders(t *testing.T, ctx context.Context, c *harness.SyntheticClient) (*pb.Backup, http.Header) {
 	t.Helper()
 	b, header, err := c.MergeHeaders(ctx, nil, harness.MergeOptions{})

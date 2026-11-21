@@ -399,9 +399,6 @@ func TestSameContentIgnoresEmbeddedHistory(t *testing.T) {
 	}
 }
 
-// DeletedItems lists only tombstones, in a stable kind-then-key order with the deletion seq
-// attached: a delta must carry the same list for the same item set regardless of the map
-// iteration order it was assembled from.
 func TestDeletedItems(t *testing.T) {
 	if got := DeletedItems(nil); got != nil {
 		t.Errorf("empty item list = %v, want nil", got)
