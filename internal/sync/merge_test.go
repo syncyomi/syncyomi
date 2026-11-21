@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -559,9 +560,16 @@ func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	if len(m.Chapters) != 2 {
 		t.Errorf("delta chapters = %v, want the unchanged chapter list", m.Chapters)
 	}
+	if len(a.Backup.Deletions) != 1 {
+		t.Fatalf("delta deletions = %v, want the one history tombstone", a.Backup.Deletions)
+	}
+	if d := a.Backup.Deletions[0]; d.Kind != string(merge.KindHistory) || d.Key != backup.HistoryKey("1|/m", "/c1") || d.Seq == 0 {
+		t.Errorf("delta deletion = {%s %s %d}, want {history %s <seq>}",
+			d.Kind, d.Key, d.Seq, backup.HistoryKey("1|/m", "/c1"))
+	}
 }
 
-func TestMerge_DeltaTombstoneFullRequest(t *testing.T) {
+func TestMerge_DeltaCarriesTombstones(t *testing.T) {
 	seed := []*merge.Item{
 		{Kind: merge.KindManga, Key: "1|/m", Payload: mustPayload(t, &pb.BackupManga{Source: 1, Url: "/m", Title: "/m"})},
 		{Kind: merge.KindChapter, Key: "1|/m\x1f/c", ParentKey: "1|/m", Payload: mustPayload(t, &pb.BackupChapter{Url: "/c"})},
@@ -576,20 +584,19 @@ func TestMerge_DeltaTombstoneFullRequest(t *testing.T) {
 	}
 
 	cases := []struct {
-		name     string
-		tb       merge.Tombstone
-		wantFull bool
+		name string
+		tb   merge.Tombstone
 	}{
-		{"manga", merge.Tombstone{Kind: merge.KindManga, Key: "1|/m"}, true},
-		{"source", merge.Tombstone{Kind: merge.KindSource, Key: "1"}, true},
-		{"app_pref", merge.Tombstone{Kind: merge.KindAppPref, Key: "theme"}, true},
-		{"source_pref", merge.Tombstone{Kind: merge.KindSourcePref, Key: "1\x1ftheme"}, true},
-		{"ext_store", merge.Tombstone{Kind: merge.KindExtStore, Key: "ext"}, true},
-		{"saved_search", merge.Tombstone{Kind: merge.KindSavedSearch, Key: "q|1"}, true},
-		{"extra", merge.Tombstone{Kind: merge.KindExtra, Key: merge.ExtraItemKey}, true},
-		{"chapter", merge.Tombstone{Kind: merge.KindChapter, Key: "1|/m\x1f/c"}, false},
-		{"category", merge.Tombstone{Kind: merge.KindCategory, Key: "uid:1"}, false},
-		{"history", merge.Tombstone{Kind: merge.KindHistory, Key: "1|/m\x1f/h"}, false},
+		{"manga", merge.Tombstone{Kind: merge.KindManga, Key: "1|/m"}},
+		{"source", merge.Tombstone{Kind: merge.KindSource, Key: "1"}},
+		{"app_pref", merge.Tombstone{Kind: merge.KindAppPref, Key: "theme"}},
+		{"source_pref", merge.Tombstone{Kind: merge.KindSourcePref, Key: "1\x1ftheme"}},
+		{"ext_store", merge.Tombstone{Kind: merge.KindExtStore, Key: "ext"}},
+		{"saved_search", merge.Tombstone{Kind: merge.KindSavedSearch, Key: "q|1"}},
+		{"extra", merge.Tombstone{Kind: merge.KindExtra, Key: merge.ExtraItemKey}},
+		{"chapter", merge.Tombstone{Kind: merge.KindChapter, Key: "1|/m\x1f/c"}},
+		{"category", merge.Tombstone{Kind: merge.KindCategory, Key: "uid:1"}},
+		{"history", merge.Tombstone{Kind: merge.KindHistory, Key: "1|/m\x1f/h"}},
 	}
 
 	for _, tc := range cases {
@@ -606,9 +613,19 @@ func TestMerge_DeltaTombstoneFullRequest(t *testing.T) {
 			peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
 			applyTombstones(t, svc, "C", tc.tb)
 
+			// the tombstone is the second write batch on the store, so its row carries seq 2
 			resp := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
-			if resp.FullRequested != tc.wantFull {
-				t.Errorf("%s tombstone: fullRequested = %v, want %v", tc.name, resp.FullRequested, tc.wantFull)
+			if resp.FullRequested {
+				t.Errorf("%s tombstone: fullRequested = true, want false: the tombstone is in deletions", tc.name)
+			}
+			want := []*pb.BackupDeletedItem{{Kind: string(tc.tb.Kind), Key: tc.tb.Key, Seq: 2}}
+			if !slices.EqualFunc(resp.Backup.Deletions, want, func(a, b *pb.BackupDeletedItem) bool {
+				return a.Kind == b.Kind && a.Key == b.Key && a.Seq == b.Seq
+			}) {
+				t.Errorf("%s tombstone: deletions = %v, want %v", tc.name, resp.Backup.Deletions, want)
+			}
+			if len(resp.Backup.Deletions) != 1 {
+				t.Errorf("%s tombstone: %d deletions, want exactly 1", tc.name, len(resp.Backup.Deletions))
 			}
 		})
 	}

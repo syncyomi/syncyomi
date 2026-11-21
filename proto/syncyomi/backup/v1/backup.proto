@@ -16,6 +16,20 @@ message Backup {
   repeated BackupSourcePreferences backup_source_preferences = 105;
   repeated BackupExtensionStore backup_extension_stores = 106;
   repeated BackupSavedSearch backup_saved_searches = 600;
+
+  // SyncYomi root-envelope band 11000-11099. Borrowed by no fork:
+  // Aniyomi 500+, TachiyomiSY 600+, Komikku 610+/620-632, Chimahon 700+,
+  // J2K 800+ (nested), Suwayomi 9000+, komi-kun 10000-10999
+  // (BackupManga 10000-10099, Backup root 10500-10599).
+  repeated BackupDeletedItem deletions = 11000;
+}
+
+// BackupDeletedItem is one explicit tombstone: the kind of sync item, its merge key and the
+// seq at which the deletion was recorded.
+message BackupDeletedItem {
+  string kind = 1;
+  string key  = 2;
+  int64  seq  = 3;
 }
 
 enum UpdateStrategy {

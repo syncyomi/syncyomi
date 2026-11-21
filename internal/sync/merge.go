@@ -157,12 +157,10 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			}
 			changed = true
 		} else {
-			var unexpressible bool
-			out, changed, unexpressible, err = s.delta(ctx, tx, cursor, req.Device.Key(), res)
+			out, changed, err = s.delta(ctx, tx, cursor, req.Device.Key(), res)
 			if err != nil {
 				return err
 			}
-			fullRequested = fullRequested || unexpressible
 		}
 
 		if newSeq != start.seq {
@@ -645,10 +643,10 @@ func (v *storeView) CategoryByName(name string) *merge.Item {
 
 // delta builds the response for a client at cursor: everything changed since by other
 // devices, the items the server won during this merge, and all live categories.
-func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64, device string, res *merge.Result) (out *pb.Backup, changed bool, unexpressible bool, err error) {
+func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64, device string, res *merge.Result) (out *pb.Backup, changed bool, err error) {
 	since, err := tx.ItemsSince(ctx, cursor)
 	if err != nil {
-		return nil, false, false, err
+		return nil, false, err
 	}
 
 	want := map[merge.Kind]map[string]*merge.Item{}
@@ -678,7 +676,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 	if len(res.ReturnKeys) > 0 {
 		returned, err := tx.ItemsByKeys(ctx, res.ReturnKeys)
 		if err != nil {
-			return nil, false, false, err
+			return nil, false, err
 		}
 		for _, it := range returned {
 			add(it)
@@ -698,7 +696,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 	if len(parents) > 0 {
 		mangas, err := tx.GetItems(ctx, merge.KindManga, parents)
 		if err != nil {
-			return nil, false, false, err
+			return nil, false, err
 		}
 		for _, m := range mangas {
 			add(m)
@@ -711,7 +709,7 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 		}
 		children, err := tx.ChildrenOf(ctx, keys)
 		if err != nil {
-			return nil, false, false, err
+			return nil, false, err
 		}
 		for _, child := range children {
 			add(child)
@@ -726,20 +724,10 @@ func (s *service) delta(ctx context.Context, tx domain.SyncStoreTx, cursor int64
 	}
 	out, err = backup.Render(items)
 	if err != nil {
-		return nil, false, false, err
+		return nil, false, err
 	}
-	return out, changed, tombstoneNeedsFull(want), nil
-}
-
-func tombstoneNeedsFull(want map[merge.Kind]map[string]*merge.Item) bool {
-	for _, kind := range append([]merge.Kind{merge.KindManga}, merge.SectionKinds...) {
-		for _, it := range want[kind] {
-			if it.Deleted {
-				return true
-			}
-		}
-	}
-	return false
+	out.Deletions = backup.DeletedItems(items)
+	return out, changed, nil
 }
 
 // refreshRenderCache stores the full backup for v1 clients and the history. rendered can be
