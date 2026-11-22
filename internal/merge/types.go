@@ -72,8 +72,7 @@ type Store interface {
 type Tombstone struct {
 	Kind Kind
 	Key  string
-	// At is the client's deletion time in Unix seconds; 0 means it did not say.
-	At int64
+	At   int64
 }
 
 type Request struct {

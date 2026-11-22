@@ -342,7 +342,7 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
 	}
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
+		_, _, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -526,14 +526,13 @@ func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tom
 	t.Helper()
 	ctx := context.Background()
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{Tombstones: tbs}, device)
+		_, _, err := tx.Apply(ctx, &merge.Result{Tombstones: tbs}, device)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// A deletion made before another device's write must not beat it on the receipt time.
 func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
@@ -542,9 +541,8 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 		mangaKey        = "1|/m"
 		writtenAt int64 = 2000
 	)
-	// seeded directly so modified_at is a fixed value, not the wall clock
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{
+		_, _, err := tx.Apply(ctx, &merge.Result{
 			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
 			ReturnKeys: map[merge.Kind][]string{},
 		}, "A")
@@ -557,7 +555,6 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 		t.Fatalf("B did not receive the manga: %v", peer.Backup.BackupManga)
 	}
 
-	// before the write: accepted (200) but not applied
 	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
 		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}})
 	if err != nil {
@@ -577,7 +574,6 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 		t.Errorf("superseded deletion altered the manga: %v", m)
 	}
 
-	// after the write: applied, and the delta tells the peer
 	applied, err = svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
 		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}})
 	if err != nil {
@@ -601,7 +597,6 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 	}
 }
 
-// A millisecond action time must not make every deletion win.
 func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
@@ -611,7 +606,7 @@ func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
 		writtenAt int64 = 1_700_000_500
 	)
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{
+		_, _, err := tx.Apply(ctx, &merge.Result{
 			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
 			ReturnKeys: map[merge.Kind][]string{},
 		}, "A")
@@ -620,7 +615,6 @@ func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 1700000000000 ms is 1700000000s, i.e. 500s before the write
 	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
 		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: 1_700_000_000_000}})
 	if err != nil {
@@ -654,7 +648,7 @@ func TestMerge_FullResponseCarriesNoDeletions(t *testing.T) {
 		at       = int64(1_700_000_000)
 	)
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{
+		_, _, err := tx.Apply(ctx, &merge.Result{
 			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: at - 500, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
 			ReturnKeys: map[merge.Kind][]string{},
 		}, "A")
@@ -664,7 +658,7 @@ func TestMerge_FullResponseCarriesNoDeletions(t *testing.T) {
 	}
 	peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{
+		_, _, err := tx.Apply(ctx, &merge.Result{
 			Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: at}},
 			ReturnKeys: map[merge.Kind][]string{},
 		}, "C")
@@ -767,7 +761,7 @@ func TestMerge_DeltaCarriesTombstones(t *testing.T) {
 			svc, _ := newTestService(t)
 			ctx := context.Background()
 			if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-				_, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
+				_, _, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
 				return err
 			}); err != nil {
 				t.Fatal(err)

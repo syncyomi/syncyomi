@@ -39,7 +39,7 @@ func TestSyncStore_ApplyAndRead(t *testing.T) {
 		if tx.Exists() || tx.Seq() != 0 {
 			t.Errorf("fresh store exists=%v seq=%d", tx.Exists(), tx.Seq())
 		}
-		seq, err := tx.Apply(ctx, write(
+		seq, _, err := tx.Apply(ctx, write(
 			&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "Read", Version: 1, Payload: []byte("c")},
 			&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 2, Refs: []string{"uid:1", "uid:2"}, Payload: []byte("m")},
 			&merge.Item{Kind: merge.KindChapter, Key: "1|/m\x1f/c", ParentKey: "1|/m", Version: 3, Payload: []byte("ch")},
@@ -81,7 +81,7 @@ func TestSyncStore_ApplyAndRead(t *testing.T) {
 		}
 
 		// second write bumps seq only for touched rows
-		seq, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 5, Payload: []byte("m2")}), "B")
+		seq, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 5, Payload: []byte("m2")}), "B")
 		if err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func TestSyncStore_ApplyAndRead(t *testing.T) {
 		}
 
 		// no-op apply keeps seq
-		seq, err = tx.Apply(ctx, write(), "B")
+		seq, _, err = tx.Apply(ctx, write(), "B")
 		if err != nil || seq != 2 {
 			t.Errorf("empty apply seq=%d err=%v", seq, err)
 		}
@@ -117,10 +117,10 @@ func TestSyncStore_TombstoneAndResurrect(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Version: 1, Payload: []byte("c")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Version: 1, Payload: []byte("c")}), "A"); err != nil {
 			return err
 		}
-		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindCategory, Key: "uid:1"}}, ReturnKeys: map[merge.Kind][]string{}}, "B"); err != nil {
+		if _, _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindCategory, Key: "uid:1"}}, ReturnKeys: map[merge.Kind][]string{}}, "B"); err != nil {
 			return err
 		}
 		cats, err := tx.Categories(ctx)
@@ -130,7 +130,7 @@ func TestSyncStore_TombstoneAndResurrect(t *testing.T) {
 		if len(cats) != 1 || !cats[0].Deleted || cats[0].Seq != 2 || cats[0].OriginDevice != "B" {
 			t.Errorf("after tombstone: %+v", cats[0])
 		}
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R2", Version: 2, Payload: []byte("c2")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R2", Version: 2, Payload: []byte("c2")}), "A"); err != nil {
 			return err
 		}
 		cats, _ = tx.Categories(ctx)
@@ -204,13 +204,13 @@ func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
 		view := &mergeStore{ctx: ctx, tx: tx}
-		if _, err := tx.Apply(ctx, write(mangaItem, chapterItem), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(mangaItem, chapterItem), "A"); err != nil {
 			return err
 		}
 
 		tombstone := func() (int64, error) {
 			res := merge.Merge(view, merge.Request{DeviceID: "B", Tombstones: []merge.Tombstone{{Kind: merge.KindChapter, Key: chapterKey}}})
-			if _, err := tx.Apply(ctx, res, "B"); err != nil {
+			if _, _, err := tx.Apply(ctx, res, "B"); err != nil {
 				return 0, err
 			}
 			items, err := tx.GetItems(ctx, merge.KindChapter, []string{chapterKey})
@@ -240,7 +240,7 @@ func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
 		if len(res.Writes) != 1 {
 			t.Fatalf("re-add writes = %v, want 1", res.Writes)
 		}
-		if _, err := tx.Apply(ctx, res, "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, res, "A"); err != nil {
 			return err
 		}
 		if got := renderChapterCount(t, tx); got != 1 {
@@ -255,7 +255,7 @@ func TestSyncStore_ChapterReAddResurrectsTombstone(t *testing.T) {
 		if len(res.Writes) != 0 {
 			t.Fatalf("older re-add wrote: %v", res.Writes)
 		}
-		if _, err := tx.Apply(ctx, res, "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, res, "A"); err != nil {
 			return err
 		}
 		if got := renderChapterCount(t, tx); got != 0 {
@@ -336,10 +336,10 @@ func TestSyncStore_TombstoneKinds(t *testing.T) {
 			ctx := context.Background()
 
 			err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-				if _, err := tx.Apply(ctx, write(tc.seed...), "A"); err != nil {
+				if _, _, err := tx.Apply(ctx, write(tc.seed...), "A"); err != nil {
 					return err
 				}
-				seq, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: tc.kind, Key: tc.key}}}, "B")
+				seq, _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: tc.kind, Key: tc.key}}}, "B")
 				if err != nil {
 					return err
 				}
@@ -400,10 +400,10 @@ func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", ModifiedAt: 100, Payload: []byte("m")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", ModifiedAt: 100, Payload: []byte("m")}), "A"); err != nil {
 			return err
 		}
-		if _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "missing"}}}, "B"); err != nil {
+		if _, _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "missing"}}}, "B"); err != nil {
 			return err
 		}
 		all, err := tx.AllItems(ctx)
@@ -420,7 +420,6 @@ func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
 	}
 }
 
-// A deletion made before another device's later write must not tombstone that write.
 func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -431,7 +430,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 	)
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: []byte("m")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: []byte("m")}), "A"); err != nil {
 			return err
 		}
 		row := func(t *testing.T) *merge.Item {
@@ -446,74 +445,73 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 			return got[mangaKey]
 		}
 
-		// the deletion predates the write, so it is superseded
 		stale := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}}}
-		seq, err := tx.Apply(ctx, stale, "B")
+		seq, applied, err := tx.Apply(ctx, stale, "B")
 		if err != nil {
 			return err
 		}
 		if seq != 1 || tx.Seq() != 1 {
-			t.Errorf("stale tombstone seq = %d tx.seq = %d, want 1 (unapplied deletions do not advance it)", seq, tx.Seq())
+			t.Errorf("stale tombstone seq = %d tx.seq = %d, want 1", seq, tx.Seq())
 		}
-		if len(stale.Tombstones) != 0 {
-			t.Errorf("stale tombstone counted as applied: %+v", stale.Tombstones)
+		if applied != 0 {
+			t.Errorf("stale tombstone applied = %d, want 0", applied)
 		}
 		if it := row(t); it.Deleted || it.ModifiedAt != writtenAt || it.Seq != 1 || it.OriginDevice != "A" {
 			t.Errorf("stale tombstone touched the row: %+v", it)
 		}
 
-		// after the write: it applies and stamps the action time
 		fresh := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}}}
-		seq, err = tx.Apply(ctx, fresh, "B")
+		seq, applied, err = tx.Apply(ctx, fresh, "B")
 		if err != nil {
 			return err
 		}
 		if seq != 2 {
 			t.Errorf("fresh tombstone seq = %d, want 2", seq)
 		}
-		if len(fresh.Tombstones) != 1 {
-			t.Errorf("fresh tombstone not counted as applied: %+v", fresh.Tombstones)
+		if applied != 1 {
+			t.Errorf("fresh tombstone applied = %d, want 1", applied)
 		}
 		if it := row(t); !it.Deleted || it.ModifiedAt != writtenAt+1000 || it.Seq != 2 || it.OriginDevice != "B" {
 			t.Errorf("applied tombstone = %+v, want deleted at %d", it, writtenAt+1000)
 		}
 
-		// an identical retry must not look like a skip
 		retry := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}}}
-		seq, err = tx.Apply(ctx, retry, "C")
+		seq, applied, err = tx.Apply(ctx, retry, "C")
 		if err != nil {
 			return err
 		}
-		if seq != 3 || len(retry.Tombstones) != 1 {
-			t.Errorf("retried tombstone seq = %d applied = %+v, want 3 and applied", seq, retry.Tombstones)
+		if seq != 3 || applied != 1 {
+			t.Errorf("retried tombstone seq = %d applied = %d, want 3 and 1", seq, applied)
 		}
 		if it := row(t); !it.Deleted || it.ModifiedAt != writtenAt+1000 || it.Seq != 3 || it.OriginDevice != "C" {
 			t.Errorf("retried tombstone = %+v", it)
 		}
 
-		// older than the stored tombstone: never move modified_at backwards
 		older := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt}}}
-		seq, err = tx.Apply(ctx, older, "D")
+		seq, applied, err = tx.Apply(ctx, older, "D")
 		if err != nil {
 			return err
 		}
-		if seq != 3 || tx.Seq() != 3 || len(older.Tombstones) != 0 {
-			t.Errorf("older tombstone seq = %d tx.seq = %d applied = %+v, want 3 and nothing applied", seq, tx.Seq(), older.Tombstones)
+		if seq != 3 || tx.Seq() != 3 || applied != 0 {
+			t.Errorf("older tombstone seq = %d tx.seq = %d applied = %d, want 3 and 0", seq, tx.Seq(), applied)
+		}
+		if len(older.Tombstones) != 1 {
+			t.Errorf("Apply rewrote res.Tombstones = %+v", older.Tombstones)
 		}
 		if it := row(t); !it.Deleted || it.ModifiedAt != writtenAt+1000 || it.OriginDevice != "C" {
 			t.Errorf("older tombstone rewrote the row: %+v", it)
 		}
 
-		// no action time: the receipt-time tombstone applies unconditionally, as before
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/untimed", Version: 1, ModifiedAt: time.Now().Unix() + 3600, Payload: []byte("n")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/untimed", Version: 1, ModifiedAt: time.Now().Unix() + 3600, Payload: []byte("n")}), "A"); err != nil {
 			return err
 		}
 		untimed := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "1|/untimed"}}}
-		if _, err := tx.Apply(ctx, untimed, "B"); err != nil {
+		_, applied, err = tx.Apply(ctx, untimed, "B")
+		if err != nil {
 			return err
 		}
-		if len(untimed.Tombstones) != 1 {
-			t.Errorf("untimed tombstone was not applied: %+v", untimed.Tombstones)
+		if applied != 1 {
+			t.Errorf("untimed tombstone applied = %d, want 1", applied)
 		}
 		got, err := tx.GetItems(ctx, merge.KindManga, []string{"1|/untimed"})
 		if err != nil {
@@ -529,20 +527,38 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 	}
 }
 
-// A future-stamped tombstone would block the row's resurrection.
+func TestSyncStore_TombstoneTime(t *testing.T) {
+	cases := []struct {
+		name string
+		tb   merge.Tombstone
+		now  int64
+		want int64
+	}{
+		{"untimed", merge.Tombstone{}, 5000, 5000},
+		{"past", merge.Tombstone{At: 1000}, 5000, 1000},
+		{"future", merge.Tombstone{At: 9000}, 5000, 5000},
+		{"negative", merge.Tombstone{At: -5}, 5000, -5},
+	}
+	for _, tc := range cases {
+		if got := tombstoneTime(tc.tb, tc.now); got != tc.want {
+			t.Errorf("%s: tombstoneTime = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
 
 	const (
-		aheadKey = "1|/ahead" // written by a device whose clock is minutes ahead
+		aheadKey = "1|/ahead"
 		pastKey  = "1|/past"
 	)
 	now := time.Now().Unix()
-	future := now + 3600 // the deleting device's clock is an hour ahead
+	future := now + 3600
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(
+		if _, _, err := tx.Apply(ctx, write(
 			&merge.Item{Kind: merge.KindManga, Key: aheadKey, Version: 1, ModifiedAt: now + 600, Payload: []byte("a")},
 			&merge.Item{Kind: merge.KindManga, Key: pastKey, Version: 1, ModifiedAt: now - 1000, Payload: []byte("p")},
 		), "A"); err != nil {
@@ -553,23 +569,21 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 			{Kind: merge.KindManga, Key: aheadKey, At: future},
 			{Kind: merge.KindManga, Key: pastKey, At: future},
 		}}
-		seq, err := tx.Apply(ctx, res, "B")
+		seq, applied, err := tx.Apply(ctx, res, "B")
 		if err != nil {
 			return err
 		}
-		if seq != 2 {
-			t.Errorf("seq = %d, want 2", seq)
+		if seq != 2 || applied != 1 {
+			t.Errorf("seq = %d applied = %d, want 2 and 1", seq, applied)
 		}
 
 		got, err := tx.GetItems(ctx, merge.KindManga, []string{aheadKey, pastKey})
 		if err != nil {
 			return err
 		}
-		// claims to be 10 minutes ahead: only the clamped clock keeps it alive
 		if it := got[aheadKey]; it == nil || it.Deleted || it.ModifiedAt != now+600 {
 			t.Errorf("ahead row = %+v, want it untouched at %d", it, now+600)
 		}
-		// deleted, but stamped with the server clock rather than the supplied time
 		it := got[pastKey]
 		if it == nil || !it.Deleted {
 			t.Fatalf("past row = %+v, want it tombstoned", it)
@@ -578,7 +592,6 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 			t.Errorf("tombstone modified_at = %d, want the server clock near %d, not %d", it.ModifiedAt, now, future)
 		}
 
-		// the point of the clamp: a re-add still resurrects the row
 		view := &mergeStore{ctx: ctx, tx: tx}
 		readd := merge.Merge(view, merge.Request{DeviceID: "A", Items: []*merge.Item{
 			{Kind: merge.KindManga, Key: pastKey, Version: 1, ModifiedAt: now + 60, Payload: []byte("p")},
@@ -586,7 +599,7 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 		if len(readd.Writes) != 1 {
 			t.Fatalf("re-add writes = %v, want the row resurrected despite the deletion", readd.Writes)
 		}
-		if _, err := tx.Apply(ctx, readd, "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, readd, "A"); err != nil {
 			return err
 		}
 		if got, err := tx.GetItems(ctx, merge.KindManga, []string{pastKey}); err != nil {
@@ -601,22 +614,21 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 	}
 }
 
-// A negative action time must lose the comparison, not fall through to the untimed path.
 func TestSyncStore_NegativeActionTimeLoses(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 1, ModifiedAt: 2000, Payload: []byte("m")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 1, ModifiedAt: 2000, Payload: []byte("m")}), "A"); err != nil {
 			return err
 		}
 		res := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "1|/m", At: -5}}}
-		seq, err := tx.Apply(ctx, res, "B")
+		seq, applied, err := tx.Apply(ctx, res, "B")
 		if err != nil {
 			return err
 		}
-		if seq != 1 || tx.Seq() != 1 || len(res.Tombstones) != 0 {
-			t.Errorf("negative at: seq = %d tx.seq = %d applied = %+v, want 1 and nothing applied", seq, tx.Seq(), res.Tombstones)
+		if seq != 1 || tx.Seq() != 1 || applied != 0 {
+			t.Errorf("negative at: seq = %d tx.seq = %d applied = %d, want 1 and 0", seq, tx.Seq(), applied)
 		}
 		got, err := tx.GetItems(ctx, merge.KindManga, []string{"1|/m"})
 		if err != nil {
@@ -637,10 +649,10 @@ func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
 			return err
 		}
-		seq, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "missing"}}}, "B")
+		seq, _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "missing"}}}, "B")
 		if err != nil {
 			return err
 		}
@@ -668,14 +680,14 @@ func TestSyncStore_MultipleTombstonesBumpSeqOnce(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(
+		if _, _, err := tx.Apply(ctx, write(
 			&merge.Item{Kind: merge.KindManga, Key: "m1", Payload: []byte("a")},
 			&merge.Item{Kind: merge.KindManga, Key: "m2", Payload: []byte("b")},
 			&merge.Item{Kind: merge.KindSource, Key: "s", Payload: []byte("c")},
 		), "A"); err != nil {
 			return err
 		}
-		seq, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{
+		seq, _, err := tx.Apply(ctx, &merge.Result{Tombstones: []merge.Tombstone{
 			{Kind: merge.KindManga, Key: "m1"},
 			{Kind: merge.KindManga, Key: "m2"},
 			{Kind: merge.KindSource, Key: "s"},
@@ -864,7 +876,7 @@ func TestSyncStore_RollbackOnError(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
 			return err
 		}
 		return fmt.Errorf("boom")
@@ -889,7 +901,7 @@ func TestSyncStore_LargeBatch(t *testing.T) {
 		items = append(items, &merge.Item{Kind: merge.KindChapter, Key: fmt.Sprintf("1|/m\x1f/c%d", i), ParentKey: "1|/m", Payload: []byte{byte(i)}})
 	}
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(items...), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(items...), "A"); err != nil {
 			return err
 		}
 		keys := make([]string, 0, len(items))
@@ -915,7 +927,7 @@ func TestSyncStore_KindQueries(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(
+		if _, _, err := tx.Apply(ctx, write(
 			&merge.Item{Kind: merge.KindManga, Key: "1|/a", Payload: []byte("a")},
 			&merge.Item{Kind: merge.KindManga, Key: "1|/b", Payload: []byte("b")},
 			&merge.Item{Kind: merge.KindChapter, Key: "1|/a\x1f/c", ParentKey: "1|/a", Payload: []byte("c")},
@@ -947,7 +959,7 @@ func TestSyncStore_ChildrenOfIncludesHistory(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(
+		if _, _, err := tx.Apply(ctx, write(
 			&merge.Item{Kind: merge.KindManga, Key: "1|/a", Payload: []byte("a")},
 			&merge.Item{Kind: merge.KindManga, Key: "1|/b", Payload: []byte("b")},
 			&merge.Item{Kind: merge.KindChapter, Key: "1|/a\x1f/c", ParentKey: "1|/a", Payload: []byte("c")},
@@ -989,7 +1001,7 @@ func TestSyncStore_ChildrenOfIncludesHistory(t *testing.T) {
 				&merge.Item{Kind: merge.KindHistory, Key: key + "\x1f/c", ParentKey: key, Payload: []byte("h")},
 			)
 		}
-		if _, err := tx.Apply(ctx, write(many...), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(many...), "A"); err != nil {
 			return err
 		}
 		chunked, err := tx.ChildrenOf(ctx, parents)
@@ -1011,7 +1023,7 @@ func TestSyncStore_ReadTxDoesNotWaitForWriters(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
+		if _, _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Payload: []byte("m")}), "A"); err != nil {
 			return err
 		}
 		return tx.SetRawBlob(ctx, []byte("raw"), "uuid=a", 1, true)

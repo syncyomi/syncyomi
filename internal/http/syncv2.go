@@ -33,19 +33,16 @@ type deletionsRequest struct {
 }
 
 type deletionItem struct {
-	Kind string `json:"kind"`
-	Key  string `json:"key"`
-	// At is the client's deletion time in Unix seconds; 0 means "stamp the receipt time".
-	At unixSeconds `json:"at,omitempty"`
+	Kind string      `json:"kind"`
+	Key  string      `json:"key"`
+	At   unixSeconds `json:"at"`
 }
 
-// deletionKey is a tombstone's identity; the action time is not part of it.
 type deletionKey struct {
 	kind merge.Kind
 	key  string
 }
 
-// unixSeconds is decoded leniently: a 400 here would strand the client's pending queue.
 type unixSeconds int64
 
 func (u *unixSeconds) UnmarshalJSON(data []byte) error {
@@ -65,7 +62,6 @@ func (u *unixSeconds) UnmarshalJSON(data []byte) error {
 		*u = unixSeconds(v)
 		return nil
 	}
-	// past int64, NaN or Inf: absent
 	if f, err := strconv.ParseFloat(raw, 64); err == nil && f >= float64(math.MinInt64) && f < float64(math.MaxInt64) {
 		*u = unixSeconds(int64(f))
 	}
@@ -183,7 +179,6 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
-	// identity is kind+key, so a repeat is one row and keeps the later action time
 	seen := make(map[deletionKey]int, cap(tombstones))
 	acknowledged := 0
 	add := func(kind merge.Kind, key string, at int64) {
