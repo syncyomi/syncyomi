@@ -149,64 +149,23 @@ to `chapter` and `category` tombstones. Keys are the server's stored keys: manga
 categories `uid:<uid>`, and the natural key for settings. A body has no header size limits, so
 a batch of thousands is fine.
 
-`at` is when the user made the deletion, in Unix **seconds** like every synced timestamp. It is
-decoded leniently, because a `400` would strand the client's queue: a JSON number with a
-fraction (`1700000000.75`, `1.7e9`) is truncated, a numeric string (`"1700000000"`) is read as
-that number, and anything unparseable (`"yesterday"`, `null`, an object) counts as absent for
-that entry only, never as a request error. A value that is plainly in milliseconds
-(≥ 100000000000) is then divided by 1000, as `last_read` is, and a value ahead of the server's
-clock is clamped to it (below). It is optional: absent or `0` means "stamp the receipt time",
-which is what every client did before the field existed, and what the legacy shapes always do.
-A negative value is a time before everything, so a deletion carrying one applies to nothing. A key reported twice in one body is one row — the
-action time is not part of a deletion's identity — and the later `at` wins.
-
-A timed deletion is compared with the stored row's `modified_at` and only applied when the row
-is **not newer** than `at`, which is itself clamped to the server's clock:
-
-```
-UPDATE sync_item SET deleted = true, modified_at = min(<at>, <now>), seq = <next>, origin_device = <device>
- WHERE user_api_key = ? AND kind = ? AND key = ? AND modified_at <= min(<at>, <now>)
-```
-
-So a deletion the user made at t1 and synced at t4 no longer beats a read another device made
-at t2 (t1 < t2 < t4), which with a receipt-time stamp it used to. The clamp is what keeps a
-tombstone out of the future when the deleting device's clock is ahead: a future `modified_at`
-would outlive every later timed deletion and no re-add could resurrect the row, since the merge
-compares `ModifiedAt` with it.
-
-A deliberately superseded deletion changes nothing, so it does not appear in any delta — the
-item is still live and is delivered normally — and `applied` does not count it, but it stays
-acknowledged: the server accepted the entry and decided it lost, so the client may clear it from
-its pending queue exactly as for an unknown key.
-
-A deletion **without** `at` keeps the unconditional tombstone it has always had, because the
-receipt time is all the server knows about a client that did not say: it applies even to a row
-stamped later than that second (a client clock ahead of the server's). Only a client that
-reports its action time gains the comparison.
-
-The comparison can only discriminate for kinds whose live row carries a `modified_at`: manga,
-chapters, history entries and those categories whose client sends `last_modified_at`. The six
-section kinds (`source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra`) are
-stored with `modified_at = 0`, so `0 <= at` always holds and a deletion of one still applies
-whatever `at` says — a stale section deletion keeps beating a newer write, exactly as before.
+`at` is the user's deletion time in Unix seconds and is optional: absent or `0` means "stamp the
+receipt time", as clients did before the field existed. A timed tombstone only applies when the
+stored row is not newer than `at`, so a delete made at t1 but synced at t4 no longer beats a
+write made at t2. The value is divided by 1000 when it is plainly in milliseconds, clamped to the
+server clock (a future stamp would block the row's resurrection), and a negative one applies to
+nothing. Only kinds whose live row carries a `modified_at` — manga, chapters, history and
+categories — can supersede a deletion; the six section kinds are stored with `modified_at = 0`,
+so a deletion of one still applies unconditionally.
 
 The submission is one transaction. A `200` means every input entry was processed, so a client
 can clear the whole batch it sent: an entry whose kind is unknown, whose key is empty or whose
 key is longer than 4096 bytes is acknowledged but not applied, and unknown, already-deleted or
-superseded keys are no-ops, so a retry is safe. `acknowledged` counts every input entry before
-dedupe and `applied` counts only rows that actually changed. The only `400` answers are a body
-that is not JSON and a missing or invalid `X-Device-ID`, so a newer client can always clear its
-queue.
-
-Retrying therefore means: acknowledge the entries again, apply nothing and leave the seq where it
-is. The merge drops a tombstone for a row that is already deleted before the store is reached,
-so a re-sent deletion of an already-deleted key comes back as `{"acknowledged": n, "applied": 0}`
-with the row's `seq`, `modified_at` and `origin_device` from the first time. A client must not
-read `applied: 0` as "not deleted": it means nothing changed now, which is also what a
-superseded deletion looks like, so the honest response either way is to clear the entry. (The
-store's own `modified_at <= at` condition is defence in depth for a re-delete that does reach it
-— it keeps a deletion from moving `modified_at` backwards behind a newer tombstone — and is not
-what a retry normally exercises.)
+superseded keys are no-ops, so a retry is safe. A superseded key is acknowledged but not applied:
+nothing changes, it is absent from deltas (the item stays live) and it does not count in
+`applied`. `acknowledged` counts every input entry before dedupe and `applied` counts only rows
+that actually changed. The only `400` answers are a body that is not JSON and a missing or
+invalid `X-Device-ID`, so a newer client can always clear its queue.
 
 A tombstone is never rendered as a live item: it is listed in the delta's `deletions` instead
 (the manga is still returned, with its remaining chapters), so a chapter a source removed stops
@@ -240,15 +199,11 @@ flowchart TD
   `POST /api/sync/v2/deletions` as a raw string (JSON-escaped). A chapter tombstone is dropped
   from every response (the manga is still returned, with its remaining chapters), so a chapter a
   source removed stops reappearing on the other devices.
-- A tombstone records its deletion time — the client's `at` clamped to the server clock, or the
-  receipt time when it sent none — and only yields to a genuinely newer copy: a higher
+- A tombstone records its deletion time, and only yields to a genuinely newer copy: a higher
   `version` (an edit after the delete), or, for manga, chapters and history entries, a timestamp
-  in seconds after that time. The comparison is the same one that decides whether the tombstone
-  applies at all: a copy newer than the deletion survives it, and a deletion stamped in the
-  future would block this for good, which is why `at` is clamped. A manga or chapter the source
-  drops and later re-adds comes back this way: the client re-inserts it at `version = 1` and
-  stamps `last_modified_at`, which beats the tombstone. A history entry has no version, only
-  `last_read`.
+  in seconds after that time. A manga or chapter the source drops and later re-adds comes back
+  this way: the client re-inserts it at `version = 1` and stamps `last_modified_at`, which beats
+  the tombstone. A history entry has no version, only `last_read`.
 - A category tombstone only yields to a higher `version`: categories ride every upload, so a
   device that has not applied the delete yet resends its copy unchanged.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful

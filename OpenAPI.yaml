@@ -620,34 +620,21 @@ paths:
       description: |
         The client reports items it deleted since its last successful sync, before it merges, so
         the server tombstones them and the other devices stop receiving them. The canonical body
-        is `{"items": [{"kind", "key", "at"}, ...]}` and accepts all ten kinds: `manga`, `chapter`,
+        is `{"items": [{"kind", "key"}, ...]}` and accepts all ten kinds: `manga`, `chapter`,
         `history`, `category`, `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`
         and `extra`. Keys are the server's stored keys: manga `<source id>|<manga url>`, chapters
         and history entries `<manga key>` + `0x1f` + `<url>`, categories `uid:<uid>`, and the
         natural key for settings. The legacy `deletedChapters` and `deletedCategories` shapes are
         still accepted and map to `chapter` and `category`.
 
-        A timed deletion is compared with the stored row's `modified_at` and only applies when the
-        row is not newer than `at`, so a delete the user made at one time does not beat a write
-        another device made after it just because it reached the server later. `at` is clamped to
-        the server clock, so a client ahead of it cannot stamp a tombstone in the future. A
-        deletion without `at` applies unconditionally, as before.
-
-        Only kinds whose live row carries a `modified_at` can be superseded: manga, chapters,
-        history entries and categories that send `last_modified_at`. The six section kinds
-        (`source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra`) are stored with
-        `modified_at = 0`, so their deletion always applies whatever `at` says.
-
         The whole submission is one transaction, and a 200 means every input entry was processed,
         so a client can clear the whole batch it sent. An entry whose kind is unknown, whose key
-        is empty or whose key is longer than 4096 bytes is acknowledged but not applied; unknown,
-        already-deleted and superseded keys are no-ops. Re-sending a deletion of an already-deleted
-        key therefore answers `{"acknowledged": n, "applied": 0}` with the row unchanged, and
-        `applied: 0` never means "not deleted". `acknowledged` counts every input entry before
+        is empty or whose key is longer than 4096 bytes is acknowledged but not applied; unknown
+        and already-deleted keys are no-ops. `acknowledged` counts every input entry before
         dedupe; `applied` counts only rows that actually changed. The only 400 answers are a body
-        that is not JSON and a missing or invalid `X-Device-ID`. An older server has no such
-        route and answers 404; a client must keep its deletions pending in that case and apply
-        them once the server is upgraded.
+        that is not JSON and a missing or invalid `X-Device-ID`. An older server has no such route
+        and answers 404; a client must keep its deletions pending in that case and apply them once
+        the server is upgraded.
       operationId: syncV2Deletions
       security:
         - ApiKeyAuth: []
@@ -690,13 +677,8 @@ paths:
                         type: integer
                         format: int64
                         description: |
-                          When the user made the deletion, in Unix seconds. Optional: 0 or absent
-                          stamps the receipt time and applies unconditionally, as before. A JSON
-                          number with a fraction, an exponent or a numeric string is accepted and
-                          truncated; anything unparseable counts as absent rather than failing the
-                          request. A value that is plainly in milliseconds (>= 100000000000) is
-                          divided by 1000. A timed deletion only applies when the stored row is not
-                          newer than it, and it is clamped to the server clock.
+                          When the user made the deletion, in Unix seconds; optional, 0 or absent
+                          stamps the receipt time and applies unconditionally
                     required: [kind, key]
                 deletedChapters:
                   type: array
