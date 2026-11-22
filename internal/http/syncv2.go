@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,7 +37,45 @@ type deletionItem struct {
 	Key  string `json:"key"`
 	// At is when the client deleted the item, in Unix seconds. Absent or 0 means "the server
 	// stamps the receipt time", which is what every client did before it existed.
-	At int64 `json:"at,omitempty"`
+	At unixSeconds `json:"at,omitempty"`
+}
+
+// deletionKey is a tombstone's identity: the action time is a property of the deletion, not
+// part of what makes two entries the same row.
+type deletionKey struct {
+	kind merge.Kind
+	key  string
+}
+
+// unixSeconds decodes a client timestamp leniently. A 200 is what lets a client clear its
+// pending queue, so nothing here may fail the batch: JSON numbers (integer or float, truncated)
+// and numeric strings are taken, and anything else is treated as absent (0) for that entry.
+type unixSeconds int64
+
+func (u *unixSeconds) UnmarshalJSON(data []byte) error {
+	*u = 0
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		return nil
+	}
+	// a client that stringifies its timestamps, as some do for epoch fields
+	if raw[0] == '"' {
+		s, err := strconv.Unquote(raw)
+		if err != nil {
+			return nil
+		}
+		raw = strings.TrimSpace(s)
+	}
+	if v, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		*u = unixSeconds(v)
+		return nil
+	}
+	// 1.7e9 and 1700000000.0 are seconds with a fractional part nobody meant. NaN, Inf and
+	// anything outside int64 land on 0 (absent).
+	if f, err := strconv.ParseFloat(raw, 64); err == nil && f >= float64(math.MinInt64) && f < float64(math.MaxInt64) {
+		*u = unixSeconds(int64(f))
+	}
+	return nil
 }
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -150,22 +189,21 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
-	// the dedupe key is kind+key: a key reported twice is one row, and the later action time wins
-	seen := make(map[merge.Tombstone]int, cap(tombstones))
+	// a key reported twice is one row, whatever times it carries; the latest action time wins
+	seen := make(map[deletionKey]int, cap(tombstones))
 	acknowledged := 0
 	add := func(kind merge.Kind, key string, at int64) {
 		acknowledged++
 		if key == "" || len(key) > maxDeletionKeyLen {
 			return
 		}
-		tb := merge.Tombstone{Kind: kind, Key: key}
-		if i, dup := seen[tb]; dup {
+		if i, dup := seen[deletionKey{kind, key}]; dup {
 			if at > tombstones[i].At {
 				tombstones[i].At = at
 			}
 			return
 		}
-		seen[tb] = len(tombstones)
+		seen[deletionKey{kind, key}] = len(tombstones)
 		tombstones = append(tombstones, merge.Tombstone{Kind: kind, Key: key, At: at})
 	}
 
@@ -177,7 +215,7 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 			acknowledged++
 			continue
 		}
-		add(kind, it.Key, it.At)
+		add(kind, it.Key, int64(it.At))
 	}
 	for _, key := range body.DeletedChapters {
 		// the legacy shapes carry no action time

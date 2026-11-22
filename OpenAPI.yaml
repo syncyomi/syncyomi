@@ -629,15 +629,23 @@ paths:
 
         A timed deletion is compared with the stored row's `modified_at` and only applies when the
         row is not newer than `at`, so a delete the user made at one time does not beat a write
-        another device made after it just because it reached the server later. A deletion without
-        `at` applies unconditionally, as before.
+        another device made after it just because it reached the server later. `at` is clamped to
+        the server clock, so a client ahead of it cannot stamp a tombstone in the future. A
+        deletion without `at` applies unconditionally, as before.
+
+        Only kinds whose live row carries a `modified_at` can be superseded: manga, chapters,
+        history entries and categories that send `last_modified_at`. The six section kinds
+        (`source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`, `extra`) are stored with
+        `modified_at = 0`, so their deletion always applies whatever `at` says.
 
         The whole submission is one transaction, and a 200 means every input entry was processed,
         so a client can clear the whole batch it sent. An entry whose kind is unknown, whose key
         is empty or whose key is longer than 4096 bytes is acknowledged but not applied; unknown,
-        already-deleted and superseded keys are no-ops. `acknowledged` counts every input entry
-        before dedupe; `applied` counts only rows that actually changed. The only 400 answers are a
-        body that is not JSON and a missing or invalid `X-Device-ID`. An older server has no such
+        already-deleted and superseded keys are no-ops. Re-sending a deletion of an already-deleted
+        key therefore answers `{"acknowledged": n, "applied": 0}` with the row unchanged, and
+        `applied: 0` never means "not deleted". `acknowledged` counts every input entry before
+        dedupe; `applied` counts only rows that actually changed. The only 400 answers are a body
+        that is not JSON and a missing or invalid `X-Device-ID`. An older server has no such
         route and answers 404; a client must keep its deletions pending in that case and apply
         them once the server is upgraded.
       operationId: syncV2Deletions
@@ -683,9 +691,12 @@ paths:
                         format: int64
                         description: |
                           When the user made the deletion, in Unix seconds. Optional: 0 or absent
-                          stamps the receipt time and applies unconditionally, as before. A value
-                          that is plainly in milliseconds (>= 100000000000) is divided by 1000. A
-                          timed deletion only applies when the stored row is not newer than it.
+                          stamps the receipt time and applies unconditionally, as before. A JSON
+                          number with a fraction, an exponent or a numeric string is accepted and
+                          truncated; anything unparseable counts as absent rather than failing the
+                          request. A value that is plainly in milliseconds (>= 100000000000) is
+                          divided by 1000. A timed deletion only applies when the stored row is not
+                          newer than it, and it is clamped to the server clock.
                     required: [kind, key]
                 deletedChapters:
                   type: array

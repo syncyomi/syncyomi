@@ -532,6 +532,112 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 	}
 }
 
+// A client ahead of the server clock must not stamp a tombstone in the future: the row would
+// then outlive every later timed deletion and no re-add could resurrect it.
+func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	const (
+		aheadKey = "1|/ahead" // written by a device whose clock is minutes ahead
+		pastKey  = "1|/past"
+	)
+	now := time.Now().Unix()
+	future := now + 3600 // the deleting device's clock is an hour ahead
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(
+			&merge.Item{Kind: merge.KindManga, Key: aheadKey, Version: 1, ModifiedAt: now + 600, Payload: []byte("a")},
+			&merge.Item{Kind: merge.KindManga, Key: pastKey, Version: 1, ModifiedAt: now - 1000, Payload: []byte("p")},
+		), "A"); err != nil {
+			return err
+		}
+
+		res := &merge.Result{Tombstones: []merge.Tombstone{
+			{Kind: merge.KindManga, Key: aheadKey, At: future},
+			{Kind: merge.KindManga, Key: pastKey, At: future},
+		}}
+		seq, err := tx.Apply(ctx, res, "B")
+		if err != nil {
+			return err
+		}
+		if seq != 2 {
+			t.Errorf("seq = %d, want 2", seq)
+		}
+
+		got, err := tx.GetItems(ctx, merge.KindManga, []string{aheadKey, pastKey})
+		if err != nil {
+			return err
+		}
+		// the row claims to be 10 minutes ahead of the server: a deletion stamped an hour
+		// ahead would beat it, so only the clamped clock can keep it alive
+		if it := got[aheadKey]; it == nil || it.Deleted || it.ModifiedAt != now+600 {
+			t.Errorf("ahead row = %+v, want it untouched at %d", it, now+600)
+		}
+		// the past row is deleted, stamped with the server clock rather than the supplied time
+		it := got[pastKey]
+		if it == nil || !it.Deleted {
+			t.Fatalf("past row = %+v, want it tombstoned", it)
+		}
+		if it.ModifiedAt == future || it.ModifiedAt > time.Now().Unix()+2 || it.ModifiedAt < now-5 {
+			t.Errorf("tombstone modified_at = %d, want the server clock near %d, not %d", it.ModifiedAt, now, future)
+		}
+
+		// what the clamp is for: a re-add shortly after the delete still resurrects the row
+		view := &mergeStore{ctx: ctx, tx: tx}
+		readd := merge.Merge(view, merge.Request{DeviceID: "A", Items: []*merge.Item{
+			{Kind: merge.KindManga, Key: pastKey, Version: 1, ModifiedAt: now + 60, Payload: []byte("p")},
+		}})
+		if len(readd.Writes) != 1 {
+			t.Fatalf("re-add writes = %v, want the row resurrected despite the deletion", readd.Writes)
+		}
+		if _, err := tx.Apply(ctx, readd, "A"); err != nil {
+			return err
+		}
+		if got, err := tx.GetItems(ctx, merge.KindManga, []string{pastKey}); err != nil {
+			return err
+		} else if it := got[pastKey]; it == nil || it.Deleted {
+			t.Errorf("re-added row = %+v, want it live", it)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A negative action time is a time before everything: it loses the comparison like any other
+// past time instead of falling through to the unconditional, untimed tombstone.
+func TestSyncStore_NegativeActionTimeLoses(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 1, ModifiedAt: 2000, Payload: []byte("m")}), "A"); err != nil {
+			return err
+		}
+		res := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "1|/m", At: -5}}}
+		seq, err := tx.Apply(ctx, res, "B")
+		if err != nil {
+			return err
+		}
+		if seq != 1 || tx.Seq() != 1 || len(res.Tombstones) != 0 {
+			t.Errorf("negative at: seq = %d tx.seq = %d applied = %+v, want 1 and nothing applied", seq, tx.Seq(), res.Tombstones)
+		}
+		got, err := tx.GetItems(ctx, merge.KindManga, []string{"1|/m"})
+		if err != nil {
+			return err
+		}
+		if it := got["1|/m"]; it == nil || it.Deleted || it.ModifiedAt != 2000 {
+			t.Errorf("negative at row = %+v, want it untouched", it)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
