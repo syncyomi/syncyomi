@@ -169,11 +169,13 @@ jobs:
   release-version:
     name: Resolve release PR version
     runs-on: ubuntu-26.04
+    env:
+      RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') }}
     outputs:
       version: ${{ steps.manifest.outputs.version }}
     steps:
       - name: Checkout manifest
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--')
+        if: env.RELEASE_PR == 'true'
         uses: actions/checkout@v7
         with:
           sparse-checkout: .release-please-manifest.json
@@ -181,8 +183,11 @@ jobs:
 
       - name: Read next version
         id: manifest
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--')
-        run: echo "version=$(jq -r '.["."]' .release-please-manifest.json)" >> "$GITHUB_OUTPUT"
+        if: env.RELEASE_PR == 'true'
+        run: |
+          version=$(jq -er '.["."]' .release-please-manifest.json)
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   goreleaserbuild:
     name: Build distribution binaries
