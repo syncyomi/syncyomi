@@ -13,7 +13,7 @@ env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: pr-image-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -186,7 +186,7 @@ jobs:
         if: env.RELEASE_PR == 'true'
         run: |
           version=$(jq -er '.["."]' .release-please-manifest.json)
-          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::invalid manifest version: $version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   goreleaserbuild:

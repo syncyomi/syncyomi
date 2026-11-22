@@ -5,7 +5,7 @@ on:
     types: [closed]
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: pr-image-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -33,7 +33,9 @@ jobs:
             | jq -r --arg tag "$PR_TAG" --argjson release "$is_release" \
                 '.[] | select(.metadata.container.tags | any(. == $tag or ($release and endswith("-rc")))) | .id')
 
+          failed=0
           for id in $ids; do
             echo "deleting package version $id"
-            gh api -X DELETE "$versions/$id"
+            gh api -X DELETE "$versions/$id" || failed=1
           done
+          exit $failed
