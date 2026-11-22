@@ -13,7 +13,7 @@ env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: pr-image-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -166,6 +166,29 @@ jobs:
       - name: Test
         run: go test -v ./...
 
+  release-version:
+    name: Resolve release PR version
+    runs-on: ubuntu-26.04
+    env:
+      RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') }}
+    outputs:
+      version: ${{ steps.manifest.outputs.version }}
+    steps:
+      - name: Checkout manifest
+        if: env.RELEASE_PR == 'true'
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .release-please-manifest.json
+          sparse-checkout-cone-mode: false
+
+      - name: Read next version
+        id: manifest
+        if: env.RELEASE_PR == 'true'
+        run: |
+          version=$(jq -er '.["."]' .release-please-manifest.json)
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::invalid manifest version: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   goreleaserbuild:
     name: Build distribution binaries
     runs-on: ubuntu-26.04
@@ -231,7 +254,7 @@ jobs:
           - linux/arm64
           - linux/arm/v7
           - linux/arm/v6
-    needs: [web, test]
+    needs: [web, test, release-version]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -261,6 +284,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},prefix=v
             type=ref,event=branch
             type=ref,event=pr
+            type=raw,value=${{ needs.release-version.outputs.version }}-rc,priority=1000,enable=${{ needs.release-version.outputs.version != '' }}
           flavor: |
             latest=auto
 
@@ -316,7 +340,7 @@ jobs:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == 'SyncYomi/SyncYomi' || github.event_name != 'pull_request' }}
     runs-on: ubuntu-26.04
-    needs: [docker, test]
+    needs: [docker, test, release-version]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v8
@@ -345,6 +369,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},prefix=v
             type=ref,event=branch
             type=ref,event=pr
+            type=raw,value=${{ needs.release-version.outputs.version }}-rc,priority=1000,enable=${{ needs.release-version.outputs.version != '' }}
           flavor: |
             latest=auto
 
