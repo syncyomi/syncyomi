@@ -45,13 +45,15 @@ server-rendered backup — that is the one case where the zero-default warning b
    server answers 404, which must **keep** the keys pending so they are applied once the server
    is upgraded — never clear them on a failure. A capabilities response that lists `deletions`
    confirms the route, so a client can call it directly instead of relying on the 404.
+   Send each deletion's action time as `at` (Unix seconds): without it the server stamps the
+   receipt time, so a delete made before another device's later write can still beat it.
 5. **`POST /api/sync/v2/merge`** with `X-Sync-Cursor` = the cursor from the last response.
    Do **not** run a local merge on the response.
 6. **Apply the response**: if `X-Sync-Changed` is `false`, record success and stop. Otherwise
-   apply the `deletions` list (delete the local row for each `kind`/`key`; a manga takes its
-   chapters and history with it), restore the response with your normal upsert restore, delete
-   local categories that are absent from the response's category list, and store the new
-   `X-Sync-Cursor`.
+   apply the `deletions` list (delete the local row for each `kind`/`key` unless it is newer
+   than the tombstone's `at`; a manga takes its chapters and history with it), restore the
+   response with your normal upsert restore, delete local categories that are absent from the
+   response's category list, and store the new `X-Sync-Cursor`.
 7. **Report** `POST /api/sync/event` as before.
 
 Keep the v1 code path for old servers; it is unchanged.

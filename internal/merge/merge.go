@@ -24,7 +24,7 @@ func Merge(store Store, req Request) *Result {
 	}
 
 	for _, tb := range req.Tombstones {
-		m.tombstone(tb.Kind, tb.Key)
+		m.tombstone(tb.Kind, tb.Key, NormalizeTimestamp(tb.At))
 	}
 	for _, it := range req.Items {
 		if it.Kind == KindCategory {
@@ -61,7 +61,7 @@ type tombstoneKey struct {
 }
 
 // tombstone resolves a name-keyed category deletion to the row another device stored under its uid.
-func (m *merger) tombstone(kind Kind, key string) {
+func (m *merger) tombstone(kind Kind, key string, at int64) {
 	if kind == KindCategory && m.store.Get(kind, key) == nil {
 		if name, ok := strings.CutPrefix(key, "name:"); ok {
 			if byName := m.store.CategoryByName(name); byName != nil {
@@ -73,7 +73,7 @@ func (m *merger) tombstone(kind Kind, key string) {
 		return
 	}
 	if cur := m.store.Get(kind, key); cur != nil && !cur.Deleted {
-		m.res.Tombstones = append(m.res.Tombstones, Tombstone{Kind: kind, Key: key})
+		m.res.Tombstones = append(m.res.Tombstones, Tombstone{Kind: kind, Key: key, At: at})
 		m.emitted[tombstoneKey{kind, key}] = struct{}{}
 	}
 }

@@ -72,6 +72,7 @@ type Store interface {
 type Tombstone struct {
 	Kind Kind
 	Key  string
+	At   int64
 }
 
 type Request struct {

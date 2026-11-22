@@ -459,7 +459,7 @@ func TestSyncRepo_StatusStoreFields(t *testing.T) {
 	ctx := context.Background()
 
 	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		if _, err := tx.Apply(ctx, write(
+		if _, _, err := tx.Apply(ctx, write(
 			&merge.Item{Kind: merge.KindCategory, Key: "uid:1", Name: "R", Version: 1, Payload: []byte("c")},
 			&merge.Item{Kind: merge.KindManga, Key: "1|/m", Version: 1, Payload: []byte("m")},
 			&merge.Item{Kind: merge.KindChapter, Key: "1|/m\x1f/c1", ParentKey: "1|/m", Version: 1, Payload: []byte("ch")},

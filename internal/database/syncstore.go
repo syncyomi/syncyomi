@@ -217,56 +217,61 @@ func (t *syncStoreTx) queryItems(ctx context.Context, where sq.Sqlizer) ([]*merg
 	return items, rows.Err()
 }
 
-func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device string) (int64, error) {
+func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device string) (int64, int, error) {
 	if len(res.Writes) == 0 && len(res.Tombstones) == 0 {
 		if !t.exists {
 			if err := t.ensureState(ctx); err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
-		return t.seq, nil
+		return t.seq, 0, nil
 	}
 
 	newSeq := t.seq + 1
 	if err := t.writeItems(ctx, res.Writes, newSeq, device); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	deletedAt := time.Now().UTC().Unix()
+	now := time.Now().UTC().Unix()
 	applied := len(res.Writes) > 0
+	appliedTombstones := 0
 	for _, tb := range res.Tombstones {
-		result, err := t.repo.db.squirrel.
+		at := tombstoneTime(tb, now)
+		q := t.repo.db.squirrel.
 			Update("sync_item").
 			Set("deleted", true).
-			Set("modified_at", deletedAt).
+			Set("modified_at", at).
 			Set("seq", newSeq).
 			Set("origin_device", device).
-			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(tb.Kind), "key": tb.Key}).
-			RunWith(t.tx).
-			ExecContext(ctx)
+			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(tb.Kind), "key": tb.Key})
+		if tb.At != 0 {
+			q = q.Where(sq.LtOrEq{"modified_at": at})
+		}
+		result, err := q.RunWith(t.tx).ExecContext(ctx)
 		if err != nil {
-			return 0, errors.Wrap(err, "error tombstoning item")
+			return 0, 0, errors.Wrap(err, "error tombstoning item")
 		}
 		n, err := result.RowsAffected()
 		if err != nil {
-			return 0, errors.Wrap(err, "error counting tombstoned items")
+			return 0, 0, errors.Wrap(err, "error counting tombstoned items")
 		}
 		if n > 0 {
 			applied = true
+			appliedTombstones++
 		}
 	}
 
 	if !applied {
 		if !t.exists {
 			if err := t.ensureState(ctx); err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
-		return t.seq, nil
+		return t.seq, appliedTombstones, nil
 	}
 
 	if err := t.ensureState(ctx); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	_, err := t.repo.db.squirrel.
 		Update("sync_state").
@@ -276,10 +281,17 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 		RunWith(t.tx).
 		ExecContext(ctx)
 	if err != nil {
-		return 0, errors.Wrap(err, "error updating sync state")
+		return 0, 0, errors.Wrap(err, "error updating sync state")
 	}
 	t.seq = newSeq
-	return newSeq, nil
+	return newSeq, appliedTombstones, nil
+}
+
+func tombstoneTime(tb merge.Tombstone, now int64) int64 {
+	if tb.At == 0 {
+		return now
+	}
+	return min(tb.At, now)
 }
 
 const upsertItemSuffix = `ON CONFLICT (user_api_key, kind, key) DO UPDATE SET

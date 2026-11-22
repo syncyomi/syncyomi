@@ -37,7 +37,7 @@ sequenceDiagram
     participant S as Server (v2)
     C->>S: GET /api/sync/v2/capabilities
     S-->>C: 200 (404 on an old server: fall back to v1)
-    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"items":[{"kind":…,"key":…}]}<br/>(only when there are pending deletions)
+    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"items":[{"kind":…,"key":…,"at":…}]}<br/>(only when there are pending deletions)
     S->>S: tombstone each key (idempotent)
     S-->>C: 200 {"acknowledged":n,"applied":m} — 404 on an old server: keep them pending
     C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full], [X-Sync-Deleted-Categories]<br/>body: backup with changed items (or everything)
@@ -107,6 +107,7 @@ message BackupDeletedItem {
   string kind = 1;
   string key  = 2;
   int64  seq  = 3;
+  int64  at   = 4;
 }
 
 message Backup {
@@ -120,6 +121,7 @@ message Backup {
 | `kind` | the sync item kind: `manga`, `chapter`, `history`, `category`, `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search` or `extra` |
 | `key` | the item's merge key, the same one `/v2/deletions` accepts: `source\|url`, `<manga key>\x1f<url>`, `uid:<uid>`, natural keys for settings |
 | `seq` | the `seq` of the deletion, so a client can tell it from a newer resurrection |
+| `at` | when the deletion happened, in Unix seconds: the action time the client sent, or the server's receipt time when it sent none (`0` for a tombstone stored before the field existed). A client skips a tombstone whose `at` is older than its own copy, which is how a read newer than the deletion survives |
 
 - A client applies the list by deleting its local row for `kind`/`key` (a manga takes its
   chapters and history with it), in the same pass as the restore, before or after it does not
@@ -140,21 +142,32 @@ message Backup {
 ## Deletions
 
 `POST /api/sync/v2/deletions` tombstones items a client deleted since its last sync, before
-the client's merge. The canonical body is `{"items": [{"kind": "<kind>", "key": "<key>"}, ...]}`
-and accepts all ten kinds: `manga`, `chapter`, `history`, `category`, `source`, `app_pref`,
-`source_pref`, `ext_store`, `saved_search` and `extra`. The legacy shapes
+the client's merge. The canonical body is `{"items": [{"kind": "<kind>", "key": "<key>", "at":
+<unix seconds>}, ...]}` and accepts all ten kinds: `manga`, `chapter`, `history`, `category`,
+`source`, `app_pref`, `source_pref`, `ext_store`, `saved_search` and `extra`. The legacy shapes
 `{"deletedChapters": [...]}` and `{"deletedCategories": [uid, ...]}` are still accepted and map
 to `chapter` and `category` tombstones. Keys are the server's stored keys: manga
 `<source id>|<manga url>`, chapters and history entries `<manga key>` + `0x1f` + `<url>`,
 categories `uid:<uid>`, and the natural key for settings. A body has no header size limits, so
 a batch of thousands is fine.
 
+`at` is the user's deletion time in Unix seconds and is optional: absent or `0` means "stamp the
+receipt time", as clients did before the field existed. A timed tombstone only applies when the
+stored row is not newer than `at`, so a delete made at t1 but synced at t4 no longer beats a
+write made at t2. The value is divided by 1000 when it is plainly in milliseconds, clamped to the
+server clock (a future stamp would block the row's resurrection), and a negative one applies to
+nothing. Only kinds whose live row carries a `modified_at` — manga, chapters, history and
+categories — can supersede a deletion; the six section kinds are stored with `modified_at = 0`,
+so a deletion of one still applies unconditionally.
+
 The submission is one transaction. A `200` means every input entry was processed, so a client
 can clear the whole batch it sent: an entry whose kind is unknown, whose key is empty or whose
-key is longer than 4096 bytes is acknowledged but not applied, and unknown or already-deleted
-keys are no-ops, so a retry is safe. `acknowledged` counts every input entry before dedupe and
-`applied` counts only rows that actually changed. The only `400` answers are a body that is not
-JSON and a missing or invalid `X-Device-ID`, so a newer client can always clear its queue.
+key is longer than 4096 bytes is acknowledged but not applied, and unknown, already-deleted or
+superseded keys are no-ops, so a retry is safe. A superseded key is acknowledged but not applied:
+nothing changes, it is absent from deltas (the item stays live) and it does not count in
+`applied`. `acknowledged` counts every input entry before dedupe and `applied` counts only rows
+that actually changed. The only `400` answers are a body that is not JSON and a missing or
+invalid `X-Device-ID`, so a newer client can always clear its queue.
 
 A tombstone is never rendered as a live item: it is listed in the delta's `deletions` instead
 (the manga is still returned, with its remaining chapters), so a chapter a source removed stops

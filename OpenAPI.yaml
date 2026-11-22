@@ -673,6 +673,12 @@ paths:
                       key:
                         type: string
                         description: The server's stored key for the item
+                      at:
+                        type: integer
+                        format: int64
+                        description: |
+                          When the user made the deletion, in Unix seconds; optional, 0 or absent
+                          stamps the receipt time and applies unconditionally
                     required: [kind, key]
                 deletedChapters:
                   type: array

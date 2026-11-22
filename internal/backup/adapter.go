@@ -327,7 +327,7 @@ func DeletedItems(items []*merge.Item) []*pb.BackupDeletedItem {
 		if !it.Deleted {
 			continue
 		}
-		out = append(out, &pb.BackupDeletedItem{Kind: string(it.Kind), Key: it.Key, Seq: it.Seq})
+		out = append(out, &pb.BackupDeletedItem{Kind: string(it.Kind), Key: it.Key, Seq: it.Seq, At: it.ModifiedAt})
 	}
 	slices.SortFunc(out, func(a, b *pb.BackupDeletedItem) int {
 		if c := strings.Compare(a.Kind, b.Kind); c != 0 {

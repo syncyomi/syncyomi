@@ -137,7 +137,7 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		if err != nil {
 			return err
 		}
-		newSeq, err := tx.Apply(ctx, res, req.Device.Key())
+		newSeq, _, err := tx.Apply(ctx, res, req.Device.Key())
 		if err != nil {
 			return err
 		}
@@ -398,7 +398,7 @@ func (s *service) RestoreHistory(ctx context.Context, apiKey string, id int) (*s
 		if err != nil {
 			return err
 		}
-		newSeq, err := tx.Apply(ctx, res, deviceRestore)
+		newSeq, _, err := tx.Apply(ctx, res, deviceRestore)
 		if err != nil {
 			return err
 		}
@@ -491,7 +491,7 @@ func (s *service) applyImport(ctx context.Context, tx domain.SyncStoreTx, p *pre
 		return false, tx.MarkRawCurrent(ctx, tx.Seq())
 	}
 	writeStart := time.Now()
-	seq, err := tx.Apply(ctx, p.res, deviceLegacy)
+	seq, _, err := tx.Apply(ctx, p.res, deviceLegacy)
 	if err != nil {
 		return false, err
 	}
@@ -536,11 +536,11 @@ func (s *service) DeleteItems(ctx context.Context, apiKey string, dev domain.Dev
 			return err
 		}
 		res := merge.Merge(view, merge.Request{DeviceID: dev.Key(), Tombstones: tombstones})
-		newSeq, err := tx.Apply(ctx, res, dev.Key())
+		newSeq, appliedTombstones, err := tx.Apply(ctx, res, dev.Key())
 		if err != nil {
 			return err
 		}
-		applied = len(res.Tombstones)
+		applied = appliedTombstones
 		if newSeq != start.seq {
 			return s.refreshRenderCache(ctx, tx, false, nil)
 		}

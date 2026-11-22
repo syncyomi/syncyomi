@@ -24,12 +24,16 @@ message Backup {
   repeated BackupDeletedItem deletions = 11000;
 }
 
-// BackupDeletedItem is one explicit tombstone: the kind of sync item, its merge key and the
-// seq at which the deletion was recorded.
+// BackupDeletedItem is one explicit tombstone: the kind of sync item, its merge key, the
+// seq at which the deletion was recorded and when the deletion happened. `at` is the action
+// time the client sent with the deletion, or the server's receipt time when it sent none;
+// 0 for a tombstone recorded before the field existed. It needs no fork-range treatment:
+// this message is only reachable through Backup.deletions = 11000, which SyncYomi owns.
 message BackupDeletedItem {
   string kind = 1;
   string key  = 2;
   int64  seq  = 3;
+  int64  at   = 4;
 }
 
 enum UpdateStrategy {

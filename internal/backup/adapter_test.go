@@ -408,26 +408,26 @@ func TestDeletedItems(t *testing.T) {
 	}
 
 	items := []*merge.Item{
-		{Kind: merge.KindSavedSearch, Key: "b|1", Deleted: true, Seq: 7},
-		{Kind: merge.KindManga, Key: "1|/x", Deleted: true, Seq: 5},
+		{Kind: merge.KindSavedSearch, Key: "b|1", Deleted: true, Seq: 7, ModifiedAt: 1_700_000_700},
+		{Kind: merge.KindManga, Key: "1|/x", Deleted: true, Seq: 5, ModifiedAt: 1_700_000_500},
 		{Kind: merge.KindManga, Key: "1|/a", Deleted: true, Seq: 6},
-		{Kind: merge.KindChapter, Key: "1|/a\x1f/c", Seq: 9},
-		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Seq: 4},
+		{Kind: merge.KindChapter, Key: "1|/a\x1f/c", Seq: 9, ModifiedAt: 1_700_000_900},
+		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Seq: 4, ModifiedAt: 1_700_000_400},
 	}
 	want := []*pb.BackupDeletedItem{
-		{Kind: string(merge.KindAppPref), Key: "theme", Seq: 4},
+		{Kind: string(merge.KindAppPref), Key: "theme", Seq: 4, At: 1_700_000_400},
 		{Kind: string(merge.KindManga), Key: "1|/a", Seq: 6},
-		{Kind: string(merge.KindManga), Key: "1|/x", Seq: 5},
-		{Kind: string(merge.KindSavedSearch), Key: "b|1", Seq: 7},
+		{Kind: string(merge.KindManga), Key: "1|/x", Seq: 5, At: 1_700_000_500},
+		{Kind: string(merge.KindSavedSearch), Key: "b|1", Seq: 7, At: 1_700_000_700},
 	}
 	got := DeletedItems(items)
 	if len(got) != len(want) {
 		t.Fatalf("deletions = %v, want %v", got, want)
 	}
 	for i := range want {
-		if got[i].Kind != want[i].Kind || got[i].Key != want[i].Key || got[i].Seq != want[i].Seq {
-			t.Errorf("deletion %d = {%s %s %d}, want {%s %s %d}", i,
-				got[i].Kind, got[i].Key, got[i].Seq, want[i].Kind, want[i].Key, want[i].Seq)
+		if got[i].Kind != want[i].Kind || got[i].Key != want[i].Key || got[i].Seq != want[i].Seq || got[i].At != want[i].At {
+			t.Errorf("deletion %d = {%s %s seq=%d at=%d}, want {%s %s seq=%d at=%d}", i,
+				got[i].Kind, got[i].Key, got[i].Seq, got[i].At, want[i].Kind, want[i].Key, want[i].Seq, want[i].At)
 		}
 	}
 }

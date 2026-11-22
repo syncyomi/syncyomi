@@ -342,7 +342,7 @@ func TestDeleteItemsAppliesAllKinds(t *testing.T) {
 		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
 	}
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
+		_, _, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -526,10 +526,167 @@ func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tom
 	t.Helper()
 	ctx := context.Background()
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-		_, err := tx.Apply(ctx, &merge.Result{Tombstones: tbs}, device)
+		_, _, err := tx.Apply(ctx, &merge.Result{Tombstones: tbs}, device)
 		return err
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey        = "1|/m"
+		writtenAt int64 = 2000
+	)
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, _, err := tx.Apply(ctx, &merge.Result{
+			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if m := urls(peer.Backup)["/m"]; m == nil {
+		t.Fatalf("B did not receive the manga: %v", peer.Backup.BackupManga)
+	}
+
+	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 {
+		t.Errorf("applied = %d, want 0: the stored row is newer than the deletion", applied)
+	}
+	stale := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+	if len(stale.Backup.Deletions) != 0 {
+		t.Errorf("delta deletions = %v, want none for a superseded deletion", stale.Backup.Deletions)
+	}
+	if stale.Changed {
+		t.Error("delta reports a change for a superseded deletion")
+	}
+	if m := urls(stale.Backup)["/m"]; m != nil && m.Version != 1 {
+		t.Errorf("superseded deletion altered the manga: %v", m)
+	}
+
+	applied, err = svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Errorf("applied = %d, want 1", applied)
+	}
+	resp := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+	if resp.FullRequested {
+		t.Error("the tombstone asked for a full sync; it travels in deletions")
+	}
+	if len(resp.Backup.Deletions) != 1 || resp.Backup.Deletions[0].Kind != string(merge.KindManga) || resp.Backup.Deletions[0].Key != mangaKey {
+		t.Errorf("delta deletions = %v, want the manga tombstone", resp.Backup.Deletions)
+	}
+	if got := resp.Backup.Deletions[0].At; got != writtenAt+1000 {
+		t.Errorf("delta deletion time = %d, want the action time %d, not the receipt time", got, writtenAt+1000)
+	}
+	if len(resp.Backup.BackupManga) != 0 {
+		t.Errorf("delta still renders the deleted manga: %v", resp.Backup.BackupManga)
+	}
+}
+
+func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey        = "1|/m"
+		writtenAt int64 = 1_700_000_500
+	)
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, _, err := tx.Apply(ctx, &merge.Result{
+			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: 1_700_000_000_000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 {
+		t.Errorf("applied = %d, want 0: a millisecond deletion time must be read as seconds", applied)
+	}
+	if err := svc.store.ReadTx(ctx, "key1", func(tx domain.SyncStoreReader) error {
+		got, err := tx.GetItems(ctx, merge.KindManga, []string{mangaKey})
+		if err != nil {
+			return err
+		}
+		if it := got[mangaKey]; it == nil || it.Deleted || it.ModifiedAt != writtenAt {
+			t.Errorf("manga = %+v, want it live at %d", it, writtenAt)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Only a delta carries the deletions list. A full merge response and the snapshot render the
+// whole store, so a client sees the deletion by the row's absence and gets no list.
+func TestMerge_FullResponseCarriesNoDeletions(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey = "1|/m"
+		at       = int64(1_700_000_000)
+	)
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, _, err := tx.Apply(ctx, &merge.Result{
+			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: at - 500, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, _, err := tx.Apply(ctx, &merge.Result{
+			Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: at}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "C")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	delta := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+	if len(delta.Backup.Deletions) != 1 || delta.Backup.Deletions[0].Key != mangaKey {
+		t.Fatalf("delta deletions = %v, want the one tombstone", delta.Backup.Deletions)
+	}
+
+	full := sync2(t, svc, "D", 0, true, &pb.Backup{})
+	if len(full.Backup.Deletions) != 0 {
+		t.Errorf("full response deletions = %v, want none: only a delta carries the list", full.Backup.Deletions)
+	}
+
+	snap, err := svc.Snapshot(ctx, "key1", full.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := backup.Decode(snap.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Deletions) != 0 {
+		t.Errorf("snapshot deletions = %v, want none", b.Deletions)
 	}
 }
 
@@ -604,7 +761,7 @@ func TestMerge_DeltaCarriesTombstones(t *testing.T) {
 			svc, _ := newTestService(t)
 			ctx := context.Background()
 			if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
-				_, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
+				_, _, err := tx.Apply(ctx, &merge.Result{Writes: seed, ReturnKeys: map[merge.Kind][]string{}}, "A")
 				return err
 			}); err != nil {
 				t.Fatal(err)

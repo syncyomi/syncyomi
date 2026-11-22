@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,8 +33,39 @@ type deletionsRequest struct {
 }
 
 type deletionItem struct {
-	Kind string `json:"kind"`
-	Key  string `json:"key"`
+	Kind string      `json:"kind"`
+	Key  string      `json:"key"`
+	At   unixSeconds `json:"at"`
+}
+
+type deletionKey struct {
+	kind merge.Kind
+	key  string
+}
+
+type unixSeconds int64
+
+func (u *unixSeconds) UnmarshalJSON(data []byte) error {
+	*u = 0
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		return nil
+	}
+	if raw[0] == '"' {
+		s, err := strconv.Unquote(raw)
+		if err != nil {
+			return nil
+		}
+		raw = strings.TrimSpace(s)
+	}
+	if v, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		*u = unixSeconds(v)
+		return nil
+	}
+	if f, err := strconv.ParseFloat(raw, 64); err == nil && f >= float64(math.MinInt64) && f < float64(math.MaxInt64) {
+		*u = unixSeconds(int64(f))
+	}
+	return nil
 }
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -147,19 +179,21 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
-	seen := make(map[merge.Tombstone]struct{}, cap(tombstones))
+	seen := make(map[deletionKey]int, cap(tombstones))
 	acknowledged := 0
-	add := func(kind merge.Kind, key string) {
+	add := func(kind merge.Kind, key string, at int64) {
 		acknowledged++
 		if key == "" || len(key) > maxDeletionKeyLen {
 			return
 		}
-		tb := merge.Tombstone{Kind: kind, Key: key}
-		if _, dup := seen[tb]; dup {
+		if i, dup := seen[deletionKey{kind, key}]; dup {
+			if at > tombstones[i].At {
+				tombstones[i].At = at
+			}
 			return
 		}
-		seen[tb] = struct{}{}
-		tombstones = append(tombstones, tb)
+		seen[deletionKey{kind, key}] = len(tombstones)
+		tombstones = append(tombstones, merge.Tombstone{Kind: kind, Key: key, At: at})
 	}
 
 	for _, it := range body.Items {
@@ -170,13 +204,13 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 			acknowledged++
 			continue
 		}
-		add(kind, it.Key)
+		add(kind, it.Key, int64(it.At))
 	}
 	for _, key := range body.DeletedChapters {
-		add(merge.KindChapter, key)
+		add(merge.KindChapter, key, 0)
 	}
 	for _, uid := range body.DeletedCategories {
-		add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10))
+		add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10), 0)
 	}
 
 	applied := 0
