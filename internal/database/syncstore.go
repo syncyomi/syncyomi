@@ -234,18 +234,13 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 
 	deletedAt := time.Now().UTC().Unix()
 	applied := len(res.Writes) > 0
-	// only tombstones that changed a row stay in the result, so the caller's count
-	// (DeleteItems -> the endpoint's "applied") matches the rows actually touched
+	// keep only what was applied: DeleteItems reports len(res.Tombstones) as "applied"
 	appliedTombstones := res.Tombstones[:0]
 	for _, tb := range res.Tombstones {
-		// the client's action time when it sent one (merge normalised it to seconds), the
-		// receipt time otherwise
 		at := deletedAt
 		if tb.At != 0 {
 			at = tb.At
-			// a client ahead of the server clock must not pin the row to the future: a future
-			// modified_at blocks resurrection (the merge compares ModifiedAt) and makes the row
-			// immune to every later timed deletion
+			// a modified_at in the future blocks resurrection, so cap at the server clock
 			if at > deletedAt {
 				at = deletedAt
 			}
@@ -258,11 +253,8 @@ func (t *syncStoreTx) Apply(ctx context.Context, res *merge.Result, device strin
 			Set("origin_device", device).
 			Where(sq.Eq{"user_api_key": t.apiKey, "kind": string(tb.Kind), "key": tb.Key})
 		if tb.At != 0 {
-			// a deletion the user made before another device's write must not beat it: the row
-			// is only tombstoned when it is not newer than the deletion, so a negative action
-			// time loses like any other past time. A client that sent no time keeps the
-			// unconditional tombstone it has always had, since the receipt time is all the
-			// server knows.
+			// only a timed deletion compares; without `at` an older client keeps its
+			// receipt-time tombstone, which is all the server knows about it
 			q = q.Where(sq.LtOrEq{"modified_at": at})
 		}
 		result, err := q.RunWith(t.tx).ExecContext(ctx)

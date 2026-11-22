@@ -420,8 +420,7 @@ func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
 	}
 }
 
-// A deletion carries the time the user made it. One made before another device's later write
-// must not tombstone that write just because it reached the server afterwards.
+// A deletion made before another device's later write must not tombstone that write.
 func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -447,7 +446,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 			return got[mangaKey]
 		}
 
-		// deleted at 1000, written at 2000: the deletion is superseded
+		// the deletion predates the write, so it is superseded
 		stale := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}}}
 		seq, err := tx.Apply(ctx, stale, "B")
 		if err != nil {
@@ -463,7 +462,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 			t.Errorf("stale tombstone touched the row: %+v", it)
 		}
 
-		// deleted at 3000, after the write: it applies, and stamps the action time
+		// after the write: it applies and stamps the action time
 		fresh := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}}}
 		seq, err = tx.Apply(ctx, fresh, "B")
 		if err != nil {
@@ -479,7 +478,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 			t.Errorf("applied tombstone = %+v, want deleted at %d", it, writtenAt+1000)
 		}
 
-		// an identical retry of the same deletion stays an update, not a silent skip
+		// an identical retry must not look like a skip
 		retry := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}}}
 		seq, err = tx.Apply(ctx, retry, "C")
 		if err != nil {
@@ -492,8 +491,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 			t.Errorf("retried tombstone = %+v", it)
 		}
 
-		// a deletion older than the stored tombstone must not rewrite it backwards, or a
-		// re-add between the two would win again
+		// older than the stored tombstone: never move modified_at backwards
 		older := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt}}}
 		seq, err = tx.Apply(ctx, older, "D")
 		if err != nil {
@@ -506,8 +504,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 			t.Errorf("older tombstone rewrote the row: %+v", it)
 		}
 
-		// a client that sends no action time keeps the old receipt-time behaviour: the
-		// tombstone applies even to a row stamped later than the server's clock
+		// no action time: the receipt-time tombstone applies unconditionally, as before
 		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/untimed", Version: 1, ModifiedAt: time.Now().Unix() + 3600, Payload: []byte("n")}), "A"); err != nil {
 			return err
 		}
@@ -532,8 +529,7 @@ func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
 	}
 }
 
-// A client ahead of the server clock must not stamp a tombstone in the future: the row would
-// then outlive every later timed deletion and no re-add could resurrect it.
+// A future-stamped tombstone would block the row's resurrection.
 func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
@@ -569,12 +565,11 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// the row claims to be 10 minutes ahead of the server: a deletion stamped an hour
-		// ahead would beat it, so only the clamped clock can keep it alive
+		// claims to be 10 minutes ahead: only the clamped clock keeps it alive
 		if it := got[aheadKey]; it == nil || it.Deleted || it.ModifiedAt != now+600 {
 			t.Errorf("ahead row = %+v, want it untouched at %d", it, now+600)
 		}
-		// the past row is deleted, stamped with the server clock rather than the supplied time
+		// deleted, but stamped with the server clock rather than the supplied time
 		it := got[pastKey]
 		if it == nil || !it.Deleted {
 			t.Fatalf("past row = %+v, want it tombstoned", it)
@@ -583,7 +578,7 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 			t.Errorf("tombstone modified_at = %d, want the server clock near %d, not %d", it.ModifiedAt, now, future)
 		}
 
-		// what the clamp is for: a re-add shortly after the delete still resurrects the row
+		// the point of the clamp: a re-add still resurrects the row
 		view := &mergeStore{ctx: ctx, tx: tx}
 		readd := merge.Merge(view, merge.Request{DeviceID: "A", Items: []*merge.Item{
 			{Kind: merge.KindManga, Key: pastKey, Version: 1, ModifiedAt: now + 60, Payload: []byte("p")},
@@ -606,8 +601,7 @@ func TestSyncStore_TombstoneClampsActionTimeToServerClock(t *testing.T) {
 	}
 }
 
-// A negative action time is a time before everything: it loses the comparison like any other
-// past time instead of falling through to the unconditional, untimed tombstone.
+// A negative action time must lose the comparison, not fall through to the untimed path.
 func TestSyncStore_NegativeActionTimeLoses(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()

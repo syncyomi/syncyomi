@@ -35,21 +35,17 @@ type deletionsRequest struct {
 type deletionItem struct {
 	Kind string `json:"kind"`
 	Key  string `json:"key"`
-	// At is when the client deleted the item, in Unix seconds. Absent or 0 means "the server
-	// stamps the receipt time", which is what every client did before it existed.
+	// At is the client's deletion time in Unix seconds; 0 means "stamp the receipt time".
 	At unixSeconds `json:"at,omitempty"`
 }
 
-// deletionKey is a tombstone's identity: the action time is a property of the deletion, not
-// part of what makes two entries the same row.
+// deletionKey is a tombstone's identity; the action time is not part of it.
 type deletionKey struct {
 	kind merge.Kind
 	key  string
 }
 
-// unixSeconds decodes a client timestamp leniently. A 200 is what lets a client clear its
-// pending queue, so nothing here may fail the batch: JSON numbers (integer or float, truncated)
-// and numeric strings are taken, and anything else is treated as absent (0) for that entry.
+// unixSeconds is decoded leniently: a 400 here would strand the client's pending queue.
 type unixSeconds int64
 
 func (u *unixSeconds) UnmarshalJSON(data []byte) error {
@@ -58,7 +54,6 @@ func (u *unixSeconds) UnmarshalJSON(data []byte) error {
 	if raw == "" || raw == "null" {
 		return nil
 	}
-	// a client that stringifies its timestamps, as some do for epoch fields
 	if raw[0] == '"' {
 		s, err := strconv.Unquote(raw)
 		if err != nil {
@@ -70,8 +65,7 @@ func (u *unixSeconds) UnmarshalJSON(data []byte) error {
 		*u = unixSeconds(v)
 		return nil
 	}
-	// 1.7e9 and 1700000000.0 are seconds with a fractional part nobody meant. NaN, Inf and
-	// anything outside int64 land on 0 (absent).
+	// past int64, NaN or Inf: absent
 	if f, err := strconv.ParseFloat(raw, 64); err == nil && f >= float64(math.MinInt64) && f < float64(math.MaxInt64) {
 		*u = unixSeconds(int64(f))
 	}
@@ -189,7 +183,7 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
-	// a key reported twice is one row, whatever times it carries; the latest action time wins
+	// identity is kind+key, so a repeat is one row and keeps the later action time
 	seen := make(map[deletionKey]int, cap(tombstones))
 	acknowledged := 0
 	add := func(kind merge.Kind, key string, at int64) {
@@ -218,7 +212,6 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 		add(kind, it.Key, int64(it.At))
 	}
 	for _, key := range body.DeletedChapters {
-		// the legacy shapes carry no action time
 		add(merge.KindChapter, key, 0)
 	}
 	for _, uid := range body.DeletedCategories {

@@ -533,8 +533,7 @@ func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tom
 	}
 }
 
-// The delete a client reports carries the time the user made it, so a deletion from before
-// another device's write loses to that write instead of beating it with the receipt time.
+// A deletion made before another device's write must not beat it on the receipt time.
 func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
@@ -543,7 +542,7 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 		mangaKey        = "1|/m"
 		writtenAt int64 = 2000
 	)
-	// seed directly so the stored modified_at is a fixed value, not the wall clock
+	// seeded directly so modified_at is a fixed value, not the wall clock
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
 		_, err := tx.Apply(ctx, &merge.Result{
 			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
@@ -558,7 +557,7 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 		t.Fatalf("B did not receive the manga: %v", peer.Backup.BackupManga)
 	}
 
-	// deleted 1000s before the write: accepted, acknowledged (200), not applied
+	// before the write: accepted (200) but not applied
 	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
 		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}})
 	if err != nil {
@@ -578,7 +577,7 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 		t.Errorf("superseded deletion altered the manga: %v", m)
 	}
 
-	// deleted 1000s after the write: applied, and the delta tells the peer
+	// after the write: applied, and the delta tells the peer
 	applied, err = svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
 		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}})
 	if err != nil {
@@ -599,8 +598,7 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 	}
 }
 
-// A client that sends its action time in milliseconds (the unit of most client-side fields)
-// must not make every deletion win: the value is normalised to seconds before it is compared.
+// A millisecond action time must not make every deletion win.
 func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()

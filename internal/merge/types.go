@@ -72,10 +72,7 @@ type Store interface {
 type Tombstone struct {
 	Kind Kind
 	Key  string
-	// At is when the client performed the deletion, in Unix seconds; 0 when it did not say,
-	// in which case the store stamps its own clock. It is what the deletion is compared with,
-	// so a delete made before another device's write does not beat that write just because it
-	// reached the server later.
+	// At is the client's deletion time in Unix seconds; 0 means it did not say.
 	At int64
 }
 

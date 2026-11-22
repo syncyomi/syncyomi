@@ -24,8 +24,6 @@ func Merge(store Store, req Request) *Result {
 	}
 
 	for _, tb := range req.Tombstones {
-		// same unit rule as items: a client that sends milliseconds is normalised to the
-		// seconds the store compares
 		m.tombstone(tb.Kind, tb.Key, NormalizeTimestamp(tb.At))
 	}
 	for _, it := range req.Items {
