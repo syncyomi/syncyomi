@@ -1,6 +1,9 @@
 package merge
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+)
 
 // Merge applies the client's items to the store state and decides what to write and what to send back. Absence never means deletion: only explicit tombstones delete.
 //
@@ -8,12 +11,11 @@ import "bytes"
 //   - versioned kinds (manga, chapter, category): higher version wins; on a version tie the
 //     newer ModifiedAt wins, and only a full tie keeps the server copy
 //   - history entries never carry a version, so the newer ModifiedAt (last read) wins
-//   - a tombstone yields to a higher version, and for chapters also to a newer ModifiedAt
 //   - section kinds: client wins on conflict
 //   - client-only -> insert; server-only -> not touched here, returned by the delta
 func Merge(store Store, req Request) *Result {
 	res := &Result{ReturnKeys: map[Kind][]string{}}
-	m := &merger{store: store, req: req, res: res}
+	m := &merger{store: store, req: req, res: res, emitted: map[tombstoneKey]struct{}{}}
 
 	// every ingested item passes through here, so this is the one place ModifiedAt gets its
 	// unit: a future ingestion path cannot skip it. Stored items are already seconds.
@@ -21,12 +23,8 @@ func Merge(store Store, req Request) *Result {
 		it.ModifiedAt = NormalizeTimestamp(it.ModifiedAt)
 	}
 
-	// categories first: manga refs point at them and tombstones affect refs
-	for _, key := range req.DeletedCategories {
-		m.tombstone(KindCategory, key)
-	}
-	for _, key := range req.DeletedChapters {
-		m.tombstone(KindChapter, key)
+	for _, tb := range req.Tombstones {
+		m.tombstone(tb.Kind, tb.Key)
 	}
 	for _, it := range req.Items {
 		if it.Kind == KindCategory {
@@ -54,20 +52,29 @@ type merger struct {
 	res   *Result
 	// remapped category keys: client key -> canonical server key (name fallback)
 	catKeys map[string]string
+	emitted map[tombstoneKey]struct{}
 }
 
+type tombstoneKey struct {
+	kind Kind
+	key  string
+}
+
+// tombstone resolves a name-keyed category deletion to the row another device stored under its uid.
 func (m *merger) tombstone(kind Kind, key string) {
+	if kind == KindCategory && m.store.Get(kind, key) == nil {
+		if name, ok := strings.CutPrefix(key, "name:"); ok {
+			if byName := m.store.CategoryByName(name); byName != nil {
+				key = byName.Key
+			}
+		}
+	}
+	if _, ok := m.emitted[tombstoneKey{kind, key}]; ok {
+		return
+	}
 	if cur := m.store.Get(kind, key); cur != nil && !cur.Deleted {
 		m.res.Tombstones = append(m.res.Tombstones, Tombstone{Kind: kind, Key: key})
-	}
-}
-
-// resurrect lets a higher version, or a copy modified after the deletion, replace a tombstone.
-func (m *merger) resurrect(it, cur *Item) {
-	if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
-		m.write(it)
-	} else {
-		m.res.ChangedForClient = true
+		m.emitted[tombstoneKey{kind, key}] = struct{}{}
 	}
 }
 
@@ -88,7 +95,7 @@ func (m *merger) category(it *Item) {
 		if it.Version > cur.Version {
 			m.write(it)
 		} else {
-			m.res.ChangedForClient = true
+			m.returnItem(cur)
 		}
 	case it.Version > cur.Version:
 		m.write(it)
@@ -120,7 +127,11 @@ func (m *merger) versioned(it *Item) {
 	case cur == nil:
 		m.write(it)
 	case cur.Deleted:
-		m.resurrect(it, cur)
+		if it.Version > cur.Version || it.ModifiedAt > cur.ModifiedAt {
+			m.write(it)
+		} else {
+			m.returnItem(cur)
+		}
 	case it.Version > cur.Version:
 		m.write(it)
 	case it.Version < cur.Version:

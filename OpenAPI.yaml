@@ -529,7 +529,7 @@ paths:
         client's full library or only what changed since its last successful upload. Items
         present are merged item by item (higher `version` wins, ties keep the server copy);
         items absent are left untouched. Only explicit tombstones delete: category uids listed
-        in `X-Sync-Deleted-Categories`, and chapter keys reported to `sync/v2/deletions`.
+        in `X-Sync-Deleted-Categories`, and keys of any kind reported to `sync/v2/deletions`.
 
         The response is a backup with everything the client is missing: all live categories
         plus manga, chapters and settings changed since `X-Sync-Cursor` by other devices and
@@ -616,17 +616,25 @@ paths:
     post:
       tags:
         - Sync v2
-      summary: Report the chapters the client deleted
+      summary: Report the items the client deleted
       description: |
-        The client reports chapter keys it deleted since its last successful sync, before it
-        merges, so the server tombstones them and the other devices stop receiving them. Each key
-        is `<source id>|<manga url>` + `0x1f` + `<chapter url>` (the same key the server stores),
-        sent as a raw string.
+        The client reports items it deleted since its last successful sync, before it merges, so
+        the server tombstones them and the other devices stop receiving them. The canonical body
+        is `{"items": [{"kind", "key"}, ...]}` and accepts all ten kinds: `manga`, `chapter`,
+        `history`, `category`, `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search`
+        and `extra`. Keys are the server's stored keys: manga `<source id>|<manga url>`, chapters
+        and history entries `<manga key>` + `0x1f` + `<url>`, categories `uid:<uid>`, and the
+        natural key for settings. The legacy `deletedChapters` and `deletedCategories` shapes are
+        still accepted and map to `chapter` and `category`.
 
-        The whole submission is one transaction, so a 200 means every key was processed: unknown
-        and already-deleted keys are no-ops, which makes a retry safe. An older server has no such
-        route and answers 404; a client must keep its deletions pending in that case and apply them
-        once the server is upgraded.
+        The whole submission is one transaction, and a 200 means every input entry was processed,
+        so a client can clear the whole batch it sent. An entry whose kind is unknown, whose key
+        is empty or whose key is longer than 4096 bytes is acknowledged but not applied; unknown
+        and already-deleted keys are no-ops. `acknowledged` counts every input entry before
+        dedupe; `applied` counts only rows that actually changed. The only 400 answers are a body
+        that is not JSON and a missing or invalid `X-Device-ID`. An older server has no such route
+        and answers 404; a client must keep its deletions pending in that case and apply them once
+        the server is upgraded.
       operationId: syncV2Deletions
       security:
         - ApiKeyAuth: []
@@ -652,11 +660,31 @@ paths:
             schema:
               type: object
               properties:
+                items:
+                  type: array
+                  description: The items deleted since the client's last sync
+                  items:
+                    type: object
+                    properties:
+                      kind:
+                        type: string
+                        description: One of the ten item kinds
+                        enum: [manga, chapter, history, category, source, app_pref, source_pref, ext_store, saved_search, extra]
+                      key:
+                        type: string
+                        description: The server's stored key for the item
+                    required: [kind, key]
                 deletedChapters:
                   type: array
+                  description: Legacy shape; chapter keys deleted since the client's last sync
                   items:
                     type: string
-                  description: Chapter keys (backup.ChapterKey) deleted since the client's last sync; an empty or absent list acknowledges nothing
+                deletedCategories:
+                  type: array
+                  description: Legacy shape; category uids deleted since the client's last sync
+                  items:
+                    type: integer
+                    format: int64
       responses:
         '200':
           description: Acknowledged
@@ -667,9 +695,12 @@ paths:
                 properties:
                   acknowledged:
                     type: integer
-                    description: Number of keys the server processed
+                    description: Number of input entries the server processed, before dedupe
+                  applied:
+                    type: integer
+                    description: Number of rows that actually changed
         '400':
-          description: Missing device id or body is not the expected JSON
+          description: Body is not JSON, or the device id is missing or invalid
         '401':
           description: Unauthorized
         '413':

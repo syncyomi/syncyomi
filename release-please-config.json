@@ -11,14 +11,14 @@
       "changelog-sections": [
         { "type": "feat", "section": "New Features" },
         { "type": "fix", "section": "Bug Fixes" },
-        { "type": "chore", "section": "Other Changes" },
-        { "type": "ci", "section": "Other Changes" },
-        { "type": "build", "section": "Other Changes" },
-        { "type": "style", "section": "Other Changes" },
+        { "type": "chore", "section": "Other Changes", "hidden": true },
+        { "type": "ci", "section": "Other Changes", "hidden": true },
+        { "type": "build", "section": "Other Changes", "hidden": true },
+        { "type": "style", "section": "Other Changes", "hidden": true },
         { "type": "docs", "section": "Documentation" },
-        { "type": "test", "section": "Tests" },
-        { "type": "deps", "section": "Dependencies" },
-        { "type": "refactor", "section": "Other Changes" },
+        { "type": "test", "section": "Tests", "hidden": true },
+        { "type": "deps", "section": "Dependencies", "hidden": true },
+        { "type": "refactor", "section": "Other Changes", "hidden": true },
         { "type": "perf", "section": "Other Changes" }
       ]
     }
