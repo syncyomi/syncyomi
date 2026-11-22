@@ -99,8 +99,8 @@ list, so a client can drop the chapters it no longer sees.
 
 A chapter, category or history tombstone is also visible through those complete lists. A
 deleted manga or section item is not: the delta renders no live item for it and no child
-list reveals its absence, so a client could keep its stale copy forever. A delta and a full
-merge response therefore carry every tombstone of their item set explicitly:
+list reveals its absence, so a client could keep its stale copy forever. The delta therefore
+carries every tombstone of its item set explicitly:
 
 ```proto
 message BackupDeletedItem {
@@ -126,12 +126,12 @@ message Backup {
 - A client applies the list by deleting its local row for `kind`/`key` (a manga takes its
   chapters and history with it), in the same pass as the restore, before or after it does not
   matter as long as both are applied.
-- Every tombstone of the response's item set appears exactly once, sorted by `kind` then
-  `key`: a delta carries its own tombstones (an unchanged delta carries none), a full response
-  every tombstone of the store.
-- A delta and a full merge response carry the list; the render cache, `/v2/snapshot` and the
-  v1 payload never do. Absence there already conveys the deletion to a client that restores
-  the whole library, and v1 clients would drop the unknown field anyway.
+- Every tombstone of the delta's item set appears exactly once, sorted by `kind` then `key`.
+  It is this delta's tombstones, not the key's whole deletion history: an unchanged delta
+  carries none.
+- The list is a delta field only. A full snapshot, the render cache and the v1 payload never
+  carry it; absence there already conveys the deletion, and v1 clients would drop the unknown
+  field anyway.
 - Field number 11000 is in the root-envelope band SyncYomi reserves for itself, 11000–11099.
   No fork borrows it: Aniyomi uses 500+, TachiyomiSY 600+, Komikku 610+ (620–632 nested),
   Chimahon 700+, TachiyomiJ2K 800+ (nested fields only), Suwayomi 9000+, and komi-kun
@@ -169,7 +169,7 @@ nothing changes, it is absent from deltas (the item stays live) and it does not 
 that actually changed. The only `400` answers are a body that is not JSON and a missing or
 invalid `X-Device-ID`, so a newer client can always clear its queue.
 
-A tombstone is never rendered as a live item: it is listed in the response's `deletions` instead
+A tombstone is never rendered as a live item: it is listed in the delta's `deletions` instead
 (the manga is still returned, with its remaining chapters), so a chapter a source removed stops
 reappearing on the other devices.
 

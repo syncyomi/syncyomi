@@ -145,10 +145,6 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 		var (
 			out     *pb.Backup
 			changed bool
-			// a full response lists the store's tombstones too, but only after the render
-			// cache refresh: that cache feeds /v2/snapshot and the v1 payload, which never
-			// carry the list
-			fullDeletions []*pb.BackupDeletedItem
 		)
 		if full {
 			all, err := tx.AllItems(ctx)
@@ -159,7 +155,6 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			if err != nil {
 				return err
 			}
-			fullDeletions = backup.DeletedItems(all)
 			changed = true
 		} else {
 			out, changed, err = s.delta(ctx, tx, cursor, req.Device.Key(), res)
@@ -172,9 +167,6 @@ func (s *service) Merge(ctx context.Context, req MergeRequest) (*MergeResponse, 
 			if err := s.refreshRenderCache(ctx, tx, full, out); err != nil {
 				return err
 			}
-		}
-		if full {
-			out.Deletions = fullDeletions
 		}
 		if err := tx.SetDeviceCursor(ctx, domain.DeviceCursor{Device: req.Device, Cursor: newSeq, Protocol: ProtocolV2}); err != nil {
 			return err

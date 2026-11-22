@@ -643,9 +643,9 @@ func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
 	}
 }
 
-// A full merge response lists the store's tombstones with their times; the snapshot and the
-// v1 payload, which serve the render cache, stay free of the list.
-func TestMerge_FullResponseCarriesTombstones(t *testing.T) {
+// Only a delta carries the deletions list. A full merge response and the snapshot render the
+// whole store, so a client sees the deletion by the row's absence and gets no list.
+func TestMerge_FullResponseCarriesNoDeletions(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 
@@ -656,48 +656,43 @@ func TestMerge_FullResponseCarriesTombstones(t *testing.T) {
 	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
 		_, err := tx.Apply(ctx, &merge.Result{
 			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: at - 500, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
-			Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: at}},
 			ReturnKeys: map[merge.Kind][]string{},
 		}, "A")
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
+	peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, err := tx.Apply(ctx, &merge.Result{
+			Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: at}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "C")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	full := sync2(t, svc, "B", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/other", 1, true)}})
-	if m := urls(full.Backup)["/m"]; m != nil {
-		t.Errorf("full response renders the deleted manga: %v", m)
+	delta := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+	if len(delta.Backup.Deletions) != 1 || delta.Backup.Deletions[0].Key != mangaKey {
+		t.Fatalf("delta deletions = %v, want the one tombstone", delta.Backup.Deletions)
 	}
-	if len(full.Backup.BackupManga) != 1 {
-		t.Errorf("full response manga = %v, want only the live /other", full.Backup.BackupManga)
-	}
-	if len(full.Backup.Deletions) != 1 {
-		t.Fatalf("full deletions = %v, want the one tombstone", full.Backup.Deletions)
-	}
-	if d := full.Backup.Deletions[0]; d.Kind != string(merge.KindManga) || d.Key != mangaKey || d.Seq == 0 || d.At != at {
-		t.Errorf("full deletion = {%s %s seq=%d at=%d}, want {manga %s <seq> at=%d}",
-			d.Kind, d.Key, d.Seq, d.At, mangaKey, at)
+
+	full := sync2(t, svc, "D", 0, true, &pb.Backup{})
+	if len(full.Backup.Deletions) != 0 {
+		t.Errorf("full response deletions = %v, want none: only a delta carries the list", full.Backup.Deletions)
 	}
 
 	snap, err := svc.Snapshot(ctx, "key1", full.Cursor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v1, err := svc.GetContent(ctx, "key1")
+	b, err := backup.Decode(snap.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range map[string][]byte{"snapshot": snap.Data, "v1": v1.Data} {
-		b, err := backup.Decode(data)
-		if err != nil {
-			t.Fatalf("%s decode: %v", name, err)
-		}
-		if len(b.Deletions) != 0 {
-			t.Errorf("%s deletions = %v, want none", name, b.Deletions)
-		}
-		if len(b.BackupManga) != 1 || b.BackupManga[0].Url != "/other" {
-			t.Errorf("%s manga = %v, want only the live /other", name, b.BackupManga)
-		}
+	if len(b.Deletions) != 0 {
+		t.Errorf("snapshot deletions = %v, want none", b.Deletions)
 	}
 }
 
