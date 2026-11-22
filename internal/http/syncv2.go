@@ -34,6 +34,9 @@ type deletionsRequest struct {
 type deletionItem struct {
 	Kind string `json:"kind"`
 	Key  string `json:"key"`
+	// At is when the client deleted the item, in Unix seconds. Absent or 0 means "the server
+	// stamps the receipt time", which is what every client did before it existed.
+	At int64 `json:"at,omitempty"`
 }
 
 func (h syncHandler) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -147,19 +150,23 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tombstones := make([]merge.Tombstone, 0, len(body.Items)+len(body.DeletedChapters)+len(body.DeletedCategories))
-	seen := make(map[merge.Tombstone]struct{}, cap(tombstones))
+	// the dedupe key is kind+key: a key reported twice is one row, and the later action time wins
+	seen := make(map[merge.Tombstone]int, cap(tombstones))
 	acknowledged := 0
-	add := func(kind merge.Kind, key string) {
+	add := func(kind merge.Kind, key string, at int64) {
 		acknowledged++
 		if key == "" || len(key) > maxDeletionKeyLen {
 			return
 		}
 		tb := merge.Tombstone{Kind: kind, Key: key}
-		if _, dup := seen[tb]; dup {
+		if i, dup := seen[tb]; dup {
+			if at > tombstones[i].At {
+				tombstones[i].At = at
+			}
 			return
 		}
-		seen[tb] = struct{}{}
-		tombstones = append(tombstones, tb)
+		seen[tb] = len(tombstones)
+		tombstones = append(tombstones, merge.Tombstone{Kind: kind, Key: key, At: at})
 	}
 
 	for _, it := range body.Items {
@@ -170,13 +177,14 @@ func (h syncHandler) deletions(w http.ResponseWriter, r *http.Request) {
 			acknowledged++
 			continue
 		}
-		add(kind, it.Key)
+		add(kind, it.Key, it.At)
 	}
 	for _, key := range body.DeletedChapters {
-		add(merge.KindChapter, key)
+		// the legacy shapes carry no action time
+		add(merge.KindChapter, key, 0)
 	}
 	for _, uid := range body.DeletedCategories {
-		add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10))
+		add(merge.KindCategory, "uid:"+strconv.FormatInt(uid, 10), 0)
 	}
 
 	applied := 0

@@ -533,6 +533,115 @@ func applyTombstones(t testing.TB, svc *service, device string, tbs ...merge.Tom
 	}
 }
 
+// The delete a client reports carries the time the user made it, so a deletion from before
+// another device's write loses to that write instead of beating it with the receipt time.
+func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey        = "1|/m"
+		writtenAt int64 = 2000
+	)
+	// seed directly so the stored modified_at is a fixed value, not the wall clock
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, err := tx.Apply(ctx, &merge.Result{
+			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	peer := sync2(t, svc, "B", 0, true, &pb.Backup{})
+	if m := urls(peer.Backup)["/m"]; m == nil {
+		t.Fatalf("B did not receive the manga: %v", peer.Backup.BackupManga)
+	}
+
+	// deleted 1000s before the write: accepted, acknowledged (200), not applied
+	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 {
+		t.Errorf("applied = %d, want 0: the stored row is newer than the deletion", applied)
+	}
+	stale := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+	if len(stale.Backup.Deletions) != 0 {
+		t.Errorf("delta deletions = %v, want none for a superseded deletion", stale.Backup.Deletions)
+	}
+	if stale.Changed {
+		t.Error("delta reports a change for a superseded deletion")
+	}
+	if m := urls(stale.Backup)["/m"]; m != nil && m.Version != 1 {
+		t.Errorf("superseded deletion altered the manga: %v", m)
+	}
+
+	// deleted 1000s after the write: applied, and the delta tells the peer
+	applied, err = svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Errorf("applied = %d, want 1", applied)
+	}
+	resp := sync2(t, svc, "B", peer.Cursor, false, &pb.Backup{})
+	if resp.FullRequested {
+		t.Error("the tombstone asked for a full sync; it travels in deletions")
+	}
+	if len(resp.Backup.Deletions) != 1 || resp.Backup.Deletions[0].Kind != string(merge.KindManga) || resp.Backup.Deletions[0].Key != mangaKey {
+		t.Errorf("delta deletions = %v, want the manga tombstone", resp.Backup.Deletions)
+	}
+	if len(resp.Backup.BackupManga) != 0 {
+		t.Errorf("delta still renders the deleted manga: %v", resp.Backup.BackupManga)
+	}
+}
+
+// A client that sends its action time in milliseconds (the unit of most client-side fields)
+// must not make every deletion win: the value is normalised to seconds before it is compared.
+func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey        = "1|/m"
+		writtenAt int64 = 1_700_000_500
+	)
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, err := tx.Apply(ctx, &merge.Result{
+			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1700000000000 ms is 1700000000s, i.e. 500s before the write
+	applied, err := svc.DeleteItems(ctx, "key1", domain.DeviceInfo{ID: "C", Name: "C"},
+		[]merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: 1_700_000_000_000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 {
+		t.Errorf("applied = %d, want 0: a millisecond deletion time must be read as seconds", applied)
+	}
+	if err := svc.store.ReadTx(ctx, "key1", func(tx domain.SyncStoreReader) error {
+		got, err := tx.GetItems(ctx, merge.KindManga, []string{mangaKey})
+		if err != nil {
+			return err
+		}
+		if it := got[mangaKey]; it == nil || it.Deleted || it.ModifiedAt != writtenAt {
+			t.Errorf("manga = %+v, want it live at %d", it, writtenAt)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMerge_HistoryDeletePropagatesToDelta(t *testing.T) {
 	svc, _ := newTestService(t)
 

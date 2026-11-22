@@ -37,7 +37,7 @@ sequenceDiagram
     participant S as Server (v2)
     C->>S: GET /api/sync/v2/capabilities
     S-->>C: 200 (404 on an old server: fall back to v1)
-    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"items":[{"kind":…,"key":…}]}<br/>(only when there are pending deletions)
+    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"items":[{"kind":…,"key":…,"at":…}]}<br/>(only when there are pending deletions)
     S->>S: tombstone each key (idempotent)
     S-->>C: 200 {"acknowledged":n,"applied":m} — 404 on an old server: keep them pending
     C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full], [X-Sync-Deleted-Categories]<br/>body: backup with changed items (or everything)
@@ -140,21 +140,50 @@ message Backup {
 ## Deletions
 
 `POST /api/sync/v2/deletions` tombstones items a client deleted since its last sync, before
-the client's merge. The canonical body is `{"items": [{"kind": "<kind>", "key": "<key>"}, ...]}`
-and accepts all ten kinds: `manga`, `chapter`, `history`, `category`, `source`, `app_pref`,
-`source_pref`, `ext_store`, `saved_search` and `extra`. The legacy shapes
+the client's merge. The canonical body is `{"items": [{"kind": "<kind>", "key": "<key>", "at":
+<unix seconds>}, ...]}` and accepts all ten kinds: `manga`, `chapter`, `history`, `category`,
+`source`, `app_pref`, `source_pref`, `ext_store`, `saved_search` and `extra`. The legacy shapes
 `{"deletedChapters": [...]}` and `{"deletedCategories": [uid, ...]}` are still accepted and map
 to `chapter` and `category` tombstones. Keys are the server's stored keys: manga
 `<source id>|<manga url>`, chapters and history entries `<manga key>` + `0x1f` + `<url>`,
 categories `uid:<uid>`, and the natural key for settings. A body has no header size limits, so
 a batch of thousands is fine.
 
+`at` is when the user made the deletion, in Unix **seconds** like every synced timestamp; a
+value that is plainly in milliseconds (≥ 100000000000) is divided by 1000, as `last_read` is.
+It is optional: absent or `0` means "stamp the receipt time", which is what every client did
+before the field existed, and what the legacy shapes always do. A key reported twice in one
+body is one row, and the later `at` wins.
+
+A timed deletion is compared with the stored row's `modified_at` and only applied when the row
+is **not newer** than `at`:
+
+```
+UPDATE sync_item SET deleted = true, modified_at = <at>, seq = <next>, origin_device = <device>
+ WHERE user_api_key = ? AND kind = ? AND key = ? AND modified_at <= <at>
+```
+
+So a deletion the user made at t1 and synced at t4 no longer beats a read another device made
+at t2 (t1 < t2 < t4), which with a receipt-time stamp it used to. A deliberately superseded
+deletion changes nothing, so it does not appear in any delta — the item is still live and is
+delivered normally — and `applied` does not count it, but it stays acknowledged: the server
+accepted the entry and decided it lost, so the client may clear it from its pending queue
+exactly as for an unknown key. `<=` keeps a retried deletion of an already-deleted row an
+update rather than a skip, and stops a stale deletion from moving `modified_at` backwards
+behind a newer tombstone.
+
+A deletion **without** `at` keeps the unconditional tombstone it has always had, because the
+receipt time is all the server knows about a client that did not say: it applies even to a row
+stamped later than that second (a client clock ahead of the server's). Only a client that
+reports its action time gains the comparison.
+
 The submission is one transaction. A `200` means every input entry was processed, so a client
 can clear the whole batch it sent: an entry whose kind is unknown, whose key is empty or whose
-key is longer than 4096 bytes is acknowledged but not applied, and unknown or already-deleted
-keys are no-ops, so a retry is safe. `acknowledged` counts every input entry before dedupe and
-`applied` counts only rows that actually changed. The only `400` answers are a body that is not
-JSON and a missing or invalid `X-Device-ID`, so a newer client can always clear its queue.
+key is longer than 4096 bytes is acknowledged but not applied, and unknown, already-deleted or
+superseded keys are no-ops, so a retry is safe. `acknowledged` counts every input entry before
+dedupe and `applied` counts only rows that actually changed. The only `400` answers are a body
+that is not JSON and a missing or invalid `X-Device-ID`, so a newer client can always clear its
+queue.
 
 A tombstone is never rendered as a live item: it is listed in the delta's `deletions` instead
 (the manga is still returned, with its remaining chapters), so a chapter a source removed stops
@@ -188,11 +217,14 @@ flowchart TD
   `POST /api/sync/v2/deletions` as a raw string (JSON-escaped). A chapter tombstone is dropped
   from every response (the manga is still returned, with its remaining chapters), so a chapter a
   source removed stops reappearing on the other devices.
-- A tombstone records its deletion time, and only yields to a genuinely newer copy: a higher
-  `version` (an edit after the delete), or, for manga, chapters and history entries, a timestamp
-  in seconds after that time. A manga or chapter the source drops and later re-adds comes back
-  this way: the client re-inserts it at `version = 1` and stamps `last_modified_at`, which beats
-  the tombstone. A history entry has no version, only `last_read`.
+- A tombstone records its deletion time — the client's `at`, or the receipt time when it sent
+  none — and only yields to a genuinely newer copy: a higher `version` (an edit after the
+  delete), or, for manga, chapters and history entries, a timestamp in seconds after that
+  time. The comparison is the same one that decides whether the tombstone applies at all: a
+  copy newer than the deletion survives it. A manga or chapter the source drops and later
+  re-adds comes back this way: the client re-inserts it at `version = 1` and stamps
+  `last_modified_at`, which beats the tombstone. A history entry has no version, only
+  `last_read`.
 - A category tombstone only yields to a higher `version`: categories ride every upload, so a
   device that has not applied the delete yet resends its copy unchanged.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful

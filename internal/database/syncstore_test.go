@@ -420,6 +420,118 @@ func TestSyncStore_TombstoneUnknownKeyIsNoop(t *testing.T) {
 	}
 }
 
+// A deletion carries the time the user made it. One made before another device's later write
+// must not tombstone that write just because it reached the server afterwards.
+func TestSyncStore_TombstoneComparesActionTime(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey        = "1|/m"
+		writtenAt int64 = 2000
+	)
+
+	err := store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: writtenAt, Payload: []byte("m")}), "A"); err != nil {
+			return err
+		}
+		row := func(t *testing.T) *merge.Item {
+			t.Helper()
+			got, err := tx.GetItems(ctx, merge.KindManga, []string{mangaKey})
+			if err != nil {
+				t.Fatalf("get items: %v", err)
+			}
+			if got[mangaKey] == nil {
+				t.Fatalf("manga %s vanished", mangaKey)
+			}
+			return got[mangaKey]
+		}
+
+		// deleted at 1000, written at 2000: the deletion is superseded
+		stale := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt - 1000}}}
+		seq, err := tx.Apply(ctx, stale, "B")
+		if err != nil {
+			return err
+		}
+		if seq != 1 || tx.Seq() != 1 {
+			t.Errorf("stale tombstone seq = %d tx.seq = %d, want 1 (unapplied deletions do not advance it)", seq, tx.Seq())
+		}
+		if len(stale.Tombstones) != 0 {
+			t.Errorf("stale tombstone counted as applied: %+v", stale.Tombstones)
+		}
+		if it := row(t); it.Deleted || it.ModifiedAt != writtenAt || it.Seq != 1 || it.OriginDevice != "A" {
+			t.Errorf("stale tombstone touched the row: %+v", it)
+		}
+
+		// deleted at 3000, after the write: it applies, and stamps the action time
+		fresh := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}}}
+		seq, err = tx.Apply(ctx, fresh, "B")
+		if err != nil {
+			return err
+		}
+		if seq != 2 {
+			t.Errorf("fresh tombstone seq = %d, want 2", seq)
+		}
+		if len(fresh.Tombstones) != 1 {
+			t.Errorf("fresh tombstone not counted as applied: %+v", fresh.Tombstones)
+		}
+		if it := row(t); !it.Deleted || it.ModifiedAt != writtenAt+1000 || it.Seq != 2 || it.OriginDevice != "B" {
+			t.Errorf("applied tombstone = %+v, want deleted at %d", it, writtenAt+1000)
+		}
+
+		// an identical retry of the same deletion stays an update, not a silent skip
+		retry := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt + 1000}}}
+		seq, err = tx.Apply(ctx, retry, "C")
+		if err != nil {
+			return err
+		}
+		if seq != 3 || len(retry.Tombstones) != 1 {
+			t.Errorf("retried tombstone seq = %d applied = %+v, want 3 and applied", seq, retry.Tombstones)
+		}
+		if it := row(t); !it.Deleted || it.ModifiedAt != writtenAt+1000 || it.Seq != 3 || it.OriginDevice != "C" {
+			t.Errorf("retried tombstone = %+v", it)
+		}
+
+		// a deletion older than the stored tombstone must not rewrite it backwards, or a
+		// re-add between the two would win again
+		older := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: writtenAt}}}
+		seq, err = tx.Apply(ctx, older, "D")
+		if err != nil {
+			return err
+		}
+		if seq != 3 || tx.Seq() != 3 || len(older.Tombstones) != 0 {
+			t.Errorf("older tombstone seq = %d tx.seq = %d applied = %+v, want 3 and nothing applied", seq, tx.Seq(), older.Tombstones)
+		}
+		if it := row(t); !it.Deleted || it.ModifiedAt != writtenAt+1000 || it.OriginDevice != "C" {
+			t.Errorf("older tombstone rewrote the row: %+v", it)
+		}
+
+		// a client that sends no action time keeps the old receipt-time behaviour: the
+		// tombstone applies even to a row stamped later than the server's clock
+		if _, err := tx.Apply(ctx, write(&merge.Item{Kind: merge.KindManga, Key: "1|/untimed", Version: 1, ModifiedAt: time.Now().Unix() + 3600, Payload: []byte("n")}), "A"); err != nil {
+			return err
+		}
+		untimed := &merge.Result{Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: "1|/untimed"}}}
+		if _, err := tx.Apply(ctx, untimed, "B"); err != nil {
+			return err
+		}
+		if len(untimed.Tombstones) != 1 {
+			t.Errorf("untimed tombstone was not applied: %+v", untimed.Tombstones)
+		}
+		got, err := tx.GetItems(ctx, merge.KindManga, []string{"1|/untimed"})
+		if err != nil {
+			return err
+		}
+		if it := got["1|/untimed"]; it == nil || !it.Deleted {
+			t.Errorf("untimed tombstone = %+v, want the row deleted as before", it)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSyncStore_NoOpTombstoneKeepsSeq(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()

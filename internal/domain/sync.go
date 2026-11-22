@@ -124,6 +124,8 @@ type SyncStoreTx interface {
 	CountOfKind(ctx context.Context, kind merge.Kind) (int, error)
 	ItemsOfKind(ctx context.Context, kind merge.Kind) ([]*merge.Item, error)
 	// Apply writes the merge result and returns the new seq (unchanged when nothing was written).
+	// It prunes res.Tombstones down to the ones that actually changed a row: a deletion the
+	// store deliberately superseded (the row is newer) stays acknowledged but is not applied.
 	Apply(ctx context.Context, res *merge.Result, device string) (int64, error)
 	AllItems(ctx context.Context) ([]*merge.Item, error)
 	// ItemsSince returns items changed after seq. Categories are always returned in full.

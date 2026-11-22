@@ -100,6 +100,7 @@ func TestSyncV2_deletions(t *testing.T) {
 		wantApplied int
 		wantKinds   []merge.Kind
 		wantKeys    []string
+		wantAt      []int64
 		wantNoCall  bool
 	}{
 		{
@@ -112,6 +113,54 @@ func TestSyncV2_deletions(t *testing.T) {
 			wantApplied: 1,
 			wantKinds:   []merge.Kind{merge.KindChapter, merge.KindSource},
 			wantKeys:    []string{"1|/m\x1f/c", "1"},
+		},
+		{
+			name:        "client action time is passed through",
+			device:      "d",
+			body:        `{"items":[{"kind":"chapter","key":"c","at":1700000000}]}`,
+			applied:     1,
+			wantStatus:  http.StatusOK,
+			wantAck:     1,
+			wantApplied: 1,
+			wantKinds:   []merge.Kind{merge.KindChapter},
+			wantKeys:    []string{"c"},
+			wantAt:      []int64{1700000000},
+		},
+		{
+			name:        "explicit zero action time means the server clock",
+			device:      "d",
+			body:        `{"items":[{"kind":"chapter","key":"c","at":0}]}`,
+			applied:     1,
+			wantStatus:  http.StatusOK,
+			wantAck:     1,
+			wantApplied: 1,
+			wantKinds:   []merge.Kind{merge.KindChapter},
+			wantKeys:    []string{"c"},
+			wantAt:      []int64{0},
+		},
+		{
+			name:        "a key reported twice keeps the latest action time",
+			device:      "d",
+			body:        `{"items":[{"kind":"chapter","key":"c","at":1000},{"kind":"chapter","key":"c","at":3000}]}`,
+			applied:     1,
+			wantStatus:  http.StatusOK,
+			wantAck:     2,
+			wantApplied: 1,
+			wantKinds:   []merge.Kind{merge.KindChapter},
+			wantKeys:    []string{"c"},
+			wantAt:      []int64{3000},
+		},
+		{
+			name:        "legacy shapes carry no action time",
+			device:      "d",
+			body:        `{"deletedChapters":["c"],"deletedCategories":[17]}`,
+			applied:     2,
+			wantStatus:  http.StatusOK,
+			wantAck:     2,
+			wantApplied: 2,
+			wantKinds:   []merge.Kind{merge.KindChapter, merge.KindCategory},
+			wantKeys:    []string{"c", "uid:17"},
+			wantAt:      []int64{0, 0},
 		},
 		{
 			name:        "history kind",
@@ -282,6 +331,9 @@ func TestSyncV2_deletions(t *testing.T) {
 			for i, tb := range mock.deleteReq {
 				if tb.Kind != tt.wantKinds[i] || tb.Key != tt.wantKeys[i] {
 					t.Errorf("tombstone[%d] = %+v, want {%s %s}", i, tb, tt.wantKinds[i], tt.wantKeys[i])
+				}
+				if tt.wantAt != nil && tb.At != tt.wantAt[i] {
+					t.Errorf("tombstone[%d] at = %d, want %d", i, tb.At, tt.wantAt[i])
 				}
 			}
 		})
