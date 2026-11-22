@@ -64,7 +64,7 @@ Every PR opened from a branch in this repository publishes a multi-arch image to
 docker pull ghcr.io/syncyomi/syncyomi:pr-<number>
 ```
 
-The release-please PR is also tagged with the version it will ship, for example `ghcr.io/syncyomi/syncyomi:1.8.0-rc`, and the binary reports that version. Each push to the PR overwrites its tags, and closing the PR deletes them (`cleanup-pr-image` workflow).
+The release-please PR is also tagged with the version it will ship, for example `ghcr.io/syncyomi/syncyomi:1.8.0-rc`, and the binary reports that version. Each push to the PR overwrites its tags, and closing the PR removes the tags (`cleanup-pr-image` workflow); the untagged per-architecture layers stay in the registry.
 
 ## Conventions
 

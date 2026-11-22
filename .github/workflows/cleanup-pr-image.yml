@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [closed]
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   packages: write
 
@@ -13,6 +17,7 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Delete PR image tags
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
@@ -24,10 +29,11 @@ jobs:
           case "$HEAD_REF" in release-please--*) is_release=true ;; esac
           versions="/orgs/${OWNER}/packages/container/${PACKAGE,,}/versions"
 
-          gh api --paginate "$versions" \
+          ids=$(gh api --paginate "${versions}?per_page=100" \
             | jq -r --arg tag "$PR_TAG" --argjson release "$is_release" \
-                '.[] | select(.metadata.container.tags | any(. == $tag or ($release and endswith("-rc")))) | .id' \
-            | while read -r id; do
-                echo "deleting package version $id"
-                gh api -X DELETE "$versions/$id"
-              done
+                '.[] | select(.metadata.container.tags | any(. == $tag or ($release and endswith("-rc")))) | .id')
+
+          for id in $ids; do
+            echo "deleting package version $id"
+            gh api -X DELETE "$versions/$id"
+          done
