@@ -45,6 +45,8 @@ server-rendered backup — that is the one case where the zero-default warning b
    server answers 404, which must **keep** the keys pending so they are applied once the server
    is upgraded — never clear them on a failure. A capabilities response that lists `deletions`
    confirms the route, so a client can call it directly instead of relying on the 404.
+   Send each deletion's action time as `at` (Unix seconds): without it the server stamps the
+   receipt time, so a delete made before another device's later write can still beat it.
 5. **`POST /api/sync/v2/merge`** with `X-Sync-Cursor` = the cursor from the last response.
    Do **not** run a local merge on the response.
 6. **Apply the response**: if `X-Sync-Changed` is `false`, record success and stop. Otherwise
