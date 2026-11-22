@@ -1,0 +1,33 @@
+name: cleanup-pr-image
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  packages: write
+
+jobs:
+  delete-image:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Delete PR image tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+          PR_TAG: pr-${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          is_release=false
+          case "$HEAD_REF" in release-please--*) is_release=true ;; esac
+          versions="/orgs/${OWNER}/packages/container/${PACKAGE,,}/versions"
+
+          gh api --paginate "$versions" \
+            | jq -r --arg tag "$PR_TAG" --argjson release "$is_release" \
+                '.[] | select(.metadata.container.tags | any(. == $tag or ($release and endswith("-rc")))) | .id' \
+            | while read -r id; do
+                echo "deleting package version $id"
+                gh api -X DELETE "$versions/$id"
+              done
