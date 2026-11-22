@@ -226,7 +226,7 @@
                 <v-list-item>
                   <v-text-field
                     v-model="initialValuesRef.webhook"
-                    :rules="[rules.required, rules.httpUrl]"
+                    :rules="webhookUrlRules"
                     aria-required="true"
                     dense
                     label="Webhook URL"
@@ -346,6 +346,8 @@ const rules = {
   httpUrl: (value: string) =>
     /^https?:\/\/\S+$/.test(value) || "Must start with http:// or https://",
 };
+
+const webhookUrlRules = [rules.required, rules.httpUrl];
 
 const serverMessage = (error: Error): string => {
   try {
