@@ -176,13 +176,17 @@ func (x *Backup) GetDeletions() []*BackupDeletedItem {
 	return nil
 }
 
-// BackupDeletedItem is one explicit tombstone: the kind of sync item, its merge key and the
-// seq at which the deletion was recorded.
+// BackupDeletedItem is one explicit tombstone: the kind of sync item, its merge key, the
+// seq at which the deletion was recorded and when the deletion happened. `at` is the action
+// time the client sent with the deletion, or the server's receipt time when it sent none;
+// 0 for a tombstone recorded before the field existed. It needs no fork-range treatment:
+// this message is only reachable through Backup.deletions = 11000, which SyncYomi owns.
 type BackupDeletedItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	Seq           int64                  `protobuf:"varint,3,opt,name=seq,proto3" json:"seq,omitempty"`
+	At            int64                  `protobuf:"varint,4,opt,name=at,proto3" json:"at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -234,6 +238,13 @@ func (x *BackupDeletedItem) GetKey() string {
 func (x *BackupDeletedItem) GetSeq() int64 {
 	if x != nil {
 		return x.Seq
+	}
+	return 0
+}
+
+func (x *BackupDeletedItem) GetAt() int64 {
+	if x != nil {
+		return x.At
 	}
 	return 0
 }
@@ -1721,11 +1732,12 @@ const file_syncyomi_backup_v1_backup_proto_rawDesc = "" +
 	"\x19backup_source_preferences\x18i \x03(\v2+.syncyomi.backup.v1.BackupSourcePreferencesR\x17backupSourcePreferences\x12`\n" +
 	"\x17backup_extension_stores\x18j \x03(\v2(.syncyomi.backup.v1.BackupExtensionStoreR\x15backupExtensionStores\x12Z\n" +
 	"\x15backup_saved_searches\x18\xd8\x04 \x03(\v2%.syncyomi.backup.v1.BackupSavedSearchR\x13backupSavedSearches\x12D\n" +
-	"\tdeletions\x18\xf8U \x03(\v2%.syncyomi.backup.v1.BackupDeletedItemR\tdeletions\"K\n" +
+	"\tdeletions\x18\xf8U \x03(\v2%.syncyomi.backup.v1.BackupDeletedItemR\tdeletions\"[\n" +
 	"\x11BackupDeletedItem\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x10\n" +
-	"\x03seq\x18\x03 \x01(\x03R\x03seq\"\xa8\r\n" +
+	"\x03seq\x18\x03 \x01(\x03R\x03seq\x12\x0e\n" +
+	"\x02at\x18\x04 \x01(\x03R\x02at\"\xa8\r\n" +
 	"\vBackupManga\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\x03R\x06source\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x14\n" +

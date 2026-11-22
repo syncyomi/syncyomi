@@ -593,6 +593,9 @@ func TestDeleteItems_ActionTimeDecidesOverReceiptTime(t *testing.T) {
 	if len(resp.Backup.Deletions) != 1 || resp.Backup.Deletions[0].Kind != string(merge.KindManga) || resp.Backup.Deletions[0].Key != mangaKey {
 		t.Errorf("delta deletions = %v, want the manga tombstone", resp.Backup.Deletions)
 	}
+	if got := resp.Backup.Deletions[0].At; got != writtenAt+1000 {
+		t.Errorf("delta deletion time = %d, want the action time %d, not the receipt time", got, writtenAt+1000)
+	}
 	if len(resp.Backup.BackupManga) != 0 {
 		t.Errorf("delta still renders the deleted manga: %v", resp.Backup.BackupManga)
 	}
@@ -637,6 +640,64 @@ func TestDeleteItems_MillisecondActionTimeIsNormalized(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A full merge response lists the store's tombstones with their times; the snapshot and the
+// v1 payload, which serve the render cache, stay free of the list.
+func TestMerge_FullResponseCarriesTombstones(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	const (
+		mangaKey = "1|/m"
+		at       = int64(1_700_000_000)
+	)
+	if err := svc.store.Tx(ctx, "key1", func(tx domain.SyncStoreTx) error {
+		_, err := tx.Apply(ctx, &merge.Result{
+			Writes:     []*merge.Item{{Kind: merge.KindManga, Key: mangaKey, Version: 1, ModifiedAt: at - 500, Payload: mustPayload(t, mangaOf(1, "/m", 1, true))}},
+			Tombstones: []merge.Tombstone{{Kind: merge.KindManga, Key: mangaKey, At: at}},
+			ReturnKeys: map[merge.Kind][]string{},
+		}, "A")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	full := sync2(t, svc, "B", 0, true, &pb.Backup{BackupManga: []*pb.BackupManga{mangaOf(1, "/other", 1, true)}})
+	if m := urls(full.Backup)["/m"]; m != nil {
+		t.Errorf("full response renders the deleted manga: %v", m)
+	}
+	if len(full.Backup.BackupManga) != 1 {
+		t.Errorf("full response manga = %v, want only the live /other", full.Backup.BackupManga)
+	}
+	if len(full.Backup.Deletions) != 1 {
+		t.Fatalf("full deletions = %v, want the one tombstone", full.Backup.Deletions)
+	}
+	if d := full.Backup.Deletions[0]; d.Kind != string(merge.KindManga) || d.Key != mangaKey || d.Seq == 0 || d.At != at {
+		t.Errorf("full deletion = {%s %s seq=%d at=%d}, want {manga %s <seq> at=%d}",
+			d.Kind, d.Key, d.Seq, d.At, mangaKey, at)
+	}
+
+	snap, err := svc.Snapshot(ctx, "key1", full.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1, err := svc.GetContent(ctx, "key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"snapshot": snap.Data, "v1": v1.Data} {
+		b, err := backup.Decode(data)
+		if err != nil {
+			t.Fatalf("%s decode: %v", name, err)
+		}
+		if len(b.Deletions) != 0 {
+			t.Errorf("%s deletions = %v, want none", name, b.Deletions)
+		}
+		if len(b.BackupManga) != 1 || b.BackupManga[0].Url != "/other" {
+			t.Errorf("%s manga = %v, want only the live /other", name, b.BackupManga)
+		}
 	}
 }
 
