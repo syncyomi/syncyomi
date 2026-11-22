@@ -18,6 +18,16 @@ const (
 	ExtraItemKey         = "extra"
 )
 
+func ParseKind(name string) (Kind, bool) {
+	kind := Kind(name)
+	switch kind {
+	case KindManga, KindChapter, KindCategory, KindHistory, KindSource, KindAppPref,
+		KindSourcePref, KindExtStore, KindSavedSearch, KindExtra:
+		return kind, true
+	}
+	return "", false
+}
+
 // SectionKinds have no version; on conflict the client wins.
 var SectionKinds = []Kind{KindSource, KindAppPref, KindSourcePref, KindExtStore, KindSavedSearch, KindExtra}
 
@@ -59,16 +69,15 @@ type Store interface {
 	SameContent(a, b *Item) bool
 }
 
-type Request struct {
-	DeviceID          string
-	Items             []*Item
-	DeletedCategories []string // category keys the client deleted
-	DeletedChapters   []string // chapter keys the client deleted
-}
-
 type Tombstone struct {
 	Kind Kind
 	Key  string
+}
+
+type Request struct {
+	DeviceID   string
+	Items      []*Item
+	Tombstones []Tombstone
 }
 
 type Result struct {

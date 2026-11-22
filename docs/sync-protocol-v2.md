@@ -37,9 +37,9 @@ sequenceDiagram
     participant S as Server (v2)
     C->>S: GET /api/sync/v2/capabilities
     S-->>C: 200 (404 on an old server: fall back to v1)
-    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"deletedChapters":[...]}<br/>(only when there are pending deletions)
+    C->>S: POST /api/sync/v2/deletions<br/>X-Device-ID, body: {"items":[{"kind":…,"key":…}]}<br/>(only when there are pending deletions)
     S->>S: tombstone each key (idempotent)
-    S-->>C: 200 {"acknowledged":n} — 404 on an old server: keep them pending
+    S-->>C: 200 {"acknowledged":n,"applied":m} — 404 on an old server: keep them pending
     C->>S: POST /api/sync/v2/merge<br/>X-Device-ID, X-Sync-Cursor, [X-Sync-Full], [X-Sync-Deleted-Categories]<br/>body: backup with changed items (or everything)
     S->>S: merge item by item, assign seq
     S-->>C: 200 backup with missing items<br/>X-Sync-Cursor, X-Sync-Changed, [X-Sync-Full-Requested]
@@ -80,13 +80,14 @@ Body: a backup with everything the client is missing:
 - manga changed since the cursor by other devices (each with its complete chapter list and
   history, also when only one chapter or history entry changed), settings changed since the cursor, and any item where the
   server copy won over the client's,
+- every tombstone in that set, listed explicitly in `deletions`,
 - with `X-Sync-Cursor: 0` or `X-Sync-Full: true`: the complete library.
 
 | Header | Meaning |
 |---|---|
 | `X-Sync-Cursor` | send it back next time |
 | `X-Sync-Changed` | `false` when the body carries nothing new; the client can skip the restore |
-| `X-Sync-Full-Requested` | `true` when the server wants a full library next time (after an import or a server-side restore) |
+| `X-Sync-Full-Requested` | `true` when the server wants a full library next time: after a legacy import, a server-side restore, or a client cursor ahead of the server's `seq`. A tombstone is never a reason — it travels in `deletions` |
 | `ETag` | `seq=<cursor>`, the same value v1 clients see |
 
 Clients apply the response with their normal restore (upsert). Deleted categories are
@@ -94,18 +95,70 @@ detected by their absence from the response's category list, which is complete. 
 chapters are detected the same way: the manga arrives with its complete (remaining) chapter
 list, so a client can drop the chapters it no longer sees.
 
-## Chapter deletions
+### The deletions list
 
-`POST /api/sync/v2/deletions` takes the chapter keys a client deleted since its last sync, as
-`{"deletedChapters": ["<key>", ...]}`, and tombstones them before the client's merge. Keys are
-the raw `<source id>|<manga url>` + `0x1f` + `<chapter url>` values, so the separator and any
-control characters inside urls are JSON-escaped here instead of needing base64 to fit in a
-request header — and a body has no header size limits, so a batch of thousands is fine.
+A chapter, category or history tombstone is also visible through those complete lists. A
+deleted manga or section item is not: the delta renders no live item for it and no child
+list reveals its absence, so a client could keep its stale copy forever. The delta therefore
+carries every tombstone of its item set explicitly:
 
-The submission is one transaction, so success (`200 {"acknowledged": n}`) means every key was
-processed: unknown and already-deleted keys are no-ops, so a retry is safe. A chapter tombstone
-is dropped from every sync response (the manga is still returned, with its remaining chapters),
-so a chapter a source removed stops reappearing on the other devices.
+```proto
+message BackupDeletedItem {
+  string kind = 1;
+  string key  = 2;
+  int64  seq  = 3;
+}
+
+message Backup {
+  // existing fields unchanged
+  repeated BackupDeletedItem deletions = 11000;
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | the sync item kind: `manga`, `chapter`, `history`, `category`, `source`, `app_pref`, `source_pref`, `ext_store`, `saved_search` or `extra` |
+| `key` | the item's merge key, the same one `/v2/deletions` accepts: `source\|url`, `<manga key>\x1f<url>`, `uid:<uid>`, natural keys for settings |
+| `seq` | the `seq` of the deletion, so a client can tell it from a newer resurrection |
+
+- A client applies the list by deleting its local row for `kind`/`key` (a manga takes its
+  chapters and history with it), in the same pass as the restore, before or after it does not
+  matter as long as both are applied.
+- Every tombstone of the delta's item set appears exactly once, sorted by `kind` then `key`.
+  It is this delta's tombstones, not the key's whole deletion history: an unchanged delta
+  carries none.
+- The list is a delta field only. A full snapshot, the render cache and the v1 payload never
+  carry it; absence there already conveys the deletion, and v1 clients would drop the unknown
+  field anyway.
+- Field number 11000 is in the root-envelope band SyncYomi reserves for itself, 11000–11099.
+  No fork borrows it: Aniyomi uses 500+, TachiyomiSY 600+, Komikku 610+ (620–632 nested),
+  Chimahon 700+, TachiyomiJ2K 800+ (nested fields only), Suwayomi 9000+, and komi-kun
+  10000–10999 (`BackupManga` 10000–10099, root `Backup` 10500–10599). The number is therefore
+  free across Mihon, TachiyomiSY, Komikku, komi-kun, chimahon, TachiyomiJ2K, Aniyomi and
+  Suwayomi, and their parsers keep it as an unknown field instead of misreading it.
+
+## Deletions
+
+`POST /api/sync/v2/deletions` tombstones items a client deleted since its last sync, before
+the client's merge. The canonical body is `{"items": [{"kind": "<kind>", "key": "<key>"}, ...]}`
+and accepts all ten kinds: `manga`, `chapter`, `history`, `category`, `source`, `app_pref`,
+`source_pref`, `ext_store`, `saved_search` and `extra`. The legacy shapes
+`{"deletedChapters": [...]}` and `{"deletedCategories": [uid, ...]}` are still accepted and map
+to `chapter` and `category` tombstones. Keys are the server's stored keys: manga
+`<source id>|<manga url>`, chapters and history entries `<manga key>` + `0x1f` + `<url>`,
+categories `uid:<uid>`, and the natural key for settings. A body has no header size limits, so
+a batch of thousands is fine.
+
+The submission is one transaction. A `200` means every input entry was processed, so a client
+can clear the whole batch it sent: an entry whose kind is unknown, whose key is empty or whose
+key is longer than 4096 bytes is acknowledged but not applied, and unknown or already-deleted
+keys are no-ops, so a retry is safe. `acknowledged` counts every input entry before dedupe and
+`applied` counts only rows that actually changed. The only `400` answers are a body that is not
+JSON and a missing or invalid `X-Device-ID`, so a newer client can always clear its queue.
+
+A tombstone is never rendered as a live item: it is listed in the delta's `deletions` instead
+(the manga is still returned, with its remaining chapters), so a chapter a source removed stops
+reappearing on the other devices.
 
 Older servers have no such route and answer `404`. Clients therefore only call it when they have
 pending deletions and keep a deletion pending until the call succeeds: an older server queues
@@ -136,9 +189,10 @@ flowchart TD
   from every response (the manga is still returned, with its remaining chapters), so a chapter a
   source removed stops reappearing on the other devices.
 - A tombstone records its deletion time, and only yields to a genuinely newer copy: a higher
-  `version` (an edit after the delete), or, for chapters, a `last_modified_at` the client stamped
-  after that time. A chapter the source drops and later re-adds comes back this way: the client
-  re-inserts it at `version = 1` and stamps `last_modified_at`, which beats the tombstone.
+  `version` (an edit after the delete), or, for manga, chapters and history entries, a timestamp
+  in seconds after that time. A manga or chapter the source drops and later re-adds comes back
+  this way: the client re-inserts it at `version = 1` and stamps `last_modified_at`, which beats
+  the tombstone. A history entry has no version, only `last_read`.
 - A category tombstone only yields to a higher `version`: categories ride every upload, so a
   device that has not applied the delete yet resends its copy unchanged.
 - `version` is only ever set by the clients (their SQL triggers bump it on meaningful
@@ -149,7 +203,8 @@ flowchart TD
 - Un-favouriting is a normal versioned change (`favorite=false` inside the manga), not a
   deletion.
 - Settings (sources, preferences, source preferences, extension repos, saved searches) have
-  no version: the client copy wins.
+  no version: the client copy wins. A deleted setting comes back only when the client sends a
+  different payload; a byte-identical upload from a stale device stays deleted.
 - Every write gets the key's next `seq`; the cursor is the current `seq`. "Changed since
   cursor" is a single indexed query.
 

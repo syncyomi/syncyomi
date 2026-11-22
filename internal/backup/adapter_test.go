@@ -157,6 +157,30 @@ func TestRenderSkipsTombstonesAndRemapsOrders(t *testing.T) {
 	}
 }
 
+func TestRenderSkipsDeletedSectionKinds(t *testing.T) {
+	deleted := []*merge.Item{
+		{Kind: merge.KindSource, Key: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupSource{SourceId: 1})},
+		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Payload: mustEncode(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindSourcePref, Key: "theme", ParentKey: "1", Deleted: true, Payload: mustEncode(t, &pb.BackupPreference{Key: "theme"})},
+		{Kind: merge.KindExtStore, Key: "ext", Deleted: true, Payload: mustEncode(t, &pb.BackupExtensionStore{})},
+		{Kind: merge.KindSavedSearch, Key: "q", Deleted: true, Payload: mustEncode(t, &pb.BackupSavedSearch{Name: "q"})},
+		{Kind: merge.KindExtra, Key: merge.ExtraItemKey, Deleted: true, Payload: []byte{0xc2, 0xb2, 0x04, 0x01, 0x41}},
+	}
+
+	b, err := Render(deleted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BackupSources) != 0 || len(b.BackupPreferences) != 0 || len(b.BackupSourcePreferences) != 0 ||
+		len(b.BackupExtensionStores) != 0 || len(b.BackupSavedSearches) != 0 {
+		t.Errorf("deleted section rows rendered: sources=%v prefs=%v sourcePrefs=%v ext=%v searches=%v",
+			b.BackupSources, b.BackupPreferences, b.BackupSourcePreferences, b.BackupExtensionStores, b.BackupSavedSearches)
+	}
+	if len(b.ProtoReflect().GetUnknown()) != 0 {
+		t.Errorf("deleted extra rendered: %x", b.ProtoReflect().GetUnknown())
+	}
+}
+
 func TestRenderSkipsTombstonedChapters(t *testing.T) {
 	items := []*merge.Item{
 		{Kind: merge.KindManga, Key: "3|/m", Payload: mustEncode(t, &pb.BackupManga{Source: 3, Url: "/m"})},
@@ -372,5 +396,38 @@ func TestSameContentIgnoresEmbeddedHistory(t *testing.T) {
 
 	if !SameContent(merge.KindManga, withHistory, without) {
 		t.Error("history moved to its own items must not make a stored manga differ")
+	}
+}
+
+func TestDeletedItems(t *testing.T) {
+	if got := DeletedItems(nil); got != nil {
+		t.Errorf("empty item list = %v, want nil", got)
+	}
+	if got := DeletedItems([]*merge.Item{{Kind: merge.KindChapter, Key: "1|/m\x1f/c", Seq: 8}}); got != nil {
+		t.Errorf("live items only = %v, want nil", got)
+	}
+
+	items := []*merge.Item{
+		{Kind: merge.KindSavedSearch, Key: "b|1", Deleted: true, Seq: 7},
+		{Kind: merge.KindManga, Key: "1|/x", Deleted: true, Seq: 5},
+		{Kind: merge.KindManga, Key: "1|/a", Deleted: true, Seq: 6},
+		{Kind: merge.KindChapter, Key: "1|/a\x1f/c", Seq: 9},
+		{Kind: merge.KindAppPref, Key: "theme", Deleted: true, Seq: 4},
+	}
+	want := []*pb.BackupDeletedItem{
+		{Kind: string(merge.KindAppPref), Key: "theme", Seq: 4},
+		{Kind: string(merge.KindManga), Key: "1|/a", Seq: 6},
+		{Kind: string(merge.KindManga), Key: "1|/x", Seq: 5},
+		{Kind: string(merge.KindSavedSearch), Key: "b|1", Seq: 7},
+	}
+	got := DeletedItems(items)
+	if len(got) != len(want) {
+		t.Fatalf("deletions = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Kind != want[i].Kind || got[i].Key != want[i].Key || got[i].Seq != want[i].Seq {
+			t.Errorf("deletion %d = {%s %s %d}, want {%s %s %d}", i,
+				got[i].Kind, got[i].Key, got[i].Seq, want[i].Kind, want[i].Key, want[i].Seq)
+		}
 	}
 }

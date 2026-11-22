@@ -19,10 +19,10 @@ See [sync-protocol-v2.md](sync-protocol-v2.md) for the protocol.
 |---|---|
 | `GET /sync/v2/capabilities` | `200 {"version":2,"merge":…,"deletions":…,"snapshot":…}`; old servers answer `404` |
 | `POST /sync/v2/merge` | merge the uploaded backup, receive what the client lacks (`X-Device-ID` required; `X-Sync-Cursor`, `X-Sync-Full`, `X-Sync-Deleted-Categories`; responds with `X-Sync-Cursor`, `X-Sync-Changed`, `X-Sync-Full-Requested`) |
-| `POST /sync/v2/deletions` | tombstone the chapter keys the client deleted (`{"deletedChapters":[...]}`); responds `{"acknowledged":n}`. Idempotent |
+| `POST /sync/v2/deletions` | tombstone deletions of any of the ten item kinds (`{"items":[{"kind":…,"key":…}]}` plus the legacy `deletedChapters`/`deletedCategories` shapes); responds `{"acknowledged":n,"applied":m}`. Idempotent; an entry the server cannot apply (unknown kind, empty or oversized key) is acknowledged but not applied |
 | `GET /sync/v2/snapshot` | the whole merged library; `304` when `X-Sync-Cursor` is current |
 
-Errors: `400` missing device id / invalid cursor / body not a backup, `401`, `413`, `404` (snapshot, nothing stored).
+Errors: `400` missing device id / invalid cursor / body not a backup, `401`, `413`, `404` (snapshot, nothing stored). On `/sync/v2/deletions` a `400` only covers a body that is not JSON and a missing or invalid `X-Device-ID`; per-entry problems are acknowledged, not rejected.
 
 ## Sync v1 (clients, deprecated)
 
