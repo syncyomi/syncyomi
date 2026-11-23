@@ -82,11 +82,12 @@ func ResetPassword(ctx context.Context, resetter PasswordResetter, source Passwo
 		return err
 	}
 
-	switch err := resetter.ResetPassword(ctx, password); {
-	case errors.Is(err, auth.ErrPasswordTooShort):
-		return fmt.Errorf("the password must be at least %d characters", auth.MinPasswordLength)
-	case errors.Is(err, auth.ErrPasswordTooLong):
-		return fmt.Errorf("the password must be at most %d bytes", auth.MaxPasswordBytes)
+	err = resetter.ResetPassword(ctx, password)
+	if message, ok := auth.PolicyMessage(err); ok {
+		return errors.New(message)
+	}
+
+	switch {
 	case errors.Is(err, auth.ErrNoUser):
 		return errors.New("no user exists yet; create the account in the web UI first")
 	case err != nil:

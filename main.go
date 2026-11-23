@@ -74,13 +74,6 @@ func main() {
 		log.Fatal().Err(err).Msg("could not open db connection")
 	}
 
-	log.Info().Msgf("Starting SyncYomi")
-	log.Info().Msgf("Version: %s", version)
-	log.Info().Msgf("Commit: %s", commit)
-	log.Info().Msgf("Build date: %s", date)
-	log.Info().Msgf("Log-level: %s", cfg.Config.LogLevel)
-	log.Info().Msgf("Using database: %s", db.Driver)
-
 	// setup repos
 	var (
 		apikeyRepo       = database.NewAPIRepo(log, db)
@@ -108,6 +101,13 @@ func main() {
 		}
 		os.Exit(exitCode)
 	}
+
+	log.Info().Msgf("Starting SyncYomi")
+	log.Info().Msgf("Version: %s", version)
+	log.Info().Msgf("Commit: %s", commit)
+	log.Info().Msgf("Build date: %s", date)
+	log.Info().Msgf("Log-level: %s", cfg.Config.LogLevel)
+	log.Info().Msgf("Using database: %s", db.Driver)
 
 	// register event subscribers
 	events.NewSubscribers(log, bus, notificationService)

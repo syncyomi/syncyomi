@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -134,6 +135,54 @@ func TestResetPassword(t *testing.T) {
 
 		if err == nil || len(resetter.calls) != 0 {
 			t.Errorf("error = %v, calls = %v, want an error and no call", err, resetter.calls)
+		}
+	})
+}
+
+func TestRunResetPassword(t *testing.T) {
+	stdinWith := func(t *testing.T, content string) *os.File {
+		t.Helper()
+		file, err := os.CreateTemp(t.TempDir(), "stdin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.WriteString(content); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { file.Close() })
+		return file
+	}
+
+	t.Run("reads a piped password and exits 0", func(t *testing.T) {
+		resetter, stdout, stderr := &fakeResetter{}, &bytes.Buffer{}, &bytes.Buffer{}
+
+		code := RunResetPassword(context.Background(), resetter, stdinWith(t, "long-enough-1\n"), stdout, stderr)
+
+		if code != 0 || len(resetter.calls) != 1 || resetter.calls[0] != "long-enough-1" {
+			t.Errorf("exit = %d, calls = %v, stderr = %q, want 0 and the piped password", code, resetter.calls, stderr.String())
+		}
+	})
+
+	t.Run("prints the reason and exits 1 when the reset fails", func(t *testing.T) {
+		resetter, stdout, stderr := &fakeResetter{err: auth.ErrNoUser}, &bytes.Buffer{}, &bytes.Buffer{}
+
+		code := RunResetPassword(context.Background(), resetter, stdinWith(t, "long-enough-1\n"), stdout, stderr)
+
+		if code != 1 || !strings.Contains(stderr.String(), "web UI") {
+			t.Errorf("exit = %d, stderr = %q, want 1 and a hint about the web UI", code, stderr.String())
+		}
+	})
+
+	t.Run("exits 1 without calling the service on empty stdin", func(t *testing.T) {
+		resetter, stderr := &fakeResetter{}, &bytes.Buffer{}
+
+		code := RunResetPassword(context.Background(), resetter, stdinWith(t, ""), &bytes.Buffer{}, stderr)
+
+		if code != 1 || len(resetter.calls) != 0 {
+			t.Errorf("exit = %d, calls = %v, want 1 and no call", code, resetter.calls)
 		}
 	})
 }
