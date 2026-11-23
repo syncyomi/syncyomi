@@ -145,6 +145,8 @@ func (a *discordSender) buildEmbed(event domain.NotificationEvent, payload domai
 		color = RED
 	case domain.NotificationEventSyncCancelled:
 		color = GRAY
+	case domain.NotificationEventLoginBlocked:
+		color = RED
 	case domain.NotificationEventTest:
 		color = LIGHT_BLUE
 	}

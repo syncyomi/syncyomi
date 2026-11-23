@@ -215,6 +215,18 @@ func (s *service) Test(ctx context.Context, notification domain.Notification) er
 			Event:     domain.NotificationEventAppUpdateAvailable,
 			Timestamp: time.Now(),
 		},
+		{
+			Subject:   "Password changed",
+			Message:   "The web UI password was changed and all other sessions were signed out",
+			Event:     domain.NotificationEventPasswordChanged,
+			Timestamp: time.Now(),
+		},
+		{
+			Subject:   "Login blocked",
+			Message:   "Too many failed logins from 203.0.113.7; it is blocked for 15 minutes",
+			Event:     domain.NotificationEventLoginBlocked,
+			Timestamp: time.Now(),
+		},
 	}
 
 	switch notification.Type {

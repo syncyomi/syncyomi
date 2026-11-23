@@ -1071,6 +1071,8 @@ components:
               - SYNC_FAILED
               - SYNC_ERROR
               - SYNC_CANCELLED
+              - PASSWORD_CHANGED
+              - LOGIN_BLOCKED
               - TEST
         token:
           type: string

@@ -75,6 +75,8 @@ const (
 	NotificationEventSyncFailed         NotificationEvent = "SYNC_FAILED"
 	NotificationEventSyncError          NotificationEvent = "SYNC_ERROR"
 	NotificationEventSyncCancelled      NotificationEvent = "SYNC_CANCELLED"
+	NotificationEventPasswordChanged    NotificationEvent = "PASSWORD_CHANGED"
+	NotificationEventLoginBlocked       NotificationEvent = "LOGIN_BLOCKED"
 	NotificationEventTest               NotificationEvent = "TEST"
 )
 
