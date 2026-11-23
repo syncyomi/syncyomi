@@ -1,3 +1,5 @@
+import { MIN_PASSWORD_LENGTH, passwordLength } from "@/domain/passwordPolicy";
+
 export type PasswordStrengthLabel =
   "Too short" | "Weak" | "Fair" | "Good" | "Strong";
 
@@ -6,7 +8,7 @@ export interface PasswordStrength {
   label: PasswordStrengthLabel;
 }
 
-export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_STRENGTH_SCORE = 4;
 
 const LABELS: PasswordStrengthLabel[] = [
   "Too short",
@@ -19,7 +21,6 @@ const MIN_UNIQUE_CHARACTERS = 5;
 const GOOD_LENGTH = 12;
 const LONG_LENGTH = 16;
 const MIXED_CLASSES = 3;
-const MAX_SCORE = 4;
 
 const countCharacterClasses = (password: string) =>
   [/[a-z]/, /[A-Z]/, /\d/, /[^a-zA-Z\d]/].filter((pattern) =>
@@ -27,7 +28,7 @@ const countCharacterClasses = (password: string) =>
   ).length;
 
 export function passwordStrength(password: string): PasswordStrength {
-  if (password.length < MIN_PASSWORD_LENGTH) {
+  if (passwordLength(password) < MIN_PASSWORD_LENGTH) {
     return { score: 0, label: LABELS[0] };
   }
 
@@ -36,11 +37,11 @@ export function passwordStrength(password: string): PasswordStrength {
   }
 
   const score = Math.min(
-    MAX_SCORE,
+    MAX_STRENGTH_SCORE,
     1 +
       Number(countCharacterClasses(password) >= MIXED_CLASSES) +
-      Number(password.length >= GOOD_LENGTH) +
-      Number(password.length >= LONG_LENGTH),
+      Number(passwordLength(password) >= GOOD_LENGTH) +
+      Number(passwordLength(password) >= LONG_LENGTH),
   );
 
   return { score, label: LABELS[score] };

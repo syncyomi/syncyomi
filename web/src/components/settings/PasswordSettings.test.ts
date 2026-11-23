@@ -94,6 +94,32 @@ describe("PasswordSettings", () => {
     expect(wrapper.text()).toContain("at least 8 characters");
   });
 
+  it("rejects a new password longer than 1024 bytes", async () => {
+    const wrapper = mountForm();
+    const tooLong = "a".repeat(1025);
+    await fill(wrapper, { current: CURRENT, next: tooLong, confirm: tooLong });
+
+    await submit(wrapper);
+
+    expect(changePasswordMock).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("at most 1024 bytes");
+  });
+
+  it("counts characters, not UTF-16 units, for the minimum length", async () => {
+    const wrapper = mountForm();
+    const fourEmoji = "😀😀😀😀";
+    await fill(wrapper, {
+      current: CURRENT,
+      next: fourEmoji,
+      confirm: fourEmoji,
+    });
+
+    await submit(wrapper);
+
+    expect(changePasswordMock).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("at least 8 characters");
+  });
+
   it("rejects a confirmation that does not match", async () => {
     const wrapper = mountForm();
     await fill(wrapper, { current: CURRENT, next: NEXT, confirm: `${NEXT}x` });

@@ -106,9 +106,14 @@ import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useAuthStore } from "@/store/auth/authStore";
 import {
+  MAX_PASSWORD_BYTES,
   MIN_PASSWORD_LENGTH,
-  passwordStrength,
-} from "@/utils/passwordStrength";
+  passwordBytes,
+  passwordLength,
+} from "@/domain/passwordPolicy";
+import { MAX_STRENGTH_SCORE, passwordStrength } from "@/utils/passwordStrength";
+import type { VForm, VTextField } from "vuetify/components";
+import type { ComponentPublicInstance } from "vue";
 
 type FieldKey = "current" | "next" | "confirm";
 type Rule = (value: string) => true | string;
@@ -121,7 +126,7 @@ interface Status {
 const TEXT = {
   required: "Required.",
   tooShort: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
-  tooLong: "Use at most 1024 bytes.",
+  tooLong: `Use at most ${MAX_PASSWORD_BYTES} bytes.`,
   sameAsCurrent: "Choose a password different from the current password.",
   mismatch: "Passwords must match.",
   success:
@@ -130,8 +135,6 @@ const TEXT = {
   failed: "Could not change the password. Try again.",
 };
 
-const MAX_PASSWORD_BYTES = 1024;
-const MAX_STRENGTH_SCORE = 4;
 const STRENGTH_COLORS = ["error", "error", "warning", "info", "success"];
 
 const fields: {
@@ -163,11 +166,9 @@ const fields: {
 const authStore = useAuthStore();
 const username = computed(() => authStore.loggedInUser);
 
-const form = ref<{
-  validate: () => Promise<{ valid: boolean }>;
-  resetValidation: () => void;
-}>();
-const fieldRefs: Partial<Record<FieldKey, { focus: () => void }>> = {};
+const form = ref<InstanceType<typeof VForm>>();
+type TextFieldInstance = InstanceType<typeof VTextField>;
+const fieldRefs: Partial<Record<FieldKey, TextFieldInstance>> = {};
 const values = reactive<Record<FieldKey, string>>({
   current: "",
   next: "",
@@ -189,17 +190,22 @@ const rulesFor: Record<FieldKey, Rule[]> = {
   current: [required],
   next: [
     required,
-    (value) => value.length >= MIN_PASSWORD_LENGTH || TEXT.tooShort,
-    (value) =>
-      new TextEncoder().encode(value).length <= MAX_PASSWORD_BYTES ||
-      TEXT.tooLong,
+    (value) => passwordLength(value) >= MIN_PASSWORD_LENGTH || TEXT.tooShort,
+    (value) => passwordBytes(value) <= MAX_PASSWORD_BYTES || TEXT.tooLong,
     (value) => value !== values.current || TEXT.sameAsCurrent,
   ],
   confirm: [required, (value) => value === values.next || TEXT.mismatch],
 };
 
-const setFieldRef = (key: FieldKey, element: unknown) => {
-  fieldRefs[key] = (element as { focus: () => void } | null) ?? undefined;
+const isTextField = (
+  element: Element | ComponentPublicInstance | null,
+): element is TextFieldInstance => !!element && "focus" in element;
+
+const setFieldRef = (
+  key: FieldKey,
+  element: Element | ComponentPublicInstance | null,
+) => {
+  fieldRefs[key] = isTextField(element) ? element : undefined;
 };
 
 const firstInvalidField = () =>
