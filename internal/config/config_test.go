@@ -301,6 +301,17 @@ func TestNew_webauthn(t *testing.T) {
 		}
 	})
 
+	t.Run("falls back to the default relying party name when it is blank", func(t *testing.T) {
+		dir := t.TempDir()
+		writeConfigFile(t, dir, "host = \"127.0.0.1\"\nsessionSecret = \"abc\"\nwebauthnRpName = \"  \"\n")
+
+		c, _ := loadConfig(t, dir)
+
+		if c.Config.WebauthnRpName != "SyncYomi" {
+			t.Errorf("rp name = %q, want SyncYomi", c.Config.WebauthnRpName)
+		}
+	})
+
 	t.Run("keeps passkeys off by default", func(t *testing.T) {
 		dir := t.TempDir()
 		writeConfigFile(t, dir, "host = \"127.0.0.1\"\nsessionSecret = \"abc\"\n")

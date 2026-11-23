@@ -305,7 +305,7 @@ func (c *AppConfig) defaults() {
 		SyncMaxBodySizeMB: 64,
 		SyncHistoryLimit:  10,
 
-		WebauthnRpName: "SyncYomi",
+		WebauthnRpName: defaultWebauthnRpName,
 	}
 }
 
@@ -341,6 +341,9 @@ func (c *AppConfig) load(configPath string) {
 		log.Fatalf("Invalid configuration in %v: %v", viper.ConfigFileUsed(), err)
 	}
 	c.Config.WebauthnOrigin = origin
+	if strings.TrimSpace(c.Config.WebauthnRpName) == "" {
+		c.Config.WebauthnRpName = defaultWebauthnRpName
+	}
 
 	if c.ensureSessionSecret() {
 		c.persistGeneratedSessionSecret()
@@ -348,8 +351,9 @@ func (c *AppConfig) load(configPath string) {
 }
 
 const (
-	legacySessionSecret = "secret-session-key"
-	sessionSecretBytes  = 32
+	defaultWebauthnRpName = "SyncYomi"
+	legacySessionSecret   = "secret-session-key"
+	sessionSecretBytes    = 32
 )
 
 func (c *AppConfig) ensureSessionSecret() bool {
