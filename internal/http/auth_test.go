@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"
@@ -25,6 +27,8 @@ type mockAuthService struct {
 	createErr    error
 	stamp        string
 	stampErr     error
+	changeErr    error
+	changeCalls  [][2]string
 }
 
 func (m *mockAuthService) GetUserCount(ctx context.Context) (int, error) {
@@ -45,6 +49,15 @@ func (m *mockAuthService) CurrentPasswordStamp(ctx context.Context) (string, err
 	return m.stamp, m.stampErr
 }
 
+func (m *mockAuthService) ChangePassword(ctx context.Context, current, next string) error {
+	m.changeCalls = append(m.changeCalls, [2]string{current, next})
+	if m.changeErr != nil {
+		return m.changeErr
+	}
+	m.stamp = "stamp-after-change"
+	return nil
+}
+
 func (m *mockAuthService) CreateUser(ctx context.Context, username, password string) error {
 	return m.createErr
 }
@@ -52,6 +65,10 @@ func (m *mockAuthService) CreateUser(ctx context.Context, username, password str
 // newTestAuthRouter wires a real chi router around an authHandler, using the same
 // newCookieStore the server does, so Set-Cookie is produced exactly as in production.
 func newTestAuthRouter(cfg *domain.Config, svc authService) (chi.Router, *sessions.CookieStore) {
+	return newTestAuthRouterWithLog(cfg, svc, zerolog.Nop())
+}
+
+func newTestAuthRouterWithLog(cfg *domain.Config, svc authService, log zerolog.Logger) (chi.Router, *sessions.CookieStore) {
 	if cfg.SessionSecret == "" {
 		cfg.SessionSecret = "test-secret" // an empty key can't sign the session
 	}
@@ -59,7 +76,7 @@ func newTestAuthRouter(cfg *domain.Config, svc authService) (chi.Router, *sessio
 
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
-		newAuthHandler(encoder{}, zerolog.Nop(), cfg, store, svc).Routes(r)
+		newAuthHandler(encoder{}, log, cfg, store, svc).Routes(r)
 	})
 	return r, store
 }
@@ -382,4 +399,202 @@ func TestReadUserIP(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAuthHandler_changePassword(t *testing.T) {
+	const (
+		current = "current-pass-1"
+		next    = "next-pass-2345"
+	)
+	cfg := &domain.Config{BaseURL: "/"}
+	user := &domain.User{Username: "u", Password: "stored-hash"}
+
+	newMock := func() *mockAuthService {
+		return &mockAuthService{loginUser: user, stamp: user.PasswordStamp()}
+	}
+	loginCookie := func(t *testing.T, r http.Handler) string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, loginRequest(""))
+		return rec.Header().Get("Set-Cookie")
+	}
+	post := func(r http.Handler, cookie, contentType, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/password", strings.NewReader(body))
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	validBody := `{"current_password":"` + current + `","new_password":"` + next + `"}`
+	validate := func(r http.Handler, cookie string) int {
+		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
+		req.Header.Set("Cookie", cookie)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	t.Run("changes the password, keeps the caller signed in and signs out other sessions", func(t *testing.T) {
+		mock := newMock()
+		r, _ := newTestAuthRouter(cfg, mock)
+		callerCookie := loginCookie(t, r)
+		otherCookie := loginCookie(t, r)
+
+		rec := post(r, callerCookie, "application/json", validBody)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("changePassword() status = %v, want %v", rec.Code, http.StatusNoContent)
+		}
+		if len(mock.changeCalls) != 1 || mock.changeCalls[0] != [2]string{current, next} {
+			t.Errorf("ChangePassword calls = %v, want one call with the submitted passwords", mock.changeCalls)
+		}
+		if got := validate(r, rec.Header().Get("Set-Cookie")); got != http.StatusNoContent {
+			t.Errorf("validate() with the refreshed session = %v, want %v", got, http.StatusNoContent)
+		}
+		if got := validate(r, otherCookie); got != http.StatusUnauthorized {
+			t.Errorf("validate() with an older session = %v, want %v", got, http.StatusUnauthorized)
+		}
+		if got := validate(r, callerCookie); got != http.StatusUnauthorized {
+			t.Errorf("validate() with the pre-change cookie = %v, want %v", got, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("refreshes the cookie with the same flags as login", func(t *testing.T) {
+		r, _ := newTestAuthRouter(&domain.Config{BaseURL: "/", SecureCookie: true}, newMock())
+		cookie := loginCookie(t, r)
+
+		rec := post(r, cookie, "application/json", validBody)
+
+		set := rec.Header().Get("Set-Cookie")
+		for _, want := range []string{"HttpOnly", "; Secure", "SameSite=Strict", "Max-Age="} {
+			if !strings.Contains(set, want) {
+				t.Errorf("Set-Cookie = %q, want it to contain %q", set, want)
+			}
+		}
+	})
+
+	failures := []struct {
+		name        string
+		anonymous   bool
+		contentType string
+		body        string
+		prepare     func(m *mockAuthService)
+		wantStatus  int
+		wantCalled  bool
+	}{
+		{name: "no session is unauthorised", anonymous: true, contentType: "application/json", body: validBody, wantStatus: http.StatusUnauthorized},
+		{
+			name:        "a session from before another password change is unauthorised",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.stamp = "stamp-after-someone-else-changed-it" },
+			wantStatus:  http.StatusUnauthorized,
+		},
+		{
+			name:        "a failing stamp lookup is a server error",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.stampErr = errTest },
+			wantStatus:  http.StatusInternalServerError,
+		},
+		{name: "a non-JSON content type is unsupported", contentType: "text/plain", body: validBody, wantStatus: http.StatusUnsupportedMediaType},
+		{name: "a missing content type is unsupported", body: validBody, wantStatus: http.StatusUnsupportedMediaType},
+		{name: "malformed JSON is a bad request", contentType: "application/json", body: `{"current_password":`, wantStatus: http.StatusBadRequest},
+		{
+			name:        "an oversized body is rejected",
+			contentType: "application/json",
+			body:        `{"current_password":"` + strings.Repeat("a", 10000) + `"}`,
+			wantStatus:  http.StatusRequestEntityTooLarge,
+		},
+		{
+			name:        "a too short new password is a bad request",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.changeErr = auth.ErrPasswordTooShort },
+			wantStatus:  http.StatusBadRequest,
+			wantCalled:  true,
+		},
+		{
+			name:        "a too long new password is a bad request",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.changeErr = auth.ErrPasswordTooLong },
+			wantStatus:  http.StatusBadRequest,
+			wantCalled:  true,
+		},
+		{
+			name:        "a wrong current password is forbidden, never unauthorised",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.changeErr = auth.ErrInvalidCredentials },
+			wantStatus:  http.StatusForbidden,
+			wantCalled:  true,
+		},
+		{
+			name:        "an unexpected failure is a server error",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.changeErr = errTest },
+			wantStatus:  http.StatusInternalServerError,
+			wantCalled:  true,
+		},
+	}
+	for _, tt := range failures {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMock()
+			r, _ := newTestAuthRouter(cfg, mock)
+			cookie := ""
+			if !tt.anonymous {
+				cookie = loginCookie(t, r)
+			}
+			if tt.prepare != nil {
+				tt.prepare(mock)
+			}
+
+			rec := post(r, cookie, tt.contentType, tt.body)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("changePassword() status = %v, want %v", rec.Code, tt.wantStatus)
+			}
+			if called := len(mock.changeCalls) > 0; called != tt.wantCalled {
+				t.Errorf("ChangePassword called = %v, want %v", called, tt.wantCalled)
+			}
+		})
+	}
+
+	t.Run("an API key alone cannot change the password", func(t *testing.T) {
+		mock := newMock()
+		r, _ := newTestAuthRouter(cfg, mock)
+		req := httptest.NewRequest(http.MethodPost, "/password?apikey=any-key", strings.NewReader(validBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-API-Token", "any-key")
+		rec := httptest.NewRecorder()
+
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized || len(mock.changeCalls) != 0 {
+			t.Errorf("status = %v, calls = %v, want 401 and no call", rec.Code, mock.changeCalls)
+		}
+	})
+
+	t.Run("never writes the submitted passwords to the log", func(t *testing.T) {
+		logs := &bytes.Buffer{}
+		mock := newMock()
+		mock.changeErr = errTest
+		r, _ := newTestAuthRouterWithLog(cfg, mock, zerolog.New(logs))
+		cookie := loginCookie(t, r)
+
+		post(r, cookie, "application/json", validBody)
+
+		for _, secret := range []string{current, next} {
+			if strings.Contains(logs.String(), secret) {
+				t.Errorf("log output contains %q: %s", secret, logs.String())
+			}
+		}
+	})
 }

@@ -84,6 +84,7 @@ Report sync progress; drives notifications and the status shown in the web UI.
 | Endpoint | Purpose |
 |---|---|
 | `POST /auth/login`, `POST /auth/logout`, `GET /auth/validate` | web UI session |
+| `POST /auth/password` | change the web UI password: `{"current_password":…,"new_password":…}` (8 to 1024 bytes), session only, `Content-Type: application/json`. `204` signs every other session out and keeps the caller's; `400` invalid new password, `401` no session, `403` wrong current password, `413` body over 4 KiB, `415` wrong content type |
 | `GET /auth/onboard`, `POST /auth/onboard` | first-run admin user creation |
 | `GET /keys`, `POST /keys`, `DELETE /keys/{apikey}` | API key management (deleting a key removes everything stored under it) |
 | `GET /config`, `PATCH /config` | server configuration |

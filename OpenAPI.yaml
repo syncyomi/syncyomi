@@ -93,6 +93,39 @@ paths:
           description: Unauthorized
         '500':
           description: Internal server error
+  /auth/password:
+    post:
+      tags:
+        - Authentication
+      summary: Change the web UI password
+      description: >-
+        Changes the password of the single web UI user. Requires the web UI session
+        (API keys are rejected) and the current password. Every other session is
+        signed out; the calling session stays valid.
+      operationId: changePassword
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password changed
+        '400':
+          description: Malformed body, or the new password is shorter than 8 characters or longer than 1024 bytes
+        '401':
+          description: No valid web UI session
+        '403':
+          description: The current password is incorrect
+        '413':
+          description: Request body larger than 4 KiB
+        '415':
+          description: Content-Type is not application/json
+        '500':
+          description: Internal server error
   /config:
     get:
       summary: Get server configuration
@@ -980,6 +1013,19 @@ components:
       required:
         - username
         - password
+    ChangePasswordRequest:
+      type: object
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+        new_password:
+          type: string
+          minLength: 8
+          writeOnly: true
+      required:
+        - current_password
+        - new_password
     ConfigJson:
       type: object
       properties:

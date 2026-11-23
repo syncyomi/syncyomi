@@ -3,18 +3,25 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog"
+	"mime"
 	"net/http"
 )
+
+const maxPasswordRequestBytes = 4 << 10
 
 type authService interface {
 	GetUserCount(ctx context.Context) (int, error)
 	Login(ctx context.Context, username, password string) (*domain.User, error)
 	CreateUser(ctx context.Context, username, password string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
+	ChangePassword(ctx context.Context, current, next string) error
 }
 
 type authHandler struct {
@@ -42,6 +49,7 @@ func (h authHandler) Routes(r chi.Router) {
 	r.Post("/onboard", h.onboard)
 	r.Get("/onboard", h.canOnboard)
 	r.Get("/validate", h.validate)
+	r.Post("/password", h.changePassword)
 }
 
 // sessionOptions builds per-request options because syncyomi does not serve TLS itself:
@@ -104,10 +112,10 @@ func (h authHandler) logout(w http.ResponseWriter, r *http.Request) {
 
 func (h authHandler) onboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	session, _ := h.cookieStore.Get(r, "user_session")
+	session, _ := h.cookieStore.Get(r, sessionName)
 
 	// Don't proceed if user is authenticated
-	if _, ok := session.Values["authenticated"].(bool); ok {
+	if _, ok := session.Values[sessionAuthenticatedKey].(bool); ok {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -166,6 +174,82 @@ func (h authHandler) validate(w http.ResponseWriter, r *http.Request) {
 
 	// send empty response as ok
 	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+func (h authHandler) changePassword(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	session, _ := h.cookieStore.Get(r, sessionName)
+
+	authenticated, err := sessionAuthenticated(ctx, session, h.service)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Auth: could not verify session")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	var data changePasswordRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxPasswordRequestBytes)
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.ChangePassword(ctx, data.CurrentPassword, data.NewPassword); err != nil {
+		h.writePasswordChangeError(w, r, err)
+		return
+	}
+
+	stamp, err := h.service.CurrentPasswordStamp(ctx)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Auth: password changed but the session could not be refreshed")
+		http.Error(w, "Password changed, but the session could not be refreshed. Sign in again.", http.StatusInternalServerError)
+		return
+	}
+
+	session.Options = h.sessionOptions(r)
+	markSessionAuthenticated(session, stamp)
+	if err := session.Save(r, w); err != nil {
+		h.log.Error().Err(err).Msg("Auth: password changed but the session could not be saved")
+		http.Error(w, "Password changed, but the session could not be refreshed. Sign in again.", http.StatusInternalServerError)
+		return
+	}
+
+	h.log.Info().Msgf("Auth: password changed ip: %s", ReadUserIP(r))
+	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
+}
+
+func (h authHandler) writePasswordChangeError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, auth.ErrPasswordTooShort):
+		http.Error(w, fmt.Sprintf("New password must be at least %d characters", auth.MinPasswordLength), http.StatusBadRequest)
+	case errors.Is(err, auth.ErrPasswordTooLong):
+		http.Error(w, fmt.Sprintf("New password must be at most %d bytes", auth.MaxPasswordBytes), http.StatusBadRequest)
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		h.log.Warn().Msgf("Auth: password change rejected, wrong current password ip: %s", ReadUserIP(r))
+		http.Error(w, "Current password is incorrect", http.StatusForbidden)
+	default:
+		h.log.Error().Err(err).Msg("Auth: could not change password")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func ReadUserIP(r *http.Request) string {
