@@ -1,3 +1,36 @@
+export interface DescriptorJSON {
+  id: string;
+  type: PublicKeyCredentialType;
+  transports?: AuthenticatorTransport[];
+}
+
+export interface AttestationJSON {
+  id: string;
+  rawId: string;
+  type: string;
+  authenticatorAttachment: string | null;
+  clientExtensionResults: AuthenticationExtensionsClientOutputs;
+  response: {
+    clientDataJSON: string;
+    attestationObject: string;
+    transports: string[];
+  };
+}
+
+export interface AssertionJSON {
+  id: string;
+  rawId: string;
+  type: string;
+  authenticatorAttachment: string | null;
+  clientExtensionResults: AuthenticationExtensionsClientOutputs;
+  response: {
+    clientDataJSON: string;
+    authenticatorData: string;
+    signature: string;
+    userHandle: string | null;
+  };
+}
+
 export interface CreationOptionsJSON {
   publicKey: {
     rp: PublicKeyCredentialRpEntity;
@@ -5,11 +38,7 @@ export interface CreationOptionsJSON {
     challenge: string;
     pubKeyCredParams: PublicKeyCredentialParameters[];
     timeout?: number;
-    excludeCredentials?: {
-      id: string;
-      type: PublicKeyCredentialType;
-      transports?: AuthenticatorTransport[];
-    }[];
+    excludeCredentials?: DescriptorJSON[];
     authenticatorSelection?: AuthenticatorSelectionCriteria;
     attestation?: AttestationConveyancePreference;
   };
@@ -20,11 +49,7 @@ export interface RequestOptionsJSON {
     challenge: string;
     timeout?: number;
     rpId?: string;
-    allowCredentials?: {
-      id: string;
-      type: PublicKeyCredentialType;
-      transports?: AuthenticatorTransport[];
-    }[];
+    allowCredentials?: DescriptorJSON[];
     userVerification?: UserVerificationRequirement;
   };
 }
@@ -50,11 +75,7 @@ export function bufferToBase64url(buffer: ArrayBuffer): string {
 }
 
 const decodeDescriptors = (
-  descriptors: {
-    id: string;
-    type: PublicKeyCredentialType;
-    transports?: AuthenticatorTransport[];
-  }[] = [],
+  descriptors: DescriptorJSON[] = [],
 ): PublicKeyCredentialDescriptor[] =>
   descriptors.map(({ id, ...rest }) => ({
     ...rest,
@@ -94,8 +115,22 @@ const credentialEnvelope = (credential: PublicKeyCredential) => ({
   clientExtensionResults: credential.getClientExtensionResults(),
 });
 
-export function attestationToJSON(credential: PublicKeyCredential): object {
-  const response = credential.response as AuthenticatorAttestationResponse;
+const WRONG_RESPONSE = "The browser returned the wrong kind of response.";
+
+const isAttestation = (
+  response: AuthenticatorResponse,
+): response is AuthenticatorAttestationResponse =>
+  "attestationObject" in response;
+
+const isAssertion = (
+  response: AuthenticatorResponse,
+): response is AuthenticatorAssertionResponse => "signature" in response;
+
+export function attestationToJSON(
+  credential: PublicKeyCredential,
+): AttestationJSON {
+  const response = credential.response;
+  if (!isAttestation(response)) throw new Error(WRONG_RESPONSE);
 
   return {
     ...credentialEnvelope(credential),
@@ -107,8 +142,11 @@ export function attestationToJSON(credential: PublicKeyCredential): object {
   };
 }
 
-export function assertionToJSON(credential: PublicKeyCredential): object {
-  const response = credential.response as AuthenticatorAssertionResponse;
+export function assertionToJSON(
+  credential: PublicKeyCredential,
+): AssertionJSON {
+  const response = credential.response;
+  if (!isAssertion(response)) throw new Error(WRONG_RESPONSE);
 
   return {
     ...credentialEnvelope(credential),

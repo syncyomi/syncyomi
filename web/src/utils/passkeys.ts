@@ -20,10 +20,20 @@ export function passkeysAvailable(): boolean {
   );
 }
 
-async function prompt<T>(ask: () => Promise<T | null>): Promise<T> {
+const isPublicKeyCredential = (
+  credential: Credential | null,
+): credential is PublicKeyCredential =>
+  credential !== null &&
+  credential.type === "public-key" &&
+  "response" in credential;
+
+async function prompt(
+  ask: () => Promise<Credential | null>,
+): Promise<PublicKeyCredential> {
   try {
     const result = await ask();
-    if (!result) throw new PasskeyPromptError(TEXT.noCredential);
+    if (!isPublicKeyCredential(result))
+      throw new PasskeyPromptError(TEXT.noCredential);
 
     return result;
   } catch (error) {
@@ -41,11 +51,10 @@ async function prompt<T>(ask: () => Promise<T | null>): Promise<T> {
 
 export async function signInWithPasskey(): Promise<string> {
   const options = await APIClient.auth.beginPasskeyLogin();
-  const credential = await prompt(
-    () =>
-      navigator.credentials.get({
-        publicKey: requestOptionsFromJSON(options),
-      }) as Promise<PublicKeyCredential | null>,
+  const credential = await prompt(() =>
+    navigator.credentials.get({
+      publicKey: requestOptionsFromJSON(options),
+    }),
   );
 
   const { username } = await APIClient.auth.finishPasskeyLogin(
@@ -63,11 +72,10 @@ export async function addPasskey(
     name,
     currentPassword,
   );
-  const credential = await prompt(
-    () =>
-      navigator.credentials.create({
-        publicKey: creationOptionsFromJSON(options),
-      }) as Promise<PublicKeyCredential | null>,
+  const credential = await prompt(() =>
+    navigator.credentials.create({
+      publicKey: creationOptionsFromJSON(options),
+    }),
   );
 
   return APIClient.passkeys.finishRegistration(attestationToJSON(credential));

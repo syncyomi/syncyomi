@@ -137,6 +137,21 @@ describe("credential serialisation", () => {
     });
   });
 
+  it("refuses a response of the wrong kind instead of sending empty fields", () => {
+    const assertion = credentialWith({
+      clientDataJSON: bytes(1),
+      authenticatorData: bytes(2),
+      signature: bytes(3),
+    });
+    const attestation = credentialWith({
+      clientDataJSON: bytes(1),
+      attestationObject: bytes(2),
+    });
+
+    expect(() => attestationToJSON(assertion)).toThrow(/wrong kind/);
+    expect(() => assertionToJSON(attestation)).toThrow(/wrong kind/);
+  });
+
   it("encodes an attestation from an authenticator that cannot list transports", () => {
     const json = attestationToJSON(
       credentialWith({

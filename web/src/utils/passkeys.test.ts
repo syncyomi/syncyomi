@@ -120,6 +120,14 @@ describe("passkeys in the browser", () => {
       await expect(signInWithPasskey()).rejects.toThrow(PasskeyPromptError);
     });
 
+    it("fails clearly when the browser returns a credential that is not a passkey", async () => {
+      api.beginPasskeyLogin.mockResolvedValue(requestJSON);
+      get.mockResolvedValue({ id: "x", type: "password" });
+
+      await expect(signInWithPasskey()).rejects.toThrow(PasskeyPromptError);
+      expect(api.finishPasskeyLogin).not.toHaveBeenCalled();
+    });
+
     it("lets server errors through untouched", async () => {
       api.beginPasskeyLogin.mockRejectedValue(
         new Error("Too many failed attempts"),

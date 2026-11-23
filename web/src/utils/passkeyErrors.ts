@@ -1,1 +1,3 @@
-export class PasskeyPromptError extends Error {}
+export class PasskeyPromptError extends Error {
+  override name = "PasskeyPromptError";
+}

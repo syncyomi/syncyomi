@@ -4,7 +4,12 @@ import { useAuthStore } from "@/store/auth/authStore";
 import router from "@/router";
 import { Notification } from "@/types/Notification";
 import { ApiError } from "./ApiError";
-import type { CreationOptionsJSON, RequestOptionsJSON } from "@/utils/webauthn";
+import type {
+  AssertionJSON,
+  AttestationJSON,
+  CreationOptionsJSON,
+  RequestOptionsJSON,
+} from "@/utils/webauthn";
 
 interface ConfigType {
   body?: BodyInit | Record<string, unknown> | unknown;
@@ -88,7 +93,7 @@ export const APIClient = {
       appClient.Get<{ passkeys: boolean }>("api/auth/capabilities"),
     beginPasskeyLogin: () =>
       appClient.Post<RequestOptionsJSON>("api/auth/passkey/login/begin"),
-    finishPasskeyLogin: (credential: object) =>
+    finishPasskeyLogin: (credential: AssertionJSON) =>
       appClient.Post<{ username: string }>(
         "api/auth/passkey/login/finish",
         credential,
@@ -111,7 +116,7 @@ export const APIClient = {
         name,
         current_password: currentPassword,
       }),
-    finishRegistration: (credential: object) =>
+    finishRegistration: (credential: AttestationJSON) =>
       appClient.Post<Passkey>("api/auth/passkeys/register/finish", credential),
     delete: (id: number) => appClient.Delete(`api/auth/passkeys/${id}`),
   },
