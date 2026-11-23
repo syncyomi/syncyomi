@@ -73,6 +73,17 @@ describe("HttpClient", () => {
     expect(pushMock).toHaveBeenCalledWith({ name: "Login" });
   });
 
+  it("rejects with the status on a non-ok, non-401 response", async () => {
+    window.fetch = vi.fn().mockResolvedValue(
+      mockResponse({ ok: false, status: 429, text: "slow down" })
+    );
+
+    await expect(HttpClient("api/thing", "GET")).rejects.toMatchObject({
+      message: "slow down",
+      status: 429,
+    });
+  });
+
   it("rejects with the body text on a non-ok, non-401 response", async () => {
     window.fetch = vi.fn().mockResolvedValue(
       mockResponse({ ok: false, status: 500, text: "boom" })

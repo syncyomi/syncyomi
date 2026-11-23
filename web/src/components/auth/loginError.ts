@@ -1,9 +1,14 @@
+import { ApiError } from "@/api/ApiError";
+
 export const LOGIN_FAILED_MESSAGE =
   "Login failed. Please check your username and password.";
 
-const BLOCKED_PREFIX = "Too many failed attempts";
+const TOO_MANY_REQUESTS = 429;
 
 export function loginErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message.trim() : "";
-  return message.startsWith(BLOCKED_PREFIX) ? message : LOGIN_FAILED_MESSAGE;
+  if (error instanceof ApiError && error.status === TOO_MANY_REQUESTS) {
+    return error.message.trim();
+  }
+
+  return LOGIN_FAILED_MESSAGE;
 }

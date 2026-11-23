@@ -3,6 +3,7 @@ import { GithubRelease } from "@/types/Update";
 import { useAuthStore } from "@/store/auth/authStore";
 import router from "@/router";
 import { Notification } from "@/types/Notification";
+import { ApiError } from "./ApiError";
 
 interface ConfigType {
   body?: BodyInit | Record<string, unknown> | unknown;
@@ -14,7 +15,7 @@ type PostBody = BodyInit | Record<string, unknown> | unknown;
 export async function HttpClient<T>(
   endpoint: string,
   method: string,
-  { body, ...customConfig }: ConfigType = {}
+  { body, ...customConfig }: ConfigType = {},
 ): Promise<T> {
   const config = {
     method: method,
@@ -44,7 +45,9 @@ export async function HttpClient<T>(
           return Promise.reject(new Error("Unauthorized"));
         }
 
-        return Promise.reject(new Error(await response.text()));
+        return Promise.reject(
+          new ApiError(await response.text(), response.status),
+        );
       }
 
       // Resolve immediately since 204 contains no data
