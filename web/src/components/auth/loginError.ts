@@ -9,6 +9,11 @@ const TOO_MANY_REQUESTS = 429;
 const SERVICE_UNAVAILABLE = 503;
 const SERVER_ERROR = 500;
 
+export const serverMessage = (error: ApiError) => {
+  const message = error.message.trim();
+  return message && !message.includes("<") ? message : "";
+};
+
 export function loginErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return LOGIN_FAILED_MESSAGE;
 
@@ -16,7 +21,7 @@ export function loginErrorMessage(error: unknown): string {
     error.status === TOO_MANY_REQUESTS ||
     error.status === SERVICE_UNAVAILABLE
   ) {
-    return error.message.trim();
+    return serverMessage(error) || LOGIN_UNAVAILABLE_MESSAGE;
   }
 
   return error.status >= SERVER_ERROR

@@ -3,6 +3,7 @@ import { flushPromises, mount, VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { VueQueryPlugin } from "@tanstack/vue-query";
 import { vuetify } from "@/test/setup";
+import { ApiError } from "@/api/ApiError";
 
 const { onboardMock, loginMock, pushMock } = vi.hoisted(() => ({
   onboardMock: vi.fn(),
@@ -16,12 +17,21 @@ vi.mock("vue-router", () => ({ useRouter: () => ({ push: pushMock }) }));
 
 import OnBoard from "./OnBoard.vue";
 
+const VSnackbarStub = {
+  name: "VSnackbar",
+  props: ["modelValue"],
+  template: `<div v-if="modelValue"><slot /></div>`,
+};
+
 const mountOnboard = () => {
   const pinia = createPinia();
   setActivePinia(pinia);
   return mount(OnBoard, {
     attachTo: document.body,
-    global: { plugins: [vuetify, pinia, VueQueryPlugin] },
+    global: {
+      plugins: [vuetify, pinia, VueQueryPlugin],
+      stubs: { VSnackbar: VSnackbarStub },
+    },
   });
 };
 
@@ -69,5 +79,17 @@ describe("OnBoard", () => {
 
     expect(onboardMock).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain("Max 1024 bytes");
+  });
+
+  it("shows the server's busy message instead of the cookie hint", async () => {
+    onboardMock.mockRejectedValue(
+      new ApiError("Server busy, try again shortly", 503),
+    );
+    const wrapper = mountOnboard();
+
+    await fillAndSubmit(wrapper, "12345678");
+
+    expect(wrapper.text()).toContain("Server busy, try again shortly");
+    expect(wrapper.text()).not.toContain("clear");
   });
 });

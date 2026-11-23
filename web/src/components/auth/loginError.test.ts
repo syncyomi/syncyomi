@@ -17,6 +17,15 @@ describe("loginErrorMessage", () => {
     },
   );
 
+  it.each([
+    [429, ""],
+    [503, "<html><body>503 Service Unavailable</body></html>"],
+  ])("ignores an empty or HTML body from a proxy for %i", (status, body) => {
+    expect(loginErrorMessage(new ApiError(body, status))).toBe(
+      LOGIN_UNAVAILABLE_MESSAGE,
+    );
+  });
+
   it("does not blame the credentials for a server error", () => {
     expect(loginErrorMessage(new ApiError("Internal server error", 500))).toBe(
       LOGIN_UNAVAILABLE_MESSAGE,
