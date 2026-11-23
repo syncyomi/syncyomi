@@ -295,7 +295,11 @@ func TestServer_EventStreamDoesNotWarnWhenTheClientLeavesMidRecheck(t *testing.T
 	s.streamRecheckInterval = 10 * time.Millisecond
 	stream := openEventStream(t, s)
 	auth.blockLookups()
-	<-auth.lookupRan
+	select {
+	case <-auth.lookupRan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the session re-check never started")
+	}
 
 	stream.resp.Body.Close()
 	stream.server.Close()
