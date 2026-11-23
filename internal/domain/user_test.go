@@ -30,3 +30,40 @@ func TestUser_PasswordStamp(t *testing.T) {
 		}
 	})
 }
+
+func TestUser_PasswordStampPrefersTheStoredStamp(t *testing.T) {
+	t.Run("uses the stored stamp when there is one", func(t *testing.T) {
+		user := User{Password: "$argon2id$one", Stamp: "stored-stamp"}
+
+		if got := user.PasswordStamp(); got != "stored-stamp" {
+			t.Errorf("PasswordStamp() = %q, want the stored stamp", got)
+		}
+	})
+
+	t.Run("keeps the stamp when only the hash changes", func(t *testing.T) {
+		before := User{Password: "$argon2id$one", Stamp: "stored-stamp"}
+		after := User{Password: "$argon2id$two", Stamp: "stored-stamp"}
+
+		if before.PasswordStamp() != after.PasswordStamp() {
+			t.Error("PasswordStamp() changed with the hash, want it stable while the stored stamp is set")
+		}
+	})
+
+	t.Run("falls back to a stamp derived from the hash for existing users", func(t *testing.T) {
+		user := User{Password: "$argon2id$one"}
+
+		if got, want := user.PasswordStamp(), user.LegacyPasswordStamp(); got != want || got == "" {
+			t.Errorf("PasswordStamp() = %q, want the legacy stamp %q", got, want)
+		}
+	})
+
+	t.Run("derives the legacy stamp from the hash only", func(t *testing.T) {
+		a := User{Password: "$argon2id$one", Stamp: "x"}
+		b := User{Password: "$argon2id$one", Stamp: "y"}
+		other := User{Password: "$argon2id$two"}
+
+		if a.LegacyPasswordStamp() != b.LegacyPasswordStamp() || a.LegacyPasswordStamp() == other.LegacyPasswordStamp() {
+			t.Error("LegacyPasswordStamp() must depend on the hash and nothing else")
+		}
+	})
+}

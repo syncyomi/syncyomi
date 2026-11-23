@@ -93,7 +93,7 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		h.limiter.clear(client)
 	case errors.Is(err, auth.ErrInvalidCredentials):
-		h.log.Warn().Msgf("Auth: Failed login attempt username: [%s] ip: %s", data.Username, client)
+		h.log.Warn().Msgf("Auth: failed login attempt ip: %s", client)
 		h.encoder.StatusResponse(ctx, w, nil, http.StatusUnauthorized)
 		return
 	default:

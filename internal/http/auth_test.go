@@ -863,3 +863,23 @@ func TestAuthHandler_onboard(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthHandler_failedLoginLogsNoCredentials(t *testing.T) {
+	logs := &bytes.Buffer{}
+	mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
+	r, _ := newTestAuthRouterWithLog(&domain.Config{BaseURL: "/"}, mock, zerolog.New(logs))
+	body := `{"username":"pasted-secret-in-username","password":"submitted-password"}`
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.RemoteAddr = "203.0.113.5:1000"
+
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	for _, secret := range []string{"pasted-secret-in-username", "submitted-password"} {
+		if strings.Contains(logs.String(), secret) {
+			t.Errorf("log output contains %q: %s", secret, logs.String())
+		}
+	}
+	if !strings.Contains(logs.String(), "203.0.113.5") {
+		t.Errorf("log output = %q, want the client address", logs.String())
+	}
+}

@@ -93,6 +93,7 @@ Authorization: Bearer <token>        (only when a token is set)
 
 - Web UI sessions now carry a stamp of the current password, so changing the password signs every other session out. Sessions created before the upgrade have no stamp: everyone signs in once after updating.
 - Cross-origin browser requests no longer carry the web UI session cookie unless the page's origin is listed in `corsAllowedOrigins`. Before, any page on the same site (another port, a sibling subdomain) could send credentialed requests to the API; the `SameSite` cookie already kept other sites out. Same-origin use, the sync clients and requests that use an API key are unaffected; if you serve another page on your site that talks to the API with the session cookie, add its origin to the list.
+- Passwords are hashed with the RFC 9106 memory-constrained Argon2id profile (3 passes, 64 MiB, 4 lanes), about three times the CPU of before. Existing hashes keep working and are upgraded silently at the next successful login, without signing anyone out. A schema migration adds `users.password_stamp`; as with every migration, an older binary refuses to start on the upgraded database, so back it up before upgrading if you may need to roll back.
 
 ### 1.6.0
 
