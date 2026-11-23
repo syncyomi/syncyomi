@@ -185,11 +185,16 @@ func writeBusy(w http.ResponseWriter) {
 	http.Error(w, "Server busy, try again shortly", http.StatusServiceUnavailable)
 }
 
+func clientGone(err error) bool {
+	return errors.Is(err, context.Canceled)
+}
+
 func (h authHandler) writeAuthFailure(w http.ResponseWriter, err error, action string) {
 	switch {
 	case errors.Is(err, auth.ErrBusy):
 		writeBusy(w)
-	case errors.Is(err, context.Canceled):
+	case clientGone(err):
+		h.log.Debug().Msgf("Auth: %s: client left", action)
 	default:
 		h.log.Error().Err(err).Msgf("Auth: %s", action)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

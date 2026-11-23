@@ -136,7 +136,9 @@ func (s Server) cancelWhenSessionEnds(ctx context.Context, cancel context.Cancel
 			session, _ := s.cookieStore.Get(r, sessionName)
 			authenticated, err := sessionAuthenticated(ctx, session, s.authService)
 			if err != nil {
-				s.log.Warn().Err(err).Msg("could not re-check the session of an open event stream")
+				if ctx.Err() == nil {
+					s.log.Warn().Err(err).Msg("could not re-check the session of an open event stream")
+				}
 				continue
 			}
 			if !authenticated {

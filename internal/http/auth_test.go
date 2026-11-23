@@ -724,31 +724,46 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 	})
 
 	t.Run("does not count rejected password change requests", func(t *testing.T) {
-		mock := &mockAuthService{loginUser: user, stamp: user.PasswordStamp()}
-		r, _ := newTestAuthRouter(cfg, mock)
-		cookie := loginFrom(r, "203.0.113.5:1000").Header().Get("Set-Cookie")
-		change := func(contentType, body string, changeErr error) int {
-			mock.changeErr = changeErr
-			req := httptest.NewRequest(http.MethodPost, "/password", strings.NewReader(body))
-			if contentType != "" {
-				req.Header.Set("Content-Type", contentType)
-			}
-			req.Header.Set("Cookie", cookie)
-			req.RemoteAddr = "203.0.113.5:3000"
-			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
-			return rec.Code
-		}
 		valid := `{"current_password":"x","new_password":"long-enough-1"}`
-		for range maxFailedAttempts * 2 {
-			change("text/plain", valid, nil)
-			change("application/json", `{"current_password":`, nil)
-			change("application/json", valid, auth.ErrPasswordTooShort)
-			change("application/json", valid, auth.ErrBusy)
+		rejections := []struct {
+			name        string
+			contentType string
+			body        string
+			changeErr   error
+			wantStatus  int
+		}{
+			{"wrong content type", "text/plain", valid, nil, http.StatusUnsupportedMediaType},
+			{"malformed JSON", "application/json", `{"current_password":`, nil, http.StatusBadRequest},
+			{"policy violation", "application/json", valid, auth.ErrPasswordTooShort, http.StatusBadRequest},
+			{"busy server", "application/json", valid, auth.ErrBusy, http.StatusServiceUnavailable},
 		}
+		for _, tt := range rejections {
+			t.Run(tt.name, func(t *testing.T) {
+				mock := &mockAuthService{loginUser: user, stamp: user.PasswordStamp(), changeErr: tt.changeErr}
+				r, _ := newTestAuthRouter(cfg, mock)
+				cookie := loginFrom(r, "203.0.113.5:1000").Header().Get("Set-Cookie")
+				change := func(contentType, body string) int {
+					req := httptest.NewRequest(http.MethodPost, "/password", strings.NewReader(body))
+					if contentType != "" {
+						req.Header.Set("Content-Type", contentType)
+					}
+					req.Header.Set("Cookie", cookie)
+					req.RemoteAddr = "203.0.113.5:3000"
+					rec := httptest.NewRecorder()
+					r.ServeHTTP(rec, req)
+					return rec.Code
+				}
+				for range maxFailedAttempts * 2 {
+					if got := change(tt.contentType, tt.body); got != tt.wantStatus {
+						t.Fatalf("changePassword() status = %v, want %v", got, tt.wantStatus)
+					}
+				}
+				mock.changeErr = nil
 
-		if got := change("application/json", valid, nil); got != http.StatusNoContent {
-			t.Errorf("changePassword() status = %v, want %v after only rejected requests", got, http.StatusNoContent)
+				if got := change("application/json", valid); got != http.StatusNoContent {
+					t.Errorf("changePassword() status = %v, want %v after only rejected requests", got, http.StatusNoContent)
+				}
+			})
 		}
 	})
 

@@ -1,10 +1,12 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -123,12 +125,36 @@ type switchableStamp struct {
 	*mockAuthService
 	mu    sync.Mutex
 	stamp string
+	err   error
 }
 
 func (s *switchableStamp) CurrentPasswordStamp(context.Context) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.stamp, nil
+	return s.stamp, s.err
+}
+
+func (s *switchableStamp) setErr(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.err = err
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func (s *switchableStamp) set(stamp string) {
@@ -175,5 +201,57 @@ func TestServer_EventStreamEndsWhenThePasswordChanges(t *testing.T) {
 	case <-ended:
 	case <-time.After(2 * time.Second):
 		t.Fatal("stream still open after the password changed")
+	}
+}
+
+func TestServer_EventStreamSurvivesAFailedSessionRecheck(t *testing.T) {
+	auth := &switchableStamp{mockAuthService: &mockAuthService{}, stamp: currentStamp}
+	logs := &lockedBuffer{}
+	s := newRoutingTestServer()
+	s.log = zerolog.New(logs)
+	s.authService = auth
+	s.streamRecheckInterval = 10 * time.Millisecond
+	s.sse.CreateStream("logs")
+	cookie := authedSessionCookie(t, s)
+	server := httptest.NewServer(s.Handler())
+	t.Cleanup(server.Close)
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/events?stream=logs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Cookie", cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ended := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		close(ended)
+	}()
+
+	auth.setErr(errTest)
+	deadline := time.After(2 * time.Second)
+	for !strings.Contains(logs.String(), "could not re-check the session") {
+		select {
+		case <-deadline:
+			t.Fatal("no warning was logged for the failed re-check")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	select {
+	case <-ended:
+		t.Fatal("stream ended because of a transient lookup error")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	resp.Body.Close()
+	<-ended
+	before := strings.Count(logs.String(), "could not re-check the session")
+	time.Sleep(60 * time.Millisecond)
+	if after := strings.Count(logs.String(), "could not re-check the session"); after != before {
+		t.Errorf("warnings after the client left = %d, want %d (no log for a cancelled re-check)", after, before)
 	}
 }
