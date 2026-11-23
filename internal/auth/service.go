@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
@@ -32,6 +33,7 @@ type Service interface {
 	ChangePassword(ctx context.Context, current, next string) error
 	ResetPassword(ctx context.Context, next string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
+	NotifyLoginBlocked(client string)
 }
 
 type notifier interface {
@@ -112,6 +114,16 @@ func (s *service) CurrentPasswordStamp(ctx context.Context) (string, error) {
 	}
 
 	return u.PasswordStamp(), nil
+}
+
+func (s *service) NotifyLoginBlocked(client string) {
+	s.log.Warn().Str("client", client).Msg("too many failed logins; client blocked")
+	s.notifier.Send(domain.NotificationEventLoginBlocked, domain.NotificationPayload{
+		Subject:   "Login blocked",
+		Message:   fmt.Sprintf("Too many failed logins from %s; further attempts from it are blocked for a while", client),
+		Event:     domain.NotificationEventLoginBlocked,
+		Timestamp: time.Now(),
+	})
 }
 
 func (s *service) onlyUser(ctx context.Context) (*domain.User, error) {

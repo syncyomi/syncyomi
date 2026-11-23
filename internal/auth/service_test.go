@@ -329,6 +329,20 @@ func TestService_CurrentPasswordStamp(t *testing.T) {
 	})
 }
 
+func TestService_NotifyLoginBlocked(t *testing.T) {
+	f := newFixture(t, true)
+
+	f.svc.NotifyLoginBlocked("203.0.113.7")
+
+	events := f.notifier.sent()
+	if len(events) != 1 || events[0].Event != domain.NotificationEventLoginBlocked {
+		t.Fatalf("notifications = %+v, want one LOGIN_BLOCKED", events)
+	}
+	if !strings.Contains(events[0].Message, "203.0.113.7") {
+		t.Errorf("message = %q, want it to name the blocked address", events[0].Message)
+	}
+}
+
 func TestService_Login(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, true)

@@ -10,8 +10,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog"
+	"math"
 	"mime"
+	"net"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 const maxPasswordRequestBytes = 4 << 10
@@ -22,6 +26,7 @@ type authService interface {
 	CreateUser(ctx context.Context, username, password string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
 	ChangePassword(ctx context.Context, current, next string) error
+	NotifyLoginBlocked(client string)
 }
 
 type authHandler struct {
@@ -31,6 +36,7 @@ type authHandler struct {
 	service authService
 
 	cookieStore *sessions.CookieStore
+	limiter     *loginLimiter
 }
 
 func newAuthHandler(encoder encoder, log zerolog.Logger, config *domain.Config, cookieStore *sessions.CookieStore, service authService) *authHandler {
@@ -40,6 +46,33 @@ func newAuthHandler(encoder encoder, log zerolog.Logger, config *domain.Config, 
 		config:      config,
 		service:     service,
 		cookieStore: cookieStore,
+		limiter:     newLoginLimiter(time.Now),
+	}
+}
+
+func clientKey(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+
+	return r.RemoteAddr
+}
+
+func (h authHandler) rejectBlocked(w http.ResponseWriter, client string) bool {
+	retryAfter, blocked := h.limiter.blockedFor(client)
+	if !blocked {
+		return false
+	}
+
+	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+	http.Error(w, fmt.Sprintf("Too many failed attempts. Try again in %d minutes.", int(math.Ceil(retryAfter.Minutes()))), http.StatusTooManyRequests)
+
+	return true
+}
+
+func (h authHandler) recordFailure(client string) {
+	if h.limiter.recordFailure(client) {
+		h.service.NotifyLoginBlocked(client)
 	}
 }
 
@@ -82,16 +115,23 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client := clientKey(r)
+	if h.rejectBlocked(w, client) {
+		return
+	}
+
 	session, _ := h.cookieStore.Get(r, sessionName)
 	session.Options = h.sessionOptions(r)
 
 	user, err := h.service.Login(ctx, data.Username, data.Password)
 	if err != nil {
+		h.recordFailure(client)
 		h.log.Error().Err(err).Msgf("Auth: Failed login attempt username: [%s] ip: %s", data.Username, ReadUserIP(r))
 		h.encoder.StatusResponse(ctx, w, nil, http.StatusUnauthorized)
 		return
 	}
 
+	h.limiter.recordSuccess(client)
 	markSessionAuthenticated(session, user.PasswordStamp())
 	session.Save(r, w)
 
@@ -196,6 +236,11 @@ func (h authHandler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client := clientKey(r)
+	if h.rejectBlocked(w, client) {
+		return
+	}
+
 	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return
@@ -214,9 +259,13 @@ func (h authHandler) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.ChangePassword(ctx, data.CurrentPassword, data.NewPassword); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			h.recordFailure(client)
+		}
 		h.writePasswordChangeError(w, r, err)
 		return
 	}
+	h.limiter.recordSuccess(client)
 
 	stamp, err := h.service.CurrentPasswordStamp(ctx)
 	if err != nil {

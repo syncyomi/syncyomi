@@ -39,6 +39,12 @@ Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web U
 
 The same view shows which devices have synced with the key, when they were last seen and the last status they reported. Devices appear once they report sync events or send the `X-Device-ID`/`X-Device-Name` headers.
 
+## Web UI password and login protection
+
+- **Change the password** under *Settings → Security*. It needs the current password, at least 8 characters, and signs every other browser and device out; the one you used stays signed in.
+- **Failed logins are rate limited.** After 5 failed attempts within 15 minutes (login, or a wrong current password when changing it) the client address is refused with `429` and a `Retry-After` header until the 15 minutes are over, even with the right password. The counter lives in memory, so a restart clears it, and it is per address on purpose: a per-username lock would let anyone lock you out. The address comes from `X-Real-IP` or `X-Forwarded-For`, so run the server behind a reverse proxy that sets them. A server exposed directly trusts whatever the client sends, which makes the limit easy to evade.
+- **Notifications:** the *Password Changed* and *Login Blocked* events can be enabled per notification target. *Login Blocked* is sent once when an address becomes blocked, not on every refused attempt.
+
 ## Notifications
 
 Notification targets are managed under *Settings → Notifications*. Discord, Telegram, ntfy and Notifiarr have fixed formats; the *Webhook* type delivers to any HTTP endpoint you control.
@@ -68,6 +74,10 @@ Authorization: Bearer <token>        (only when a token is set)
 - Like the Discord and ntfy senders, the webhook target can point at any address the server can reach, and any API-key holder or logged-in user can configure one. Treat notification access as trusted.
 
 ## Upgrade notes
+
+### 1.8.0
+
+- Web UI sessions now carry a stamp of the current password, so changing the password signs every other session out. Sessions created before the upgrade have no stamp: everyone signs in once after updating.
 
 ### 1.6.0
 

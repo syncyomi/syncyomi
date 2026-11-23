@@ -30,6 +30,8 @@ paths:
           description: Bad request
         '401':
           description: Unauthorized
+        '429':
+          description: Too many failed attempts from this client address; see the Retry-After header
         '500':
           description: Internal server error
   /auth/logout:
@@ -122,6 +124,8 @@ paths:
           description: The current password is incorrect
         '413':
           description: Request body larger than 4 KiB
+        '429':
+          description: Too many failed attempts from this client address; see the Retry-After header
         '415':
           description: Content-Type is not application/json
         '500':

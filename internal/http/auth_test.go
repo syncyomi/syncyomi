@@ -29,6 +29,7 @@ type mockAuthService struct {
 	stampErr     error
 	changeErr    error
 	changeCalls  [][2]string
+	blocked      []string
 }
 
 func (m *mockAuthService) GetUserCount(ctx context.Context) (int, error) {
@@ -56,6 +57,10 @@ func (m *mockAuthService) ChangePassword(ctx context.Context, current, next stri
 	}
 	m.stamp = "stamp-after-change"
 	return nil
+}
+
+func (m *mockAuthService) NotifyLoginBlocked(client string) {
+	m.blocked = append(m.blocked, client)
 }
 
 func (m *mockAuthService) CreateUser(ctx context.Context, username, password string) error {
@@ -595,6 +600,119 @@ func TestAuthHandler_changePassword(t *testing.T) {
 			if strings.Contains(logs.String(), secret) {
 				t.Errorf("log output contains %q: %s", secret, logs.String())
 			}
+		}
+	})
+}
+
+func TestAuthHandler_rateLimit(t *testing.T) {
+	cfg := &domain.Config{BaseURL: "/"}
+	user := &domain.User{Username: "u", Password: "stored-hash"}
+
+	loginFrom := func(r http.Handler, remoteAddr string) *httptest.ResponseRecorder {
+		req := loginRequest("")
+		req.RemoteAddr = remoteAddr
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("blocks a client after repeated failed logins even with the right password", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: errTest}
+		r, _ := newTestAuthRouter(cfg, mock)
+		for range maxFailedAttempts {
+			loginFrom(r, "203.0.113.5:1000")
+		}
+		mock.loginErr = nil
+		mock.loginUser = user
+
+		rec := loginFrom(r, "203.0.113.5:2000")
+
+		if rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("login() status = %v, want %v", rec.Code, http.StatusTooManyRequests)
+		}
+		if rec.Header().Get("Retry-After") == "" {
+			t.Error("login() sent no Retry-After header")
+		}
+		if rec.Header().Get("Set-Cookie") != "" {
+			t.Error("login() handed out a session to a blocked client")
+		}
+	})
+
+	t.Run("notifies once when a client becomes blocked", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: errTest}
+		r, _ := newTestAuthRouter(cfg, mock)
+
+		for range maxFailedAttempts + 3 {
+			loginFrom(r, "203.0.113.5:1000")
+		}
+
+		if len(mock.blocked) != 1 || mock.blocked[0] != "203.0.113.5" {
+			t.Errorf("NotifyLoginBlocked calls = %v, want one for 203.0.113.5", mock.blocked)
+		}
+	})
+
+	t.Run("does not block other clients", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: errTest}
+		r, _ := newTestAuthRouter(cfg, mock)
+		for range maxFailedAttempts {
+			loginFrom(r, "203.0.113.5:1000")
+		}
+		mock.loginErr = nil
+		mock.loginUser = user
+
+		rec := loginFrom(r, "198.51.100.9:1000")
+
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("login() from another client status = %v, want %v", rec.Code, http.StatusNoContent)
+		}
+	})
+
+	t.Run("a successful login resets the failure count", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: errTest}
+		r, _ := newTestAuthRouter(cfg, mock)
+		for range maxFailedAttempts - 1 {
+			loginFrom(r, "203.0.113.5:1000")
+		}
+		mock.loginErr, mock.loginUser = nil, user
+		loginFrom(r, "203.0.113.5:1000")
+		mock.loginErr = errTest
+
+		var last int
+		for range maxFailedAttempts - 1 {
+			last = loginFrom(r, "203.0.113.5:1000").Code
+		}
+
+		if last != http.StatusUnauthorized {
+			t.Errorf("login() status = %v, want %v (still below the limit)", last, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("wrong current passwords on the change endpoint count towards the same limit", func(t *testing.T) {
+		mock := &mockAuthService{loginUser: user, stamp: user.PasswordStamp(), changeErr: auth.ErrInvalidCredentials}
+		r, _ := newTestAuthRouter(cfg, mock)
+		loginRec := loginFrom(r, "203.0.113.5:1000")
+		cookie := loginRec.Header().Get("Set-Cookie")
+		change := func() *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodPost, "/password", strings.NewReader(`{"current_password":"x","new_password":"long-enough-1"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Cookie", cookie)
+			req.RemoteAddr = "203.0.113.5:3000"
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			return rec
+		}
+		for range maxFailedAttempts {
+			change()
+		}
+		callsBefore := len(mock.changeCalls)
+
+		rec := change()
+
+		if rec.Code != http.StatusTooManyRequests {
+			t.Errorf("changePassword() status = %v, want %v", rec.Code, http.StatusTooManyRequests)
+		}
+		if len(mock.changeCalls) != callsBefore {
+			t.Error("ChangePassword was called for a blocked client")
 		}
 	})
 }
