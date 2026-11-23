@@ -5,11 +5,21 @@ import { VueQueryPlugin } from "@tanstack/vue-query";
 import { vuetify } from "@/test/setup";
 import { useAuthStore } from "@/store/auth/authStore";
 
-const { changePasswordMock } = vi.hoisted(() => ({
-  changePasswordMock: vi.fn(),
-}));
+const { changePasswordMock, capabilitiesMock, listPasskeysMock } = vi.hoisted(
+  () => ({
+    changePasswordMock: vi.fn(),
+    capabilitiesMock: vi.fn(),
+    listPasskeysMock: vi.fn(),
+  }),
+);
 vi.mock("@/api/APIClient", () => ({
-  APIClient: { auth: { changePassword: changePasswordMock } },
+  APIClient: {
+    auth: {
+      changePassword: changePasswordMock,
+      capabilities: capabilitiesMock,
+    },
+    passkeys: { list: listPasskeysMock },
+  },
 }));
 
 import PasswordSettings from "./PasswordSettings.vue";
@@ -50,6 +60,9 @@ const submit = async (wrapper: VueWrapper) => {
 describe("PasswordSettings", () => {
   beforeEach(() => {
     changePasswordMock.mockReset();
+    capabilitiesMock.mockReset();
+    listPasskeysMock.mockReset();
+    capabilitiesMock.mockResolvedValue({ passkeys: false });
     document.body.innerHTML = "";
   });
 
@@ -147,7 +160,7 @@ describe("PasswordSettings", () => {
 
     await submit(wrapper);
 
-    expect(changePasswordMock).toHaveBeenCalledWith(CURRENT, NEXT);
+    expect(changePasswordMock).toHaveBeenCalledWith(CURRENT, NEXT, false);
     expect(wrapper.find('.v-alert[role="alert"]').text()).toContain(
       "Password changed",
     );
@@ -159,6 +172,50 @@ describe("PasswordSettings", () => {
       "value",
       "",
     );
+  });
+
+  describe("with registered passkeys", () => {
+    const withPasskeys = async () => {
+      capabilitiesMock.mockResolvedValue({ passkeys: true });
+      listPasskeysMock.mockResolvedValue([{ id: 1, name: "Laptop" }]);
+      const wrapper = mountForm();
+      await flushPromises();
+      return wrapper;
+    };
+    const removeBox = (wrapper: VueWrapper) =>
+      wrapper.find<HTMLInputElement>('input[name="revoke-passkeys"]');
+
+    it("offers no passkey option when the server has none", async () => {
+      listPasskeysMock.mockResolvedValue([]);
+      capabilitiesMock.mockResolvedValue({ passkeys: true });
+      const wrapper = mountForm();
+      await flushPromises();
+
+      expect(removeBox(wrapper).exists()).toBe(false);
+    });
+
+    it("keeps the passkeys unless asked to remove them", async () => {
+      changePasswordMock.mockResolvedValue(undefined);
+      const wrapper = await withPasskeys();
+      await fill(wrapper, { current: CURRENT, next: NEXT, confirm: NEXT });
+
+      expect(removeBox(wrapper).element.checked).toBe(false);
+      await submit(wrapper);
+
+      expect(changePasswordMock).toHaveBeenCalledWith(CURRENT, NEXT, false);
+    });
+
+    it("removes the passkeys when the box is ticked, then unticks it", async () => {
+      changePasswordMock.mockResolvedValue(undefined);
+      const wrapper = await withPasskeys();
+      await fill(wrapper, { current: CURRENT, next: NEXT, confirm: NEXT });
+      await removeBox(wrapper).setValue(true);
+
+      await submit(wrapper);
+
+      expect(changePasswordMock).toHaveBeenCalledWith(CURRENT, NEXT, true);
+      expect(removeBox(wrapper).element.checked).toBe(false);
+    });
   });
 
   it("does not flag the cleared fields as required after a successful change", async () => {

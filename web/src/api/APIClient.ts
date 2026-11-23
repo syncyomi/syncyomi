@@ -93,10 +93,15 @@ export const APIClient = {
         "api/auth/passkey/login/finish",
         credential,
       ),
-    changePassword: (currentPassword: string, newPassword: string) =>
+    changePassword: (
+      currentPassword: string,
+      newPassword: string,
+      revokePasskeys: boolean,
+    ) =>
       appClient.Post("api/auth/password", {
         current_password: currentPassword,
         new_password: newPassword,
+        revoke_passkeys: revokePasskeys,
       }),
   },
   passkeys: {

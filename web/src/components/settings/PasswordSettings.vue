@@ -74,6 +74,20 @@
             ></v-progress-linear>
           </v-col>
 
+          <v-col v-if="hasPasskeys" cols="12" lg="6" md="8">
+            <v-checkbox
+              v-model="revokePasskeys"
+              density="comfortable"
+              hide-details
+              label="Also remove my passkeys"
+              name="revoke-passkeys"
+            ></v-checkbox>
+            <p class="text-caption text-medium-emphasis ml-10">
+              Tick this if you changed the password because someone else may
+              have had access. Passkeys are kept otherwise.
+            </p>
+          </v-col>
+
           <v-col v-if="status" cols="12" lg="6" md="8">
             <v-alert
               :text="status.message"
@@ -102,7 +116,7 @@
 
 <script lang="ts" setup>
 import { computed, nextTick, reactive, ref } from "vue";
-import { useMutation } from "@tanstack/vue-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useAuthStore } from "@/store/auth/authStore";
 import {
@@ -131,6 +145,8 @@ const TEXT = {
   mismatch: "Passwords must match.",
   success:
     "Password changed. Every other signed in device has been signed out.",
+  successRevoked:
+    "Password changed and passkeys removed. Every other signed in device has been signed out.",
   network: "Could not reach the server. Check your connection and try again.",
   failed: "Could not change the password. Try again.",
 };
@@ -180,6 +196,21 @@ const visible = reactive<Record<FieldKey, boolean>>({
   confirm: false,
 });
 const status = ref<Status | null>(null);
+const revokePasskeys = ref(false);
+
+const queryClient = useQueryClient();
+const capabilities = useQuery({
+  queryKey: ["auth", "capabilities"],
+  queryFn: APIClient.auth.capabilities,
+  retry: false,
+});
+const passkeyList = useQuery({
+  queryKey: ["passkeys"],
+  queryFn: APIClient.passkeys.list,
+  enabled: computed(() => capabilities.data.value?.passkeys === true),
+  retry: false,
+});
+const hasPasskeys = computed(() => (passkeyList.data.value?.length ?? 0) > 0);
 
 const strength = computed(() => passwordStrength(values.next));
 const lengthHint = computed(() => (values.next ? undefined : TEXT.tooShort));
@@ -229,11 +260,25 @@ const clearPasswords = async () => {
 };
 
 const mutation = useMutation({
-  mutationFn: (passwords: { current: string; next: string }) =>
-    APIClient.auth.changePassword(passwords.current, passwords.next),
-  onSuccess: async () => {
+  mutationFn: (request: {
+    current: string;
+    next: string;
+    revokePasskeys: boolean;
+  }) =>
+    APIClient.auth.changePassword(
+      request.current,
+      request.next,
+      request.revokePasskeys,
+    ),
+  onSuccess: async (_, request) => {
     await clearPasswords();
-    status.value = { kind: "success", message: TEXT.success };
+    revokePasskeys.value = false;
+    status.value = {
+      kind: "success",
+      message: request.revokePasskeys ? TEXT.successRevoked : TEXT.success,
+    };
+    if (request.revokePasskeys)
+      await queryClient.invalidateQueries({ queryKey: ["passkeys"] });
   },
   onError: (error) => {
     status.value = { kind: "error", message: errorMessage(error) };
@@ -253,7 +298,11 @@ const submit = async () => {
     return;
   }
 
-  mutation.mutate({ current: values.current, next: values.next });
+  mutation.mutate({
+    current: values.current,
+    next: values.next,
+    revokePasskeys: hasPasskeys.value && revokePasskeys.value,
+  });
 };
 </script>
 
