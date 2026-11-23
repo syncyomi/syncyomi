@@ -13,7 +13,6 @@ export function baseUrl() {
   return baseUrl;
 }
 
-// get sseBaseUrl for SSE
 export function sseBaseUrl() {
   return `${window.location.origin}${baseUrl()}`;
 }

@@ -11,7 +11,7 @@
 | `baseUrl` | `/` | path prefix when served under a sub-directory of a reverse proxy |
 | `sessionSecret` | generated | signs the web UI session cookie; generated and written to `config.toml` on start when the key is missing or still the old placeholder |
 | `secureCookie` | `false` | mark the session cookie `Secure`; enable only behind HTTPS |
-| `corsAllowedOrigins` | empty | web page origins (`scheme://host[:port]`, no path) that may send the web UI session cookie from another origin; every other origin can still make requests without credentials |
+| `corsAllowedOrigins` | empty | origins (`scheme://host[:port]`, no path, default ports dropped) of pages on the same site, such as another port or a subdomain, that may send the web UI session cookie; every other origin can still make requests without credentials |
 | `logLevel` | `DEBUG` | `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE` |
 | `logPath` | empty | log file path; empty logs to stdout only |
 | `logMaxSize`, `logMaxBackups` | `50`, `3` | log rotation (MB, files) |
@@ -92,7 +92,7 @@ Authorization: Bearer <token>        (only when a token is set)
 ### 1.8.0
 
 - Web UI sessions now carry a stamp of the current password, so changing the password signs every other session out. Sessions created before the upgrade have no stamp: everyone signs in once after updating.
-- Cross-origin browser requests no longer carry the web UI session cookie unless the page's origin is listed in `corsAllowedOrigins`. Before, any website could send credentialed requests to the API from a visitor's browser. Same-origin use, the sync clients and requests that use an API key are unaffected; if you serve another web page that talks to the API with the session cookie, add its origin to the list.
+- Cross-origin browser requests no longer carry the web UI session cookie unless the page's origin is listed in `corsAllowedOrigins`. Before, any page on the same site (another port, a sibling subdomain) could send credentialed requests to the API; the `SameSite` cookie already kept other sites out. Same-origin use, the sync clients and requests that use an API key are unaffected; if you serve another page on your site that talks to the API with the session cookie, add its origin to the list.
 
 ### 1.6.0
 
