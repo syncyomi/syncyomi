@@ -112,7 +112,7 @@ describe("Login", () => {
     await button.trigger("click");
     await flushPromises();
 
-    expect(button.attributes("disabled")).toBeDefined();
+    expect(button.attributes("disabled")).toBeUndefined();
     expect(mocks.signInWithPasskey).toHaveBeenCalledTimes(1);
   });
 

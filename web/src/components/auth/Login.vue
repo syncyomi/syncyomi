@@ -62,7 +62,6 @@
               </div>
 
               <v-btn
-                :disabled="passkeyMutation.isPending.value"
                 :loading="passkeyMutation.isPending.value"
                 block
                 class="text-uppercase"
@@ -70,7 +69,7 @@
                 prepend-icon="mdi-fingerprint"
                 rounded
                 variant="outlined"
-                @click="passkeyMutation.mutate()"
+                @click="signInWithPasskeyOnce"
               >
                 Sign in with passkey
               </v-btn>
@@ -157,6 +156,11 @@ const passkeyMutation = useMutation({
     snackbar.value = true;
   },
 });
+
+const signInWithPasskeyOnce = () => {
+  if (passkeyMutation.isPending.value) return;
+  passkeyMutation.mutate();
+};
 
 const submit = () => {
   if (!valid.value) return;
