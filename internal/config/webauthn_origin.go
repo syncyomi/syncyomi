@@ -34,17 +34,9 @@ func normalizeWebauthnOrigin(origin string) (string, error) {
 		return "", fmt.Errorf("webauthnOrigin: %q must use https (plain http only works for localhost)", origin)
 	}
 
-	if parsed.Port() == "" || parsed.Port() == defaultPort(scheme) {
+	if parsed.Port() == "" || parsed.Port() == defaultPorts[scheme] {
 		return scheme + "://" + host, nil
 	}
 
 	return scheme + "://" + net.JoinHostPort(host, parsed.Port()), nil
-}
-
-func defaultPort(scheme string) string {
-	if scheme == "https" {
-		return "443"
-	}
-
-	return "80"
 }
