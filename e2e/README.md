@@ -13,6 +13,9 @@ real SyncYomi server booted from this repo.
   - JitPack no longer serves `FlexibleAdapter:c8013533`; on a cold Gradle cache add
     `--init-script <syncyomi>/e2e/gradle/fallback-repo.init.gradle.kts` with
     `SYNCYOMI_M2_FALLBACK=<syncyomi>/e2e/gradle/m2` (what CI does)
+- For S31–S32, a TachiyomiSY build that carries the history tombstone's action time
+  (jobobby04/TachiyomiSY#1691): `E2E_TACHIYOMI_REF` — and the `tachiyomi_ref` dispatch input — must
+  point at a ref with it. S30 needs only the server.
 - For Suwayomi scenarios: a Suwayomi-Server shadowJar (`./gradlew :server:shadowJar`)
 
 ## Setup (once)
@@ -53,6 +56,20 @@ Env vars:
   devices are re-pointed at the main server. In-app backup restore is covered by
   S28 only: `PushBackup` stages the file in the app's cache, since scoped storage
   denies the app a `file://` path on shared storage.
+- A deletion may carry the client's action time as `at`, in Unix seconds. The server applies it only
+  to a row it is not older than (an equal second applies, a newer row is left alone) and answers `200`
+  with `applied: 0` when it declines one — a decline is still an acknowledgement, so the client clears
+  its queue instead of retrying. A delta reports that action time for the tombstones it carries, or the
+  server's receipt time when the client sent none. S31 therefore gates on the queued key appearing in
+  the device's prefs (`ReadSyncPrefs`), not on the database: the client queues the tombstone after the
+  local rows are gone.
+- The client's own "keep a local read that is newer than the tombstone's second" branch is **not**
+  covered end to end yet: no scenario produces a tombstone older than a read the device already holds
+  (the device cannot originate a history read without the reader, and the server declines a tombstone
+  older than its own row, so nothing reaches a device). It would be built on the in-app restore path
+  S28 already drives (`PushBackup` stages a file and the restore writes history rows); until then it
+  stays covered by the client's `HistoryDeletionTest`, and the E2E suite covers the equal-second rule
+  (S32) and the server's decline (S30, S32).
 - Sync triggers: the debug-only `SyncTriggerReceiver` broadcast
   (`<pkg>.TRIGGER_SYNC`, debug source set of TachiyomiSY) for most scenarios;
   S1 exercises the real "Sync now" settings UI via Maestro once per run.
@@ -120,6 +137,9 @@ Env vars:
 | S27 Suwayomi library removal | Removing a manga in Suwayomi reaches the server and Android |
 | S28 Mihon backup restore | A backup with only Mihon fields restores twice through the in-app restore without duplicates, keeping read state, history and non-library entries out of the library |
 | S29 unified tombstones | Canonical /api/sync/v2/deletions for chapter, manga, category and section kinds plus the legacy chapter shape, validation/no-op seq, the explicit deletions list a delta carries, and kind-specific resurrection |
+| S30 tombstone action time | A deletion's `at` decides whether it applies: older than the row it names it is declined, at the row's own second it applies, and the delta reports that action time |
+| S31 history tombstone (UI) | Clearing history on-device queues a `history` tombstone stamped with the removal's own second, reaches the server, and the peer loses the entry — with no resurrection, no unmarking of read chapters and the queue cleared on the acknowledgement |
+| S32 second granularity | The client applies a history tombstone on whole seconds, so a read 900 ms inside the tombstone's second goes; a deletion older than a newer read is declined by the server, so no device is ever told and the read survives on the server and on both devices |
 
 v1 suite (`scenarios/v1/`, server only):
 
@@ -153,11 +173,14 @@ check can be required by the branch ruleset.
 The APK and shadowJar are cached by the upstream commit they were built from
 (`build-apk`/`build-suwayomi` resolve their ref with `git ls-remote` and only
 run Gradle on a cache miss). PRs from forks get no repository variables, so the
-fallback refs in `e2e.yml` must match `E2E_TACHIYOMI_REF`/`E2E_SUWAYOMI_REF`. The scenarios run in three parallel
-shards defined in `e2e/scripts/shards.sh` — `devices`, `categories`,
-`suwayomi`, each roughly six minutes of tests plus its own emulator boot — and
-a roll-up job named `e2e` is the required check. `shards.sh` fails the run if a
-scenario is not in exactly one shard, so a new `TestSnn_` must be added there.
+fallback refs in `e2e.yml` must match `E2E_TACHIYOMI_REF`/`E2E_SUWAYOMI_REF`. The
+scenarios run in three parallel shards defined in `e2e/scripts/shards.sh` —
+`devices` (13 scenarios, by far the heaviest: S31 alone measures ~187 s, S13
+~135 s, S32 ~47 s), `categories` and `suwayomi` — and a roll-up job named `e2e`
+is the required check. `shards.sh` fails the run if a scenario is not in exactly
+one shard, so a new `TestSnn_` must be added there. The last nine-scenario
+selection covering the tombstone and history work (S13, S24–S26, S29–S32, S4)
+ran in ~639 s wall with one emulator boot.
 The system image and Maestro are cached between runs; the AVDs are recreated
 on every run. The emulator is pinned in `scripts/setup-env.sh` (version, build
 and sha1) and installed from that zip on every run, replacing whatever the

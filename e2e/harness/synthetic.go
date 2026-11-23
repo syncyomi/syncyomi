@@ -102,6 +102,9 @@ func (c *SyntheticClient) Merge(ctx context.Context, b *pb.Backup, opts MergeOpt
 type DeletionItem struct {
 	Kind string `json:"kind"`
 	Key  string `json:"key"`
+	// At is the removal's action time in Unix seconds; omitted when zero, which the server reads as
+	// "no action time" and stamps with its own receipt time.
+	At int64 `json:"at,omitempty"`
 }
 
 type DeletionsOptions struct {
