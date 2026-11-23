@@ -27,7 +27,7 @@
                 <v-col cols="12">
                   <v-text-field
                     v-model="password"
-                    :rules="[rules.required, rules.min]"
+                    :rules="[rules.required, rules.min, rules.max]"
                     dense
                     label="Password"
                     prepend-inner-icon="mdi-lock-outline"
@@ -94,7 +94,12 @@ import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/store/auth/authStore";
-import { MIN_PASSWORD_LENGTH, passwordLength } from "@/domain/passwordPolicy";
+import {
+  MAX_PASSWORD_BYTES,
+  MIN_PASSWORD_LENGTH,
+  passwordBytes,
+  passwordLength,
+} from "@/domain/passwordPolicy";
 
 interface InputValues {
   username: string;
@@ -118,6 +123,9 @@ const rules = {
   min: (v: string) =>
     passwordLength(v) >= MIN_PASSWORD_LENGTH ||
     `Min ${MIN_PASSWORD_LENGTH} characters`,
+  max: (v: string) =>
+    passwordBytes(v) <= MAX_PASSWORD_BYTES ||
+    `Max ${MAX_PASSWORD_BYTES} bytes`,
   match: (v: string) => v === password.value || "Passwords must match",
 };
 

@@ -199,7 +199,8 @@ const rulesFor: Record<FieldKey, Rule[]> = {
 
 const isTextField = (
   element: Element | ComponentPublicInstance | null,
-): element is TextFieldInstance => !!element && "focus" in element;
+): element is TextFieldInstance =>
+  !!element && "focus" in element && "resetValidation" in element;
 
 const setFieldRef = (
   key: FieldKey,
