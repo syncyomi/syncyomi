@@ -103,6 +103,197 @@ paths:
           description: Unauthorized
         '500':
           description: Internal server error
+  /auth/capabilities:
+    get:
+      tags:
+        - Authentication
+      summary: Which optional sign-in methods the server offers
+      description: Public. `passkeys` is true when `webauthnOrigin` is configured.
+      operationId: getAuthCapabilities
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthCapabilities'
+  /auth/passkey/login/begin:
+    post:
+      tags:
+        - Authentication
+      summary: Start a passkey sign-in
+      description: >-
+        Returns WebAuthn request options and sets a short-lived `passkey_ceremony` cookie
+        (5 minutes, single use). Not counted by the login rate limit.
+      operationId: beginPasskeyLogin
+      responses:
+        '200':
+          description: PublicKeyCredentialRequestOptions as JSON
+        '404':
+          description: Passkeys are not enabled
+        '500':
+          description: Internal server error
+  /auth/passkey/login/finish:
+    post:
+      tags:
+        - Authentication
+      summary: Finish a passkey sign-in
+      description: >-
+        Body is the browser's `PublicKeyCredential` JSON for the assertion. A passkey that fails
+        verification counts towards the same per-address limit as failed password logins.
+      operationId: finishPasskeyLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Signed in; the session cookie is set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  username:
+                    type: string
+                required:
+                  - username
+        '400':
+          description: Missing, expired or already used ceremony, or malformed body
+        '401':
+          description: The passkey was not accepted
+        '404':
+          description: Passkeys are not enabled
+        '413':
+          description: Request body larger than 64 KiB
+        '415':
+          description: Content-Type is not application/json
+        '429':
+          description: Too many attempts from this client address in 15 minutes; see the Retry-After header
+        '500':
+          description: Internal server error
+  /auth/passkeys:
+    get:
+      tags:
+        - Authentication
+      summary: List registered passkeys
+      operationId: listPasskeys
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Registered passkeys, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Passkey'
+        '401':
+          description: No valid web UI session
+        '404':
+          description: Passkeys are not enabled
+  /auth/passkeys/register/begin:
+    post:
+      tags:
+        - Authentication
+      summary: Start registering a passkey
+      description: >-
+        Requires the web UI session and the current password. A wrong password counts towards the
+        login rate limit. Returns WebAuthn creation options and sets the `passkey_ceremony` cookie.
+      operationId: beginPasskeyRegistration
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPasskeyRequest'
+      responses:
+        '200':
+          description: PublicKeyCredentialCreationOptions as JSON
+        '400':
+          description: Malformed body, or the name is empty or longer than 64 characters
+        '401':
+          description: No valid web UI session
+        '403':
+          description: The current password is incorrect
+        '404':
+          description: Passkeys are not enabled
+        '409':
+          description: The limit of 10 passkeys is reached
+        '413':
+          description: Request body larger than 4 KiB
+        '415':
+          description: Content-Type is not application/json
+        '429':
+          description: Too many attempts from this client address in 15 minutes; see the Retry-After header
+        '500':
+          description: Internal server error
+        '503':
+          description: Too many password checks in progress; try again shortly
+  /auth/passkeys/register/finish:
+    post:
+      tags:
+        - Authentication
+      summary: Finish registering a passkey
+      description: Body is the browser's `PublicKeyCredential` JSON for the attestation.
+      operationId: finishPasskeyRegistration
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: The new passkey
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Passkey'
+        '400':
+          description: Missing, expired or already used ceremony, or the passkey could not be verified
+        '401':
+          description: No valid web UI session
+        '404':
+          description: Passkeys are not enabled
+        '409':
+          description: The limit of 10 passkeys is reached
+        '413':
+          description: Request body larger than 64 KiB
+        '415':
+          description: Content-Type is not application/json
+        '500':
+          description: Internal server error
+  /auth/passkeys/{id}:
+    delete:
+      tags:
+        - Authentication
+      summary: Remove a passkey
+      operationId: deletePasskey
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Removed
+        '400':
+          description: Invalid id
+        '401':
+          description: No valid web UI session
+        '404':
+          description: No such passkey, or passkeys are not enabled
   /auth/password:
     post:
       tags:
@@ -111,7 +302,8 @@ paths:
       description: >-
         Changes the password of the single web UI user. Requires the web UI session
         (API keys are rejected) and the current password. Every other session is
-        signed out; the calling session stays valid.
+        signed out; the calling session stays valid. Passkeys stay registered unless
+        `revoke_passkeys` is true.
       operationId: changePassword
       security:
         - CookieAuth: []
@@ -1027,6 +1219,43 @@ components:
       required:
         - username
         - password
+    AuthCapabilities:
+      type: object
+      properties:
+        passkeys:
+          type: boolean
+      required:
+        - passkeys
+    Passkey:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - name
+        - created_at
+    RegisterPasskeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        current_password:
+          type: string
+          writeOnly: true
+      required:
+        - name
+        - current_password
     ChangePasswordRequest:
       type: object
       properties:
@@ -1037,6 +1266,10 @@ components:
           type: string
           minLength: 8
           writeOnly: true
+        revoke_passkeys:
+          type: boolean
+          default: false
+          description: Also remove every registered passkey. Passkeys are kept by default.
       required:
         - current_password
         - new_password
