@@ -420,10 +420,24 @@ func TestService_Login(t *testing.T) {
 				return real(password, hash)
 			}
 
-			_, _ = f.svc.Login(ctx, username, "wrong-login-pw")
+			_, err := f.svc.Login(ctx, username, "wrong-login-pw")
 
-			if calls != 1 {
-				t.Errorf("Login(%q) ran %d password checks, want 1", username, calls)
+			if calls != 1 || !errors.Is(err, ErrInvalidCredentials) {
+				t.Errorf("Login(%q) ran %d password checks and returned %v, want 1 and ErrInvalidCredentials", username, calls, err)
+			}
+		}
+	})
+
+	t.Run("reports a busy server the same way for known and unknown usernames", func(t *testing.T) {
+		for _, username := range []string{"admin", "nobody"} {
+			f := newFixture(t, true)
+			f.svc.slotWait = 10 * time.Millisecond
+			saturateHashSlots(t, f)
+
+			_, err := f.svc.Login(ctx, username, "wrong-login-pw")
+
+			if !errors.Is(err, ErrBusy) {
+				t.Errorf("Login(%q) error = %v, want ErrBusy", username, err)
 			}
 		}
 	})

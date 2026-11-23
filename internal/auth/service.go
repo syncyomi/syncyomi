@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"time"
 	"unicode/utf8"
@@ -30,6 +28,7 @@ const (
 	MaxPasswordBytes  = 1024
 	hashSlots         = 4
 	hashSlotWait      = 10 * time.Second
+	dummyPassword     = "syncyomi dummy password for unknown usernames"
 )
 
 type Service interface {
@@ -77,16 +76,9 @@ func newService(log logger.Logger, userSvc user.Service, notifier notifier, slot
 }
 
 func (s *service) newDummyHash() string {
-	secret := make([]byte, 16)
-	if _, err := rand.Read(secret); err != nil {
-		s.log.Error().Err(err).Msg("could not prepare the hash used for unknown usernames")
-		return ""
-	}
-
-	hashed, err := argon2id.CreateHash(hex.EncodeToString(secret), argon2id.DefaultParams)
+	hashed, err := argon2id.CreateHash(dummyPassword, argon2id.DefaultParams)
 	if err != nil {
-		s.log.Error().Err(err).Msg("could not prepare the hash used for unknown usernames")
-		return ""
+		panic(errors.Wrap(err, "prepare the hash used for unknown usernames"))
 	}
 
 	return hashed
@@ -271,10 +263,8 @@ func (s *service) Login(ctx context.Context, username, password string) (*domain
 }
 
 func (s *service) rejectUnknownUser(ctx context.Context, password string) error {
-	if s.dummyHash != "" {
-		if _, err := s.passwordMatches(ctx, password, s.dummyHash); err != nil {
-			return err
-		}
+	if _, err := s.passwordMatches(ctx, password, s.dummyHash); err != nil {
+		return err
 	}
 
 	return ErrInvalidCredentials
