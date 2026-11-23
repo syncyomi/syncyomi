@@ -103,6 +103,19 @@ describe("Login", () => {
     expect(mocks.push).toHaveBeenCalledWith("/");
   });
 
+  it("ignores a second press while the passkey prompt is open", async () => {
+    mocks.signInWithPasskey.mockReturnValue(new Promise(() => {}));
+    const wrapper = await mountLogin();
+    const button = passkeyButton(wrapper)!;
+
+    await button.trigger("click");
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(button.attributes("disabled")).toBeDefined();
+    expect(mocks.signInWithPasskey).toHaveBeenCalledTimes(1);
+  });
+
   it("shows why a passkey prompt failed and stays on the page", async () => {
     mocks.signInWithPasskey.mockRejectedValue(
       new PasskeyPromptError("The passkey prompt was cancelled or timed out."),

@@ -62,6 +62,7 @@
               </div>
 
               <v-btn
+                :disabled="passkeyMutation.isPending.value"
                 :loading="passkeyMutation.isPending.value"
                 block
                 class="text-uppercase"
@@ -126,6 +127,7 @@ const rules = {
 };
 
 const mutation = useMutation({
+  gcTime: 0,
   mutationFn: async (values: LoginFormFields) => {
     await APIClient.auth.login(values.username, values.password);
   },
@@ -136,6 +138,9 @@ const mutation = useMutation({
   onError: (error) => {
     message.value = loginErrorMessage(error);
     snackbar.value = true;
+  },
+  onSettled: (): void => {
+    mutation.reset();
   },
 });
 
