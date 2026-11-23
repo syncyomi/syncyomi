@@ -410,6 +410,38 @@ func TestService_Login(t *testing.T) {
 		}
 	})
 
+	t.Run("spends one password check whether or not the username exists", func(t *testing.T) {
+		for _, username := range []string{"admin", "nobody"} {
+			f := newFixture(t, true)
+			calls := 0
+			real := f.svc.compareHash
+			f.svc.compareHash = func(password, hash string) (bool, error) {
+				calls++
+				return real(password, hash)
+			}
+
+			_, err := f.svc.Login(ctx, username, "wrong-login-pw")
+
+			if calls != 1 || !errors.Is(err, ErrInvalidCredentials) {
+				t.Errorf("Login(%q) ran %d password checks and returned %v, want 1 and ErrInvalidCredentials", username, calls, err)
+			}
+		}
+	})
+
+	t.Run("reports a busy server the same way for known and unknown usernames", func(t *testing.T) {
+		for _, username := range []string{"admin", "nobody"} {
+			f := newFixture(t, true)
+			f.svc.slotWait = 10 * time.Millisecond
+			saturateHashSlots(t, f)
+
+			_, err := f.svc.Login(ctx, username, "wrong-login-pw")
+
+			if !errors.Is(err, ErrBusy) {
+				t.Errorf("Login(%q) error = %v, want ErrBusy", username, err)
+			}
+		}
+	})
+
 	t.Run("does not report a storage failure as bad credentials", func(t *testing.T) {
 		f := newFixture(t, true)
 		f.users.findErr = errors.New("database is down")
