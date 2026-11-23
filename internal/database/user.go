@@ -44,26 +44,25 @@ func (r *UserRepo) GetUserCount(ctx context.Context) (int, error) {
 }
 
 func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
-
 	queryBuilder := r.db.squirrel.
 		Select("id", "username", "password").
 		From("users").
 		Where(sq.Eq{"username": username})
 
+	return r.findOne(ctx, queryBuilder)
+}
+
+func (r *UserRepo) findOne(ctx context.Context, queryBuilder sq.SelectBuilder) (*domain.User, error) {
 	query, args, err := queryBuilder.ToSql()
 	if err != nil {
 		return nil, errors.Wrap(err, "error building query")
 	}
 
-	row := r.db.handler.QueryRowContext(ctx, query, args...)
-	if err := row.Err(); err != nil {
-		return nil, errors.Wrap(err, "error executing query")
-	}
-
 	var user domain.User
 
+	row := r.db.handler.QueryRowContext(ctx, query, args...)
 	if err := row.Scan(&user.ID, &user.Username, &user.Password); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 
@@ -125,23 +124,7 @@ func (r *UserRepo) FindFirst(ctx context.Context) (*domain.User, error) {
 		OrderBy("id ASC").
 		Limit(1)
 
-	query, args, err := queryBuilder.ToSql()
-	if err != nil {
-		return nil, errors.Wrap(err, "error building query")
-	}
-
-	var user domain.User
-
-	row := r.db.handler.QueryRowContext(ctx, query, args...)
-	if err := row.Scan(&user.ID, &user.Username, &user.Password); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-
-		return nil, errors.Wrap(err, "error scanning row")
-	}
-
-	return &user, nil
+	return r.findOne(ctx, queryBuilder)
 }
 
 func (r *UserRepo) UpdatePassword(ctx context.Context, id int, hash string) error {
