@@ -224,6 +224,7 @@
 
     <confirmation-modal
       ref="restoreConfirmationModal"
+      confirm-label="Restore"
       title="Restore sync data"
       message="Replace the current sync data with this earlier version? Devices will download it on their next sync."
       @confirmed="confirmedRestore"
@@ -231,6 +232,7 @@
     />
     <confirmation-modal
       ref="forgetConfirmationModal"
+      confirm-label="Forget"
       title="Forget device"
       message="Remove this device from the list? Its synced data stays; the device reappears if it syncs again."
       @confirmed="confirmedForget"

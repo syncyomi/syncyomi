@@ -21,11 +21,9 @@ const mountModal = () =>
 
 const clickButton = async (
   wrapper: ReturnType<typeof mountModal>,
-  label: string
+  label: string,
 ) => {
-  const btn = wrapper
-    .findAll("button")
-    .find((b) => b.text().includes(label));
+  const btn = wrapper.findAll("button").find((b) => b.text().includes(label));
   await btn?.trigger("click");
   await flushPromises();
 };
@@ -60,5 +58,49 @@ describe("DeleteConfirmationModal", () => {
 
     expect(wrapper.emitted("canceled")).toBeTruthy();
     expect(wrapper.emitted("confirmed")).toBeFalsy();
+  });
+
+  it("emits canceled when the dialog is dismissed without a choice", async () => {
+    const wrapper = mountModal();
+    await open(wrapper);
+
+    wrapper
+      .findComponent({ name: "VDialog" })
+      .vm.$emit("update:modelValue", false);
+    await flushPromises();
+
+    expect(wrapper.emitted("canceled")).toBeTruthy();
+  });
+
+  it("names the action on the confirm button", async () => {
+    const wrapper = mount(DeleteConfirmationModal, {
+      props: { title: "Remove", message: "Sure?", confirmLabel: "Remove" },
+      global: { plugins: [vuetify], stubs: { VDialog: VDialogStub } },
+    });
+    await open(wrapper);
+    expect(wrapper.text()).toContain("Remove");
+
+    await clickButton(wrapper, "Remove");
+
+    expect(wrapper.emitted("confirmed")).toBeTruthy();
+  });
+
+  it("returns focus to the control that opened it", async () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    const insideDialog = document.createElement("button");
+    document.body.appendChild(insideDialog);
+    insideDialog.focus();
+    await clickButton(wrapper, "Cancel");
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+    insideDialog.remove();
   });
 });
