@@ -123,7 +123,8 @@ const rules = {
     passwordLength(v) >= MIN_PASSWORD_LENGTH ||
     `Min ${MIN_PASSWORD_LENGTH} characters`,
   max: (v: string) =>
-    passwordBytes(v) <= MAX_PASSWORD_BYTES || `Max ${MAX_PASSWORD_BYTES} bytes`,
+    passwordBytes(v) <= MAX_PASSWORD_BYTES ||
+    `Max ${MAX_PASSWORD_BYTES} bytes`,
   match: (v: string) => v === password.value || "Passwords must match",
 };
 

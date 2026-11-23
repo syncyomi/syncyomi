@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/api/ApiError";
-import { LOGIN_UNAVAILABLE_MESSAGE } from "./loginError";
-import { ONBOARD_FAILED_MESSAGE, onboardErrorMessage } from "./onboardError";
+import {
+  ONBOARD_FAILED_MESSAGE,
+  ONBOARD_UNAVAILABLE_MESSAGE,
+  onboardErrorMessage,
+} from "./onboardError";
 
 describe("onboardErrorMessage", () => {
   it.each([
@@ -15,9 +18,18 @@ describe("onboardErrorMessage", () => {
     expect(onboardErrorMessage(new ApiError(body, status))).toBe(want);
   });
 
+  it.each([
+    [400, ""],
+    [503, "<html><body>503 Service Unavailable</body></html>"],
+  ])("ignores an empty or HTML body from a proxy for %i", (status, body) => {
+    expect(onboardErrorMessage(new ApiError(body, status))).toBe(
+      ONBOARD_UNAVAILABLE_MESSAGE,
+    );
+  });
+
   it("does not tell the user to clear cookies when the server fails", () => {
     expect(onboardErrorMessage(new ApiError("oops", 500))).toBe(
-      LOGIN_UNAVAILABLE_MESSAGE,
+      ONBOARD_UNAVAILABLE_MESSAGE,
     );
   });
 
