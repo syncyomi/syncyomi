@@ -172,7 +172,7 @@ func serverRender(t *testing.T, ctx context.Context, srv *harness.SyncServer, de
 	c := harness.NewSyntheticClient(srv, deviceID)
 	b, err := c.Merge(ctx, nil, harness.MergeOptions{})
 	if err != nil {
-		t.Fatalf("delta from a fresh cursor: %v", err)
+		t.Fatalf("full render from an unsynced cursor: %v", err)
 	}
 	return b
 }

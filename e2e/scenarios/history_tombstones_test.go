@@ -61,12 +61,18 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 	}
 	queuedAt := awaitQueuedHistory(t, ctx, emuA, stateChapterURL)
 
-	// The clear ran before the sync started, so the client's own action time is at or before this
-	// instant while a server receipt stamp can only be later.
+	// Start the sync in a later second than the removal (bounded, so a skewed device clock cannot hang
+	// the test): a server that stamped its own receipt time would otherwise land in the removal's second
+	// and the equality below could not tell the two apart.
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Unix() <= queuedAt && time.Now().Before(deadline); {
+		time.Sleep(100 * time.Millisecond)
+	}
 	syncStarted := time.Now().Unix()
-	if queuedAt > syncStarted {
-		t.Errorf("the client queued the removal at %d, after the sync started at %d: that is not the removal's own time",
-			queuedAt, syncStarted)
+	// Read once and gate both comparisons on it: only a device clock ahead of this host can still put the
+	// removal after the sync start, and the server clamps such a time to its own clock.
+	skewAhead := queuedAt >= syncStarted
+	if skewAhead {
+		t.Logf("%s: the device clock is %ds ahead of this host, comparing the tombstone time clamped", emuA.AVD, queuedAt-syncStarted)
 	}
 	syncViaBroadcast(t, ctx, emuA, srv)
 
@@ -80,14 +86,13 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 	if got := queued[0].Key; got != histKey {
 		t.Errorf("the peer delta's history tombstone keys %q, want the chapter key %q", got, histKey)
 	}
-	if serverAt := queued[0].At; queuedAt > time.Now().Unix() {
-		// The device clock is ahead of this host, so the server clamped the time to its own clock.
+	if serverAt := queued[0].At; skewAhead {
 		if serverAt <= 0 || serverAt > queuedAt {
 			t.Errorf("the peer delta's history tombstone carries at = %d, want the action time %d the client queued, clamped to the server's clock",
 				serverAt, queuedAt)
 		}
 	} else if serverAt != queuedAt {
-		t.Errorf("the peer delta's history tombstone carries at = %d, want the %d the client queued with the removal: a receipt stamp would not match",
+		t.Errorf("the peer delta's history tombstone carries at = %d, want the %d the client queued with the removal: a receipt stamp lands after it and would not match",
 			serverAt, queuedAt)
 	}
 	awaitQueueCleared(t, ctx, emuA, stateChapterURL)
@@ -133,7 +138,10 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 		syncViaBroadcast(t, ctx, e, srv)
 		awaitLastReadAt(t, ctx, e, secondTitle, secondURL, secondReadAt)
 	}
-	for _, e := range []*harness.Emulator{emuA, emuB} {
+	// B clears first and A second, so A's tombstone carries the later second: B's row is stamped with the
+	// earlier one, which a bare modified_at <= at filter would match, so only the already-deleted guard
+	// can decline A's deletion — and a re-apply is what the two watchers below would see.
+	for _, e := range []*harness.Emulator{emuB, emuA} {
 		if err := e.RunFlow(ctx, harness.FlowPath("clear_history.yaml"), artifactDir, nil); err != nil {
 			t.Fatalf("clear_history flow on %s: %v", e.AVD, err)
 		}
@@ -284,6 +292,10 @@ func awaitHistoryGone(t *testing.T, ctx context.Context, e *harness.Emulator, ti
 	awaitLastReadAt(t, ctx, e, title, chapterURL, 0)
 }
 
+// historyQueuePref is the preference the client keeps its pending history tombstones in, as a `<set>`
+// of `<sourceId>|<mangaUrl>\x1f<chapterUrl>\x1f<seconds>` entries.
+const historyQueuePref = "__APP_STATE_sync_pending_deleted_history_keys"
+
 // awaitQueuedHistory polls the client's queued-tombstone pref and returns the action time the client
 // stamped into it. The client queues the key after the local rows are gone, on a background coroutine,
 // so polling the database would fire the sync before the tombstone exists and the server would never
@@ -301,10 +313,9 @@ func awaitQueuedHistory(t *testing.T, ctx context.Context, e *harness.Emulator, 
 			lastErr = err
 			return false
 		}
-		sawKey = strings.Contains(xml, chapterURL)
-		at, ok := queuedHistoryActionTime(xml, chapterURL)
-		queuedAt = at
-		return ok
+		at, queued := queuedHistoryActionTime(xml, chapterURL)
+		sawKey, queuedAt = queued, at
+		return queued && at > 0
 	})
 	if err == nil {
 		return queuedAt
@@ -318,14 +329,24 @@ func awaitQueuedHistory(t *testing.T, ctx context.Context, e *harness.Emulator, 
 }
 
 // queuedHistoryActionTime reads the action time the client appends to a queued history tombstone, whose
-// entry is `<sourceId>|<mangaUrl>\x1f<chapterUrl>\x1f<seconds>`. The XML writer leaves the separator
-// raw, but an escaped form is accepted too so the reader does not depend on the writer's escaping.
-func queuedHistoryActionTime(xml, chapterURL string) (int64, bool) {
-	i := strings.Index(xml, chapterURL)
+// entry is `<sourceId>|<mangaUrl>\x1f<chapterUrl>\x1f<seconds>`. The search is scoped to the history
+// queue's own `<set>`, so a chapter tombstone for the same chapter — two segments, no time — is not
+// mistaken for it. The XML writer leaves the separator raw, but an escaped form is accepted too, so the
+// reader does not depend on the writer's escaping.
+func queuedHistoryActionTime(xml, chapterURL string) (at int64, queued bool) {
+	start := strings.Index(xml, historyQueuePref)
+	if start < 0 {
+		return 0, false
+	}
+	block := xml[start:]
+	if end := strings.Index(block, "</set>"); end >= 0 {
+		block = block[:end]
+	}
+	i := strings.Index(block, chapterURL)
 	if i < 0 {
 		return 0, false
 	}
-	rest := xml[i+len(chapterURL):]
+	rest := block[i+len(chapterURL):]
 	for _, sep := range []string{"\x1f", "&#31;", "&#x1f;"} {
 		rest = strings.TrimPrefix(rest, sep)
 	}
@@ -334,7 +355,7 @@ func queuedHistoryActionTime(xml, chapterURL string) (int64, bool) {
 		end++
 	}
 	if end == 0 {
-		return 0, false
+		return 0, true
 	}
 	at, err := strconv.ParseInt(rest[:end], 10, 64)
 	if err != nil || at <= 0 {
@@ -355,7 +376,10 @@ func awaitQueueCleared(t *testing.T, ctx context.Context, e *harness.Emulator, c
 			lastErr = err
 			return false
 		}
-		return !strings.Contains(xml, chapterURL)
+		if _, queued := queuedHistoryActionTime(xml, chapterURL); !queued {
+			return true
+		}
+		return false
 	})
 	if err != nil {
 		t.Fatalf("%s still queues the history tombstone for %s after the server answered 2xx: %v (last prefs read: %v)",
