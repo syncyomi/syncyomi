@@ -150,13 +150,18 @@ func (s *service) ChangePassword(ctx context.Context, change PasswordChange) err
 		return err
 	}
 
+	next, err := s.preparePassword(ctx, change.Next)
+	if err != nil {
+		return err
+	}
+
 	if change.RevokePasskeys {
 		if _, err := s.passkeys.DeleteAll(ctx); err != nil {
 			return errors.Wrap(err, "remove passkeys")
 		}
 	}
 
-	if err := s.storePassword(ctx, u.ID, change.Next); err != nil {
+	if err := s.storePrepared(ctx, u.ID, next); err != nil {
 		return err
 	}
 
@@ -235,22 +240,40 @@ func (s *service) onlyUser(ctx context.Context) (*domain.User, error) {
 	return u, nil
 }
 
-func (s *service) storePassword(ctx context.Context, userID int, password string) error {
+type preparedPassword struct {
+	hash  string
+	stamp string
+}
+
+func (s *service) preparePassword(ctx context.Context, password string) (preparedPassword, error) {
 	hashed, err := s.hashPassword(ctx, password)
 	if err != nil {
-		return err
+		return preparedPassword{}, err
 	}
 
 	stamp, err := newStamp()
 	if err != nil {
-		return err
+		return preparedPassword{}, err
 	}
 
-	if err := s.userSvc.UpdatePassword(ctx, userID, hashed, stamp); err != nil {
+	return preparedPassword{hash: hashed, stamp: stamp}, nil
+}
+
+func (s *service) storePrepared(ctx context.Context, userID int, next preparedPassword) error {
+	if err := s.userSvc.UpdatePassword(ctx, userID, next.hash, next.stamp); err != nil {
 		return errors.Wrap(err, "update password")
 	}
 
 	return nil
+}
+
+func (s *service) storePassword(ctx context.Context, userID int, password string) error {
+	next, err := s.preparePassword(ctx, password)
+	if err != nil {
+		return err
+	}
+
+	return s.storePrepared(ctx, userID, next)
 }
 
 func newStamp() (string, error) {

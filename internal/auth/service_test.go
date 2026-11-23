@@ -146,10 +146,9 @@ func (l bufferLogger) RegisterSSEWriter(*sse.Server) {}
 func (l bufferLogger) SetLogLevel(string)            {}
 
 type fakeRevoker struct {
-	calls   int
-	removed int
-	err     error
-	onCall  func()
+	calls  int
+	err    error
+	onCall func()
 }
 
 func (f *fakeRevoker) DeleteAll(context.Context) (int, error) {
@@ -157,7 +156,7 @@ func (f *fakeRevoker) DeleteAll(context.Context) (int, error) {
 	if f.onCall != nil {
 		f.onCall()
 	}
-	return f.removed, f.err
+	return 0, f.err
 }
 
 type fixture struct {
@@ -356,6 +355,18 @@ func TestService_ChangePasswordRevokingPasskeys(t *testing.T) {
 		}
 		if hashWhenRevoked != original || f.users.storedHash() == original {
 			t.Error("passkeys must be removed before the password is replaced, and the password must then change")
+		}
+	})
+
+	t.Run("hashes the new password before removing the passkeys", func(t *testing.T) {
+		f := newFixture(t, true)
+		f.revoker.onCall = func() { saturateHashSlots(t, f) }
+		original := f.users.storedHash()
+
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword, RevokePasskeys: true})
+
+		if err != nil || f.users.storedHash() == original {
+			t.Errorf("error = %v, password changed = %v, want the change to finish once the passkeys are gone", err, f.users.storedHash() != original)
 		}
 	})
 
