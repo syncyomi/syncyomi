@@ -80,6 +80,7 @@ import { onMounted, ref } from "vue";
 import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useAuthStore } from "@/store/auth/authStore";
+import { LOGIN_FAILED_MESSAGE, loginErrorMessage } from "./loginError";
 
 interface LoginFormFields {
   username: string;
@@ -91,9 +92,7 @@ const valid = ref<boolean>(false);
 const username = ref<string>("");
 const password = ref<string>("");
 const snackbar = ref<boolean>(false);
-const message = ref<string>(
-  "Login failed. Please check your username and password."
-);
+const message = ref<string>(LOGIN_FAILED_MESSAGE);
 const store = useAuthStore();
 
 const rules = {
@@ -108,7 +107,8 @@ const mutation = useMutation({
     store.login(variables.username);
     router.push("/");
   },
-  onError: () => {
+  onError: (error) => {
+    message.value = loginErrorMessage(error);
     snackbar.value = true;
   },
 });
