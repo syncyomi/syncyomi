@@ -53,6 +53,12 @@ Env vars:
   devices are re-pointed at the main server. In-app backup restore is covered by
   S28 only: `PushBackup` stages the file in the app's cache, since scoped storage
   denies the app a `file://` path on shared storage.
+- A deletion may carry the client's action time as `at`, in Unix seconds. The server applies it only
+  to a row it is not older than (an equal second applies, a newer row is left alone) and answers `200`
+  with `applied: 0` when it declines one — a decline is still an acknowledgement, so the client clears
+  its queue instead of retrying. S31 therefore gates on the queued key appearing in the device's
+  prefs (`ReadSyncPrefs`), not on the database: the client queues the tombstone after the local rows
+  are gone, and a plus-`at` delta reports the action time, not the receipt time.
 - Sync triggers: the debug-only `SyncTriggerReceiver` broadcast
   (`<pkg>.TRIGGER_SYNC`, debug source set of TachiyomiSY) for most scenarios;
   S1 exercises the real "Sync now" settings UI via Maestro once per run.
@@ -120,6 +126,9 @@ Env vars:
 | S27 Suwayomi library removal | Removing a manga in Suwayomi reaches the server and Android |
 | S28 Mihon backup restore | A backup with only Mihon fields restores twice through the in-app restore without duplicates, keeping read state, history and non-library entries out of the library |
 | S29 unified tombstones | Canonical /api/sync/v2/deletions for chapter, manga, category and section kinds plus the legacy chapter shape, validation/no-op seq, the explicit deletions list a delta carries, and kind-specific resurrection |
+| S30 tombstone action time | A deletion's `at` decides whether it applies: older than the row it names it is declined, at the row's own second it applies, and the delta reports that action time |
+| S31 history tombstone (UI) | Clearing history on-device reaches the server as a `history` tombstone and the peer loses the entry, with no resurrection and no cascade into the library |
+| S32 second granularity | The client applies a history tombstone on whole seconds, so a read inside the tombstone's second goes and a newer read survives — on the server and on both devices |
 
 v1 suite (`scenarios/v1/`, server only):
 

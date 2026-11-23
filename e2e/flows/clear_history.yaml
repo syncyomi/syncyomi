@@ -1,0 +1,18 @@
+appId: eu.kanade.tachiyomi.sy.debug
+---
+- runFlow:
+    when:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- launchApp:
+    permissions: {}
+- extendedWaitUntil:
+    visible: "Library"
+    timeout: 30000
+- tapOn: "History"
+- extendedWaitUntil:
+    visible: "Clear history"
+    timeout: 20000
+- tapOn: "Clear history"
+- tapOn: "OK"
