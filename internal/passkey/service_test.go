@@ -444,36 +444,39 @@ func TestService_storageFailures(t *testing.T) {
 	t.Run("a failing credential lookup is a server error, not a rejected passkey", func(t *testing.T) {
 		f := newFixture(t)
 		authenticator := f.register(t, "Laptop")
-		f.repo.findErr = errors.New("database is down")
+		dbDown := errors.New("database is down")
+		f.repo.findErr = dbDown
 
 		_, err := f.login(t, authenticator)
 
-		if err == nil || errors.Is(err, ErrRejected) {
-			t.Errorf("FinishLogin() error = %v, want a non-rejection error", err)
+		if !errors.Is(err, dbDown) || errors.Is(err, ErrRejected) {
+			t.Errorf("FinishLogin() error = %v, want the database error and no rejection", err)
 		}
 	})
 
 	t.Run("a failing user lookup is a server error, not a rejected passkey", func(t *testing.T) {
 		f := newFixture(t)
 		authenticator := f.register(t, "Laptop")
-		f.users.err = errors.New("database is down")
+		dbDown := errors.New("database is down")
+		f.users.err = dbDown
 
 		_, err := f.login(t, authenticator)
 
-		if err == nil || errors.Is(err, ErrRejected) {
-			t.Errorf("FinishLogin() error = %v, want a non-rejection error", err)
+		if !errors.Is(err, dbDown) || errors.Is(err, ErrRejected) {
+			t.Errorf("FinishLogin() error = %v, want the database error and no rejection", err)
 		}
 	})
 
 	t.Run("a failing passkey listing is a server error, not a rejected passkey", func(t *testing.T) {
 		f := newFixture(t)
 		authenticator := f.register(t, "Laptop")
-		f.repo.listErr = errors.New("database is down")
+		dbDown := errors.New("database is down")
+		f.repo.listErr = dbDown
 
 		_, err := f.login(t, authenticator)
 
-		if err == nil || errors.Is(err, ErrRejected) {
-			t.Errorf("FinishLogin() error = %v, want a non-rejection error", err)
+		if !errors.Is(err, dbDown) || errors.Is(err, ErrRejected) {
+			t.Errorf("FinishLogin() error = %v, want the database error and no rejection", err)
 		}
 	})
 

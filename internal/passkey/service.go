@@ -29,6 +29,8 @@ var (
 	ErrCloned           = errors.New("the authenticator looks cloned")
 	ErrInvalidName      = errors.New("the passkey name is empty or too long")
 	ErrLimit            = errors.New("the passkey limit is reached")
+
+	errStorage = errors.New("storage failure")
 )
 
 const (
@@ -367,8 +369,6 @@ func (s *Service) DeleteAll(ctx context.Context) (int, error) {
 
 	return s.repo.DeleteAll(ctx, user.ID)
 }
-
-var errStorage = errors.New("storage failure")
 
 func storageFailure(err error) error {
 	return fmt.Errorf("%w: %w", errStorage, err)
