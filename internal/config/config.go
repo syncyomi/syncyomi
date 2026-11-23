@@ -162,6 +162,19 @@ sessionSecret = "{{ .sessionSecret }}"
 # terminates TLS but does not send that header.
 #
 #secureCookie = false
+
+# Passkeys
+#
+# Default: off
+#
+# Set webauthnOrigin to the exact address people use to open SyncYomi to allow
+# signing in with passkeys, for example "https://sync.example.com". It must be a
+# domain name served over https (plain http only works for localhost) and
+# passkeys only work through this address: if the domain changes, passkeys have
+# to be added again. webauthnRpName is the name shown by the browser prompt.
+#
+#webauthnOrigin = ""
+#webauthnRpName = "SyncYomi"
 `
 
 func writeConfig(configPath string, configFile string) error {
@@ -291,6 +304,8 @@ func (c *AppConfig) defaults() {
 
 		SyncMaxBodySizeMB: 64,
 		SyncHistoryLimit:  10,
+
+		WebauthnRpName: "SyncYomi",
 	}
 }
 
@@ -320,6 +335,12 @@ func (c *AppConfig) load(configPath string) {
 	if err := viper.Unmarshal(&c.Config); err != nil {
 		log.Fatalf("Could not unmarshal config file: %v", viper.ConfigFileUsed())
 	}
+
+	origin, err := normalizeWebauthnOrigin(c.Config.WebauthnOrigin)
+	if err != nil {
+		log.Fatalf("Invalid configuration in %v: %v", viper.ConfigFileUsed(), err)
+	}
+	c.Config.WebauthnOrigin = origin
 
 	if c.ensureSessionSecret() {
 		c.persistGeneratedSessionSecret()

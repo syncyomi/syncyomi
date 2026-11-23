@@ -22,6 +22,8 @@ type Config struct {
 	PostgresSslMode   string `toml:"postgresSslMode"`
 	SyncMaxBodySizeMB int    `toml:"syncMaxBodySizeMB"` // 0 = unlimited
 	SyncHistoryLimit  int    `toml:"syncHistoryLimit"`  // 0 = disabled
+	WebauthnOrigin    string `toml:"webauthnOrigin"`
+	WebauthnRpName    string `toml:"webauthnRpName"`
 }
 
 func (c *Config) SyncMaxBodyBytes() int64 {

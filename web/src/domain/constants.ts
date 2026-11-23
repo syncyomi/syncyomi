@@ -80,6 +80,12 @@ export const EventOptions = [
     enabled: false,
   },
   {
+    title: "Passkey Added",
+    value: "PASSKEY_ADDED",
+    subtitle: "A passkey was added for the web UI",
+    enabled: false,
+  },
+  {
     title: "Login Blocked",
     value: "LOGIN_BLOCKED",
     subtitle: "Too many failed logins from one address",

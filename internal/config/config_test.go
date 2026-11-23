@@ -288,3 +288,27 @@ func TestAppConfig_processLines(t *testing.T) {
 		})
 	}
 }
+
+func TestNew_webauthn(t *testing.T) {
+	t.Run("normalises the origin and defaults the relying party name", func(t *testing.T) {
+		dir := t.TempDir()
+		writeConfigFile(t, dir, "host = \"127.0.0.1\"\nsessionSecret = \"abc\"\nwebauthnOrigin = \"https://Sync.Example.com:443/\"\n")
+
+		c, _ := loadConfig(t, dir)
+
+		if c.Config.WebauthnOrigin != "https://sync.example.com" || c.Config.WebauthnRpName != "SyncYomi" {
+			t.Errorf("origin = %q, rp name = %q, want https://sync.example.com and SyncYomi", c.Config.WebauthnOrigin, c.Config.WebauthnRpName)
+		}
+	})
+
+	t.Run("keeps passkeys off by default", func(t *testing.T) {
+		dir := t.TempDir()
+		writeConfigFile(t, dir, "host = \"127.0.0.1\"\nsessionSecret = \"abc\"\n")
+
+		c, _ := loadConfig(t, dir)
+
+		if c.Config.WebauthnOrigin != "" {
+			t.Errorf("origin = %q, want none", c.Config.WebauthnOrigin)
+		}
+	})
+}

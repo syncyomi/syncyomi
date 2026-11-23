@@ -12,7 +12,8 @@ export type NotificationEvent =
   | "SYNC_CANCELLED"
   | "SERVER_UPDATE_AVAILABLE"
   | "PASSWORD_CHANGED"
-  | "LOGIN_BLOCKED";
+  | "LOGIN_BLOCKED"
+  | "PASSKEY_ADDED";
 
 interface Notification {
   id: number;

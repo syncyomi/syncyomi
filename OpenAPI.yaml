@@ -1133,6 +1133,7 @@ components:
               - SYNC_CANCELLED
               - PASSWORD_CHANGED
               - LOGIN_BLOCKED
+              - PASSKEY_ADDED
               - TEST
         token:
           type: string
