@@ -38,6 +38,8 @@ var (
 func main() {
 	var configPath string
 	pflag.StringVar(&configPath, "config", "", "path to configuration file")
+	var keepPasskeys bool
+	pflag.BoolVar(&keepPasskeys, "keep-passkeys", false, "reset-password: keep registered passkeys instead of removing them")
 	pflag.Parse()
 
 	command := pflag.Arg(0)
@@ -103,7 +105,7 @@ func main() {
 	authService := auth.NewService(log, userService, notificationService, passkeyService)
 
 	if command == resetPasswordCommand {
-		exitCode := cli.RunResetPassword(context.Background(), authService, os.Stdin, os.Stdout, os.Stderr)
+		exitCode := cli.RunResetPassword(context.Background(), cli.Reset{Passwords: authService, Passkeys: passkeyService, KeepPasskeys: keepPasskeys}, os.Stdin, os.Stdout, os.Stderr)
 		if err := db.Close(); err != nil {
 			log.Error().Err(err).Msg("could not close db connection")
 		}
