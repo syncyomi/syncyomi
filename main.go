@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/SyncYomi/SyncYomi/internal/api"
 	"github.com/SyncYomi/SyncYomi/internal/auth"
+	"github.com/SyncYomi/SyncYomi/internal/cli"
 	"github.com/SyncYomi/SyncYomi/internal/config"
 	"github.com/SyncYomi/SyncYomi/internal/database"
 	"github.com/SyncYomi/SyncYomi/internal/events"
@@ -23,6 +26,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const resetPasswordCommand = "reset-password"
+
 var (
 	version = "dev"
 	commit  = ""
@@ -33,6 +38,12 @@ func main() {
 	var configPath string
 	pflag.StringVar(&configPath, "config", "", "path to configuration file")
 	pflag.Parse()
+
+	command := pflag.Arg(0)
+	if command != "" && command != resetPasswordCommand {
+		fmt.Fprintf(os.Stderr, "unknown command %q; supported: %s\n", command, resetPasswordCommand)
+		os.Exit(2)
+	}
 
 	// read config
 	cfg := config.New(configPath, version)
@@ -89,6 +100,14 @@ func main() {
 		authService         = auth.NewService(log, userService, notificationService)
 		syncService         = sync.NewService(log, syncRepo, syncStore, notificationService, apikeyRepo)
 	)
+
+	if command == resetPasswordCommand {
+		exitCode := cli.RunResetPassword(context.Background(), authService, os.Stdin, os.Stdout, os.Stderr)
+		if err := db.Close(); err != nil {
+			log.Error().Err(err).Msg("could not close db connection")
+		}
+		os.Exit(exitCode)
+	}
 
 	// register event subscribers
 	events.NewSubscribers(log, bus, notificationService)

@@ -120,6 +120,10 @@ If you are not running a reverse proxy change `host` in the `config.toml` to `0.
 
 After the first run of the SyncYomi service, several files will be generated in your specified running directory. These are essential for the service's operation.
 
+#### Changing or resetting the web UI password
+
+Change it in the web UI under *Settings → Security*. If you are locked out, run `syncyomi reset-password --config <config dir>` (see [Operations](docs/operations.md#web-ui-password-and-login-protection)).
+
 #### Configuration for Reverse Proxy Users
 
 If you're using a reverse proxy and your setup includes a sub-directory, it's crucial to update the baseUrl value in your configuration. Additionally, adjust your proxy settings to exclude this suffix. Below is an example configuration for nginx:
