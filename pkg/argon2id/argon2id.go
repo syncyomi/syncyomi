@@ -21,17 +21,17 @@ var (
 	ErrIncompatibleVersion = errors.New("argon2id: incompatible version of argon2")
 )
 
-// DefaultParams provides some sane default parameters for hashing passwords.
-//
-// Follows recommendations given by the Argon2 RFC:
-// "The Argon2id variant with t=1 and maximum available memory is RECOMMENDED as a
-// default setting for all environments. This setting is secure against side-channel
-// attacks and maximizes adversarial costs on dedicated bruteforce hardware.""
-//
-// The default parameters should generally be used for development/testing purposes
-// only. Custom parameters should be set for production applications depending on
-// available memory/CPU resources and business requirements.
+// DefaultParams is the memory-constrained profile recommended by RFC 9106 section 4 (t=3, 64 MiB, p=4).
 var DefaultParams = &Params{
+	Memory:      64 * 1024,
+	Iterations:  3,
+	Parallelism: 4,
+	SaltLength:  16,
+	KeyLength:   32,
+}
+
+// LegacyParams is the profile used for every hash created before DefaultParams moved to RFC 9106.
+var LegacyParams = &Params{
 	Memory:      64 * 1024,
 	Iterations:  1,
 	Parallelism: 2,
@@ -168,4 +168,12 @@ func DecodeHash(hash string) (params *Params, salt, key []byte, err error) {
 	params.KeyLength = uint32(len(key))
 
 	return params, salt, key, nil
+}
+
+// SameCost reports whether both profiles cost the same to compute; the salt length does not matter.
+func (p *Params) SameCost(other *Params) bool {
+	return p.Memory == other.Memory &&
+		p.Iterations == other.Iterations &&
+		p.Parallelism == other.Parallelism &&
+		p.KeyLength == other.KeyLength
 }

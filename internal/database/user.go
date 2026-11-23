@@ -45,7 +45,7 @@ func (r *UserRepo) GetUserCount(ctx context.Context) (int, error) {
 
 func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
 	queryBuilder := r.db.squirrel.
-		Select("id", "username", "password").
+		Select("id", "username", "password", "password_stamp").
 		From("users").
 		Where(sq.Eq{"username": username})
 
@@ -61,7 +61,7 @@ func (r *UserRepo) findOne(ctx context.Context, queryBuilder sq.SelectBuilder) (
 	var user domain.User
 
 	row := r.db.handler.QueryRowContext(ctx, query, args...)
-	if err := row.Scan(&user.ID, &user.Username, &user.Password); err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &user.Password, &user.Stamp); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -78,31 +78,8 @@ func (r *UserRepo) Store(ctx context.Context, user domain.User) error {
 
 	queryBuilder := r.db.squirrel.
 		Insert("users").
-		Columns("username", "password").
-		Values(user.Username, user.Password)
-
-	query, args, err := queryBuilder.ToSql()
-	if err != nil {
-		return errors.Wrap(err, "error building query")
-	}
-
-	_, err = r.db.handler.ExecContext(ctx, query, args...)
-	if err != nil {
-		return errors.Wrap(err, "error executing query")
-	}
-
-	return err
-}
-
-func (r *UserRepo) Update(ctx context.Context, user domain.User) error {
-
-	var err error
-
-	queryBuilder := r.db.squirrel.
-		Update("users").
-		Set("username", user.Username).
-		Set("password", user.Password).
-		Where(sq.Eq{"username": user.Username})
+		Columns("username", "password", "password_stamp").
+		Values(user.Username, user.Password, user.Stamp)
 
 	query, args, err := queryBuilder.ToSql()
 	if err != nil {
@@ -119,7 +96,7 @@ func (r *UserRepo) Update(ctx context.Context, user domain.User) error {
 
 func (r *UserRepo) FindFirst(ctx context.Context) (*domain.User, error) {
 	queryBuilder := r.db.squirrel.
-		Select("id", "username", "password").
+		Select("id", "username", "password", "password_stamp").
 		From("users").
 		OrderBy("id ASC").
 		Limit(1)
@@ -127,10 +104,11 @@ func (r *UserRepo) FindFirst(ctx context.Context) (*domain.User, error) {
 	return r.findOne(ctx, queryBuilder)
 }
 
-func (r *UserRepo) UpdatePassword(ctx context.Context, id int, hash string) error {
+func (r *UserRepo) UpdatePassword(ctx context.Context, id int, hash, stamp string) error {
 	queryBuilder := r.db.squirrel.
 		Update("users").
 		Set("password", hash).
+		Set("password_stamp", stamp).
 		Where(sq.Eq{"id": id})
 
 	query, args, err := queryBuilder.ToSql()
@@ -149,6 +127,27 @@ func (r *UserRepo) UpdatePassword(ctx context.Context, id int, hash string) erro
 	}
 	if affected == 0 {
 		return errors.New("no user with id %d", id)
+	}
+
+	return nil
+}
+
+func (r *UserRepo) RehashPassword(ctx context.Context, id int, oldHash, newHash string) error {
+	legacyStamp := domain.User{Password: oldHash}.LegacyPasswordStamp()
+
+	queryBuilder := r.db.squirrel.
+		Update("users").
+		Set("password", newHash).
+		Set("password_stamp", sq.Expr("CASE WHEN password_stamp = '' THEN ? ELSE password_stamp END", legacyStamp)).
+		Where(sq.Eq{"id": id, "password": oldHash})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return errors.Wrap(err, "error building query")
+	}
+
+	if _, err := r.db.handler.ExecContext(ctx, query, args...); err != nil {
+		return errors.Wrap(err, "error executing query")
 	}
 
 	return nil
