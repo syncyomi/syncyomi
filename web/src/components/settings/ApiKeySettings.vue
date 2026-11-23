@@ -97,6 +97,7 @@
 
     <confirmation-modal
       ref="deleteConfirmationModal"
+      confirm-label="Delete"
       title="Delete Api Key"
       message="Are you sure you want to delete this Api key?"
       @confirmed="confirmedDeleteNotification"

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { PASSKEY_ORIGIN } from "./constants";
 
 const USER = "e2euser";
 const PASS = "e2epassword123";
@@ -57,7 +58,7 @@ test.describe.serial("auth", () => {
     // Browser-level guard for the fix: gorilla/sessions 1.4.0 defaulted the
     // cookie to Secure, which browsers drop on plain http, breaking IP:PORT.
     const session = (await context.cookies()).find(
-      (c) => c.name === "user_session"
+      (c) => c.name === "user_session",
     );
     expect(session, "user_session cookie must be set").toBeTruthy();
     expect(session!.secure, "cookie must not be Secure over http").toBe(false);
@@ -135,5 +136,85 @@ test.describe.serial("auth", () => {
     await page.getByLabel("Password", { exact: true }).fill(NEW_PASS);
     await page.getByRole("button", { name: /^login$/i }).click();
     await expect(page).toHaveURL(/settings/);
+  });
+
+  test.describe("passkeys", () => {
+    async function loginAtPasskeyOrigin(page: Page) {
+      await page.goto(`${PASSKEY_ORIGIN}/login`);
+      await page.getByLabel("Username").fill(USER);
+      await page.getByLabel("Password", { exact: true }).fill(NEW_PASS);
+      await page.getByRole("button", { name: /^login$/i }).click();
+      await expect(page).toHaveURL(/settings/);
+    }
+
+    async function addVirtualAuthenticator(page: Page) {
+      const client = await page.context().newCDPSession(page);
+      await client.send("WebAuthn.enable");
+      await client.send("WebAuthn.addVirtualAuthenticator", {
+        options: {
+          protocol: "ctap2",
+          transport: "internal",
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      });
+    }
+
+    async function addPasskey(page: Page, name: string, password: string) {
+      await page.getByRole("textbox", { name: "Passkey name" }).fill(name);
+      await page
+        .getByRole("textbox", { name: "Password to confirm", exact: true })
+        .fill(password);
+      await page.getByRole("button", { name: "Add passkey" }).click();
+    }
+
+    test("adding a passkey needs the current password", async ({ page }) => {
+      await addVirtualAuthenticator(page);
+      await loginAtPasskeyOrigin(page);
+      await openSecurityTab(page);
+
+      await addPasskey(page, "Work laptop", "not-the-password");
+
+      await expect(
+        page.getByText("Current password is incorrect"),
+      ).toBeVisible();
+      await expect(page.getByText("No passkeys yet.")).toBeVisible();
+    });
+
+    test("a passkey added in settings signs in from the login page", async ({
+      page,
+    }) => {
+      test.slow();
+      await addVirtualAuthenticator(page);
+      await loginAtPasskeyOrigin(page);
+      await openSecurityTab(page);
+
+      await addPasskey(page, "Work laptop", NEW_PASS);
+      await expect(page.getByText("Passkey added.")).toBeVisible();
+      await expect(page.getByText("Work laptop")).toBeVisible();
+
+      await page.getByRole("button", { name: /logout/i }).click();
+      await expect(page).toHaveURL(/login/);
+      await page.getByRole("button", { name: "Sign in with passkey" }).click();
+
+      await expect(page).toHaveURL(/settings/);
+    });
+
+    test("a removed passkey is gone", async ({ page }) => {
+      await addVirtualAuthenticator(page);
+      await loginAtPasskeyOrigin(page);
+      await openSecurityTab(page);
+      await expect(page.getByText("Work laptop")).toBeVisible();
+
+      await page
+        .getByRole("button", { name: "Remove passkey Work laptop" })
+        .click();
+      await page.getByRole("button", { name: "Remove", exact: true }).click();
+
+      await expect(page.getByText("Passkey removed.")).toBeVisible();
+      await expect(page.getByText("No passkeys yet.")).toBeVisible();
+    });
   });
 });

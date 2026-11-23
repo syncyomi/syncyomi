@@ -4,4 +4,7 @@ import path from "node:path";
 export const PORT = 8787;
 export const BASE_URL = `http://127.0.0.1:${PORT}`;
 
+/** Passkeys need a domain name, and browsers treat localhost as a secure origin over plain http. */
+export const PASSKEY_ORIGIN = `http://localhost:${PORT}`;
+
 export const DATA_DIR = path.resolve(__dirname, ".data").replace(/\\/g, "/");

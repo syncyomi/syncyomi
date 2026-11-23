@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="modalVisible" :fullscreen="false" :scrim="false">
+  <v-dialog v-model="modalVisible" max-width="320">
     <v-card>
       <qrcode
         :value="key"

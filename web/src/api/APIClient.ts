@@ -4,6 +4,12 @@ import { useAuthStore } from "@/store/auth/authStore";
 import router from "@/router";
 import { Notification } from "@/types/Notification";
 import { ApiError } from "./ApiError";
+import type {
+  AssertionJSON,
+  AttestationJSON,
+  CreationOptionsJSON,
+  RequestOptionsJSON,
+} from "@/utils/webauthn";
 
 interface ConfigType {
   body?: BodyInit | Record<string, unknown> | unknown;
@@ -15,7 +21,7 @@ type PostBody = BodyInit | Record<string, unknown> | unknown;
 export async function HttpClient<T>(
   endpoint: string,
   method: string,
-  { body, ...customConfig }: ConfigType = {}
+  { body, ...customConfig }: ConfigType = {},
 ): Promise<T> {
   const config = {
     method: method,
@@ -83,11 +89,36 @@ export const APIClient = {
         password: password,
       }),
     canOnboard: () => appClient.Get("api/auth/onboard"),
-    changePassword: (currentPassword: string, newPassword: string) =>
+    capabilities: () =>
+      appClient.Get<{ passkeys: boolean }>("api/auth/capabilities"),
+    beginPasskeyLogin: () =>
+      appClient.Post<RequestOptionsJSON>("api/auth/passkey/login/begin"),
+    finishPasskeyLogin: (credential: AssertionJSON) =>
+      appClient.Post<{ username: string }>(
+        "api/auth/passkey/login/finish",
+        credential,
+      ),
+    changePassword: (
+      currentPassword: string,
+      newPassword: string,
+      revokePasskeys: boolean,
+    ) =>
       appClient.Post("api/auth/password", {
         current_password: currentPassword,
         new_password: newPassword,
+        revoke_passkeys: revokePasskeys,
       }),
+  },
+  passkeys: {
+    list: () => appClient.Get<Passkey[]>("api/auth/passkeys"),
+    beginRegistration: (name: string, currentPassword: string) =>
+      appClient.Post<CreationOptionsJSON>("api/auth/passkeys/register/begin", {
+        name,
+        current_password: currentPassword,
+      }),
+    finishRegistration: (credential: AttestationJSON) =>
+      appClient.Post<Passkey>("api/auth/passkeys/register/finish", credential),
+    delete: (id: number) => appClient.Delete(`api/auth/passkeys/${id}`),
   },
   apikeys: {
     getAll: () => appClient.Get<APIKey[]>("api/keys"),

@@ -111,7 +111,7 @@ describe("APIClient.auth.changePassword", () => {
       .fn()
       .mockResolvedValue(mockResponse({ ok: true, status: 204 }));
 
-    await APIClient.auth.changePassword("old-password", "new-password-1");
+    await APIClient.auth.changePassword("old-password", "new-password-1", true);
 
     expect(window.fetch).toHaveBeenCalledWith(
       "/api/auth/password",
@@ -120,6 +120,7 @@ describe("APIClient.auth.changePassword", () => {
         body: JSON.stringify({
           current_password: "old-password",
           new_password: "new-password-1",
+          revoke_passkeys: true,
         }),
       })
     );
@@ -131,7 +132,7 @@ describe("APIClient.auth.changePassword", () => {
     );
 
     await expect(
-      APIClient.auth.changePassword("wrong", "new-password-1")
+      APIClient.auth.changePassword("wrong", "new-password-1", false)
     ).rejects.toThrow("Current password is incorrect");
   });
 });

@@ -74,6 +74,17 @@
             ></v-progress-linear>
           </v-col>
 
+          <v-col v-if="hasPasskeys" cols="12" lg="6" md="8">
+            <v-checkbox
+              v-model="revokePasskeys"
+              density="comfortable"
+              hint="Tick this if you changed the password because someone else may have had access. Passkeys are kept otherwise."
+              label="Also remove my passkeys"
+              name="revoke-passkeys"
+              persistent-hint
+            ></v-checkbox>
+          </v-col>
+
           <v-col v-if="status" cols="12" lg="6" md="8">
             <v-alert
               :text="status.message"
@@ -102,8 +113,14 @@
 
 <script lang="ts" setup>
 import { computed, nextTick, reactive, ref } from "vue";
-import { useMutation } from "@tanstack/vue-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
+import {
+  PASSKEYS_KEY,
+  capabilitiesQuery,
+  passkeysQuery,
+} from "@/api/passkeyQueries";
+import { settingsErrorMessage } from "@/components/settings/settingsError";
 import { useAuthStore } from "@/store/auth/authStore";
 import {
   MAX_PASSWORD_BYTES,
@@ -131,7 +148,8 @@ const TEXT = {
   mismatch: "Passwords must match.",
   success:
     "Password changed. Every other signed in device has been signed out.",
-  network: "Could not reach the server. Check your connection and try again.",
+  successRevoked:
+    "Password changed and passkeys removed. Every other signed in device has been signed out.",
   failed: "Could not change the password. Try again.",
 };
 
@@ -180,6 +198,15 @@ const visible = reactive<Record<FieldKey, boolean>>({
   confirm: false,
 });
 const status = ref<Status | null>(null);
+const revokePasskeys = ref(false);
+
+const queryClient = useQueryClient();
+const capabilities = useQuery(capabilitiesQuery);
+const passkeyList = useQuery({
+  ...passkeysQuery,
+  enabled: computed(() => capabilities.data.value?.passkeys === true),
+});
+const hasPasskeys = computed(() => (passkeyList.data.value?.length ?? 0) > 0);
 
 const strength = computed(() => passwordStrength(values.next));
 const lengthHint = computed(() => (values.next ? undefined : TEXT.tooShort));
@@ -214,11 +241,6 @@ const firstInvalidField = () =>
     rulesFor[key].some((rule) => rule(values[key]) !== true),
   );
 
-const errorMessage = (error: unknown) => {
-  if (error instanceof TypeError) return TEXT.network;
-  return (error instanceof Error && error.message.trim()) || TEXT.failed;
-};
-
 const clearPasswords = async () => {
   for (const { key } of fields) {
     values[key] = "";
@@ -229,14 +251,35 @@ const clearPasswords = async () => {
 };
 
 const mutation = useMutation({
-  mutationFn: (passwords: { current: string; next: string }) =>
-    APIClient.auth.changePassword(passwords.current, passwords.next),
-  onSuccess: async () => {
+  gcTime: 0,
+  mutationFn: (request: {
+    current: string;
+    next: string;
+    revokePasskeys: boolean;
+  }) =>
+    APIClient.auth.changePassword(
+      request.current,
+      request.next,
+      request.revokePasskeys,
+    ),
+  onSuccess: async (_, request) => {
     await clearPasswords();
-    status.value = { kind: "success", message: TEXT.success };
+    revokePasskeys.value = false;
+    status.value = {
+      kind: "success",
+      message: request.revokePasskeys ? TEXT.successRevoked : TEXT.success,
+    };
+    if (request.revokePasskeys)
+      await queryClient.invalidateQueries({ queryKey: PASSKEYS_KEY });
   },
   onError: (error) => {
-    status.value = { kind: "error", message: errorMessage(error) };
+    status.value = {
+      kind: "error",
+      message: settingsErrorMessage(error, TEXT.failed),
+    };
+  },
+  onSettled: (): void => {
+    mutation.reset();
   },
 });
 
@@ -253,7 +296,11 @@ const submit = async () => {
     return;
   }
 
-  mutation.mutate({ current: values.current, next: values.next });
+  mutation.mutate({
+    current: values.current,
+    next: values.next,
+    revokePasskeys: hasPasskeys.value && revokePasskeys.value,
+  });
 };
 </script>
 

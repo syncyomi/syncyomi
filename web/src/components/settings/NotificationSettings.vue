@@ -66,6 +66,7 @@
 
     <confirmation-modal
       ref="deleteConfirmationModal"
+      confirm-label="Delete"
       title="Delete Notification"
       message="Are you sure you want to delete this notification?"
       @confirmed="confirmedDeleteNotification"

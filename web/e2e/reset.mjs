@@ -25,6 +25,7 @@ fs.writeFileSync(
     `sessionSecret = "e2e-secret"`,
     `databaseType = "sqlite"`,
     `checkForUpdates = false`,
+    `webauthnOrigin = "http://localhost:${PORT}"`,
     `logLevel = "ERROR"`, // quiet the piped server output; only errors surface
     "",
   ].join("\n")

@@ -57,6 +57,8 @@
 
             <v-window-item value="option-5">
               <PasswordSettings />
+              <v-divider class="my-4"></v-divider>
+              <PasskeySettings />
             </v-window-item>
           </v-window>
         </v-container>
@@ -74,6 +76,7 @@ import { useDisplay } from "vuetify";
 import NotificationSettings from "@/components/settings/NotificationSettings.vue";
 import ApiKeySettings from "@/components/settings/ApiKeySettings.vue";
 import PasswordSettings from "@/components/settings/PasswordSettings.vue";
+import PasskeySettings from "@/components/settings/PasskeySettings.vue";
 
 const tab = ref("option-1");
 const toolbarTitle = ref("User Profile");

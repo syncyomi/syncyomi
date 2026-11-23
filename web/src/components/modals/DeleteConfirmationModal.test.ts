@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { vuetify } from "@/test/setup";
 import DeleteConfirmationModal from "./DeleteConfirmationModal.vue";
@@ -21,11 +21,9 @@ const mountModal = () =>
 
 const clickButton = async (
   wrapper: ReturnType<typeof mountModal>,
-  label: string
+  label: string,
 ) => {
-  const btn = wrapper
-    .findAll("button")
-    .find((b) => b.text().includes(label));
+  const btn = wrapper.findAll("button").find((b) => b.text().includes(label));
   await btn?.trigger("click");
   await flushPromises();
 };
@@ -36,6 +34,10 @@ const open = async (wrapper: ReturnType<typeof mountModal>) => {
 };
 
 describe("DeleteConfirmationModal", () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
   it("is closed until showModal is called", async () => {
     const wrapper = mountModal();
     expect(wrapper.text()).not.toContain("Are you sure?");
@@ -60,5 +62,128 @@ describe("DeleteConfirmationModal", () => {
 
     expect(wrapper.emitted("canceled")).toBeTruthy();
     expect(wrapper.emitted("confirmed")).toBeFalsy();
+  });
+
+  it("emits canceled when the dialog is dismissed without a choice", async () => {
+    const wrapper = mountModal();
+    await open(wrapper);
+
+    wrapper
+      .findComponent({ name: "VDialog" })
+      .vm.$emit("update:modelValue", false);
+    await flushPromises();
+
+    expect(wrapper.emitted("canceled")).toBeTruthy();
+  });
+
+  it("names the action on the confirm button", async () => {
+    const wrapper = mount(DeleteConfirmationModal, {
+      props: { title: "Sure?", message: "Really?", confirmLabel: "Remove" },
+      global: { plugins: [vuetify], stubs: { VDialog: VDialogStub } },
+    });
+    await open(wrapper);
+    const labels = wrapper.findAll("button").map((b) => b.text());
+    expect(labels).toContain("Remove");
+    expect(labels).not.toContain("Confirm");
+
+    await clickButton(wrapper, "Remove");
+
+    expect(wrapper.emitted("confirmed")).toBeTruthy();
+  });
+
+  it("returns focus to the control that opened it", async () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    const insideDialog = document.createElement("button");
+    document.body.appendChild(insideDialog);
+    insideDialog.focus();
+    await clickButton(wrapper, "Cancel");
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(opener);
+    expect(opener.hasAttribute("tabindex")).toBe(false);
+  });
+
+  it("returns focus to the surrounding card when the opener is gone", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    opener.remove();
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(card);
+    expect(card.getAttribute("tabindex")).toBe("-1");
+    card.blur();
+    expect(card.hasAttribute("tabindex")).toBe(false);
+  });
+
+  it("falls back to the card while the opener is still disabled by a pending action", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    opener.disabled = true;
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(card);
+  });
+
+  it("does not fail when the opener and its card are both gone", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    card.remove();
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(document.body);
+    expect(card.hasAttribute("tabindex")).toBe(false);
+  });
+
+  it("leaves the card's own tabindex alone", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    card.tabIndex = 0;
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    opener.remove();
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+    card.blur();
+
+    expect(card.getAttribute("tabindex")).toBe("0");
   });
 });
