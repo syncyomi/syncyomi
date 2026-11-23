@@ -1,12 +1,12 @@
 <template>
-  <v-dialog v-model="modalVisible" :fullscreen="false" :scrim="false">
+  <v-dialog v-model="modalVisible" max-width="440">
     <v-card>
       <v-card-title>{{ props.title }}</v-card-title>
       <v-card-text>{{ props.message }}</v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn color="primary" @click="confirm">Confirm</v-btn>
         <v-btn @click="cancel">Cancel</v-btn>
+        <v-btn color="error" variant="flat" @click="confirm">Confirm</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

@@ -4,7 +4,7 @@
       <v-dialog
         v-model="dialog"
         :fullscreen="!isDesktop"
-        :scrim="false"
+        :max-width="520"
         transition="dialog-bottom-transition"
       >
         <template #activator="{ props }">
