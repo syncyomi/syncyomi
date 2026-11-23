@@ -34,15 +34,17 @@ func TestS30_TombstoneActionTime(t *testing.T) {
 	chapterURL := "/e2e/" + prefix + "/01/ch01"
 	histKey := backup.HistoryKey(backup.MangaKey(harness.FixtureSource, "/e2e/"+prefix+"/01"), chapterURL)
 
-	// The read is staged on a whole second in the past: the server keeps the history row's last read in
-	// seconds, and that stored second is what a deletion's `at` is compared against.
+	// Staged on a whole second in the past so the deletion boundaries below are exact: readAt-600 is
+	// unambiguously older than the row, readAt is its own second.
 	readAt := time.Now().Add(-time.Hour).Unix()
 	staged := historyOnly(t, ctx, srv, title, chapterURL, readAt*1000)
 	if _, err := seeder.Merge(ctx, staged, harness.MergeOptions{}); err != nil {
 		t.Fatalf("history merge: %v", err)
 	}
+	// The row is on the server carrying the millis the client sent; the second the store compares
+	// deletions against is that value truncated, which S32 covers from the client's side.
 	if got := snapshotLastRead(snapshotNow(t, ctx, srv), title, chapterURL); got != readAt*1000 {
-		t.Fatalf("server last read of %s = %d, want %d", chapterURL, got, readAt*1000)
+		t.Fatalf("server last read of %s = %d, want the %d the client sent", chapterURL, got, readAt*1000)
 	}
 
 	// The peer is created before the removal, so its delta reports the tombstones: a delta only carries
@@ -63,10 +65,9 @@ func TestS30_TombstoneActionTime(t *testing.T) {
 		t.Errorf("a declined deletion dropped the read: server last read = %d, want the unchanged %d", got, readAt*1000)
 	}
 	requireNoDeletion(t, peerDelta(t, ctx, peer), "history", histKey)
-	// The peer's cursor has already passed the read, so the server state it proves is read through a
-	// client that never synced: a superseded deletion must leave no tombstone behind.
-	afterDecline := deltaFromStart(t, ctx, srv, "e2e-at-watch-decline")
-	requireNoDeletion(t, afterDecline, "history", histKey)
+	// The peer's cursor has passed the read, so its delta cannot show the item again: the live read is
+	// read back through a full render, which lists what is live and no tombstones.
+	afterDecline := serverRender(t, ctx, srv, "e2e-at-watch-decline")
 	if urls := historyURLs(requireManga(t, afterDecline, title)); !slices.Contains(urls, chapterURL) {
 		t.Errorf("a declined deletion left the server without the live read %s: %v", chapterURL, urls)
 	}
@@ -162,10 +163,11 @@ func deletionsOfKind(b *pb.Backup, kind string) []*pb.BackupDeletedItem {
 	return out
 }
 
-// deltaFromStart reads the server state through a client that has never synced: a delta only carries
-// what changed after its cursor, so only a fresh cursor still reports an item written before another
-// client's cursor.
-func deltaFromStart(t *testing.T, ctx context.Context, srv *harness.SyncServer, deviceID string) *pb.Backup {
+// serverRender reads the whole server state through a client that has never synced: a cursor of 0 makes
+// the server render everything instead of a delta, so this is what still shows an item written before
+// any other client's cursor. That render never carries tombstones, so it proves nothing about
+// deletions — an incremental delta from a client primed at the right moment does.
+func serverRender(t *testing.T, ctx context.Context, srv *harness.SyncServer, deviceID string) *pb.Backup {
 	t.Helper()
 	c := harness.NewSyntheticClient(srv, deviceID)
 	b, err := c.Merge(ctx, nil, harness.MergeOptions{})

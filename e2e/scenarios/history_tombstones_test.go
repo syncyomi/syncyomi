@@ -6,6 +6,7 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -42,13 +43,31 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 	peerDelta(t, ctx, peer)
 	histKey := backup.HistoryKey(backup.MangaKey(harness.FixtureSource, "/e2e/E2E Alpha/01"), stateChapterURL)
 
+	// Chapters are marked read so the comparison after the clear means "clearing history does not
+	// unmark chapters": with nothing read, both counts would be 0 and the check could not fail.
+	if err := emuA.RunFlow(ctx, harness.FlowPath("mark_read.yaml"), artifactDir,
+		map[string]string{"TITLE": stateTitle}); err != nil {
+		t.Fatalf("mark_read flow: %v", err)
+	}
+	awaitReadCount(t, ctx, emuA, stateTitle, fixtureAChapters)
 	before := deviceStateNow(t, ctx, emuA, stateTitle)
+	if before.readCount != fixtureAChapters {
+		t.Fatalf("A has %d read chapters of %q before the clear, want the %d mark_read.yaml marks",
+			before.readCount, stateTitle, fixtureAChapters)
+	}
 
 	if err := emuA.RunFlow(ctx, harness.FlowPath("clear_history.yaml"), artifactDir, nil); err != nil {
 		t.Fatalf("clear_history flow: %v", err)
 	}
-	awaitQueuedHistory(t, ctx, emuA, stateChapterURL)
+	queuedAt := awaitQueuedHistory(t, ctx, emuA, stateChapterURL)
 
+	// The clear ran before the sync started, so the client's own action time is at or before this
+	// instant while a server receipt stamp can only be later.
+	syncStarted := time.Now().Unix()
+	if queuedAt > syncStarted {
+		t.Errorf("the client queued the removal at %d, after the sync started at %d: that is not the removal's own time",
+			queuedAt, syncStarted)
+	}
 	syncViaBroadcast(t, ctx, emuA, srv)
 
 	requireNoHistoryURL(t, snapshotNow(t, ctx, srv), stateTitle, stateChapterURL)
@@ -61,9 +80,15 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 	if got := queued[0].Key; got != histKey {
 		t.Errorf("the peer delta's history tombstone keys %q, want the chapter key %q", got, histKey)
 	}
-	if now := time.Now().Unix(); queued[0].At <= 0 || queued[0].At > now {
-		t.Errorf("the peer delta's history tombstone carries at = %d, want the removal's action time in (0, %d]",
-			queued[0].At, now)
+	if serverAt := queued[0].At; queuedAt > time.Now().Unix() {
+		// The device clock is ahead of this host, so the server clamped the time to its own clock.
+		if serverAt <= 0 || serverAt > queuedAt {
+			t.Errorf("the peer delta's history tombstone carries at = %d, want the action time %d the client queued, clamped to the server's clock",
+				serverAt, queuedAt)
+		}
+	} else if serverAt != queuedAt {
+		t.Errorf("the peer delta's history tombstone carries at = %d, want the %d the client queued with the removal: a receipt stamp would not match",
+			serverAt, queuedAt)
 	}
 	awaitQueueCleared(t, ctx, emuA, stateChapterURL)
 	after := deviceStateNow(t, ctx, emuA, stateTitle)
@@ -72,7 +97,7 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 			len(after.titles), fixtureAManga, after.titles)
 	}
 	if after.readCount != before.readCount {
-		t.Errorf("clearing history changed A's read chapters of %q: %d -> %d, want unchanged",
+		t.Errorf("clearing history unmarked chapters of %q: %d read before, %d after, want unchanged",
 			stateTitle, before.readCount, after.readCount)
 	}
 
@@ -99,6 +124,7 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 		secondURL   = "/e2e/E2E Alpha/02/ch01"
 	)
 	secondReadAt := time.Now().Add(-30 * time.Minute).Truncate(time.Second).UnixMilli()
+	secondKey := backup.HistoryKey(backup.MangaKey(harness.FixtureSource, "/e2e/E2E Alpha/02"), secondURL)
 	second := historyOnly(t, ctx, srv, secondTitle, secondURL, secondReadAt)
 	if _, err := harness.NewSyntheticClient(srv, "e2e-history-second").Merge(ctx, second, harness.MergeOptions{}); err != nil {
 		t.Fatalf("second history merge: %v", err)
@@ -114,22 +140,42 @@ func TestS31_DeviceHistoryTombstoneReachesPeer(t *testing.T) {
 		awaitQueuedHistory(t, ctx, e, secondURL)
 	}
 
+	// Primed before B's sync, so its delta is where the tombstone first appears, with the seq and time
+	// the store gave it.
+	watchBeforeB := harness.NewSyntheticClient(srv, "e2e-history-second-before-b")
+	peerDelta(t, ctx, watchBeforeB)
 	syncViaBroadcast(t, ctx, emuB, srv)
 	requireNoHistoryURL(t, snapshotNow(t, ctx, srv), secondTitle, secondURL)
+	applied := deltaDeletion(t, peerDelta(t, ctx, watchBeforeB), "history", secondKey)
+	if applied.Seq <= 0 || applied.At <= 0 {
+		t.Fatalf("the tombstone B applied carries seq %d at %d, want both recorded: the decline check needs them",
+			applied.Seq, applied.At)
+	}
+
+	// Primed after B's sync, so only a write A's sync makes can ever appear in it.
+	watchBeforeA := harness.NewSyntheticClient(srv, "e2e-history-second-before-a")
+	peerDelta(t, ctx, watchBeforeA)
+
 	syncViaBroadcast(t, ctx, emuA, srv)
 	requireNoHistoryURL(t, snapshotNow(t, ctx, srv), secondTitle, secondURL)
+	// A's deletion names a row B already tombstoned, so the merge drops it before the store: the row
+	// keeps the seq and time B's tombstone gave it (the values captured above), and neither watcher is
+	// told again. A re-apply would bump the seq and restamp modified_at, which both of them would report.
+	requireNoDeletion(t, peerDelta(t, ctx, watchBeforeA), "history", secondKey)
+	requireNoDeletion(t, peerDelta(t, ctx, watchBeforeB), "history", secondKey)
 	awaitQueueCleared(t, ctx, emuA, secondURL)
 	for _, e := range []*harness.Emulator{emuA, emuB} {
 		awaitHistoryGone(t, ctx, e, secondTitle, secondURL)
 	}
-	// A third sync must not re-send what was already acknowledged.
+	// Another sync must not put the key back in the queue: this proves it stays absent, not that the
+	// sync sent nothing.
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitQueueCleared(t, ctx, emuA, secondURL)
 }
 
 // TestS32_TombstoneSecondGranularity proves the client applies the server's rule on whole seconds: a
-// read whose millis fall inside the tombstone's second is deleted, and a tombstone older than the read
-// it names leaves the read alone on both devices.
+// read whose millis fall inside the tombstone's second is deleted, while a deletion older than the read
+// it names is declined by the server, so no device is ever told and the read survives.
 func TestS32_TombstoneSecondGranularity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
@@ -157,8 +203,9 @@ func TestS32_TombstoneSecondGranularity(t *testing.T) {
 	syncViaBroadcast(t, ctx, emuA, srv)
 	awaitHistoryGone(t, ctx, emuA, stateTitle, stateChapterURL)
 
-	// The survival half: a deletion older than the read it names never wins, on the server or on either
-	// device, and its tombstone never reaches a delta.
+	// The survival half: the server declines a deletion older than the read it names, so no device is
+	// ever told about it and the read stays where it is. The device checks below fail for a client that
+	// dropped the row without being told; they do not exercise its own keep-a-newer-read branch.
 	const (
 		newerTitle = "E2E Alpha 02"
 		newerURL   = "/e2e/E2E Alpha/02/ch01"
@@ -174,14 +221,18 @@ func TestS32_TombstoneSecondGranularity(t *testing.T) {
 		awaitLastReadAt(t, ctx, e, newerTitle, newerURL, newerAt)
 	}
 
+	// Primed before the deletion: its next delta covers exactly the window the deletion would write in,
+	// so a tombstone the server wrongly emitted would show up there.
+	watcher := harness.NewSyntheticClient(srv, "e2e-granularity-watch")
+	peerDelta(t, ctx, watcher)
 	requireDeclinedDeletion(t, ctx, srv, seeder, "a deletion older than the newer read",
 		harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "history", Key: newerKey, At: t0}}})
 	if got := snapshotLastRead(snapshotNow(t, ctx, srv), newerTitle, newerURL); got != newerAt {
 		t.Errorf("the declined deletion dropped the newer read: server last read = %d, want %d", got, newerAt)
 	}
-	afterDecline := deltaFromStart(t, ctx, srv, "e2e-granularity-watch")
-	requireNoDeletion(t, afterDecline, "history", newerKey)
-	if urls := historyURLs(requireManga(t, afterDecline, newerTitle)); !slices.Contains(urls, newerURL) {
+	requireNoDeletion(t, peerDelta(t, ctx, watcher), "history", newerKey)
+	live := serverRender(t, ctx, srv, "e2e-granularity-render")
+	if urls := historyURLs(requireManga(t, live, newerTitle)); !slices.Contains(urls, newerURL) {
 		t.Errorf("the declined deletion left the server without the live read %s: %v", newerURL, urls)
 	}
 	for _, e := range []*harness.Emulator{emuA, emuB} {
@@ -227,32 +278,69 @@ func requireNoHistoryURL(t *testing.T, b *pb.Backup, title, chapterURL string) {
 	}
 }
 
+// awaitHistoryGone waits for the history row to be gone; LastReadAt reports 0 for a missing row.
 func awaitHistoryGone(t *testing.T, ctx context.Context, e *harness.Emulator, title, chapterURL string) {
 	t.Helper()
-	pollLiveDB(t, ctx, e, 60*time.Second, "history entry "+chapterURL, func(dbPath string) bool {
-		db, err := harness.OpenAppDB(dbPath)
-		if err != nil {
-			return false
-		}
-		defer db.Close()
-		got, err := harness.LastReadAt(db, title, chapterURL)
-		return err == nil && got == 0
-	})
+	awaitLastReadAt(t, ctx, e, title, chapterURL, 0)
 }
 
-// awaitQueuedHistory polls the client's queued-tombstone pref. The client queues the key after the local
-// rows are gone, on a background coroutine, so polling the database would fire the sync before the
-// tombstone exists and the server would never hear about the removal.
-func awaitQueuedHistory(t *testing.T, ctx context.Context, e *harness.Emulator, chapterURL string) {
+// awaitQueuedHistory polls the client's queued-tombstone pref and returns the action time the client
+// stamped into it. The client queues the key after the local rows are gone, on a background coroutine,
+// so polling the database would fire the sync before the tombstone exists and the server would never
+// hear about the removal.
+func awaitQueuedHistory(t *testing.T, ctx context.Context, e *harness.Emulator, chapterURL string) int64 {
 	t.Helper()
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		if xml, err := e.ReadSyncPrefs(ctx); err == nil && strings.Contains(xml, chapterURL) {
-			return
+	var (
+		queuedAt int64
+		sawKey   bool
+		lastErr  error
+	)
+	err := harness.WaitFor(ctx, 60*time.Second, func() bool {
+		xml, err := e.ReadSyncPrefs(ctx)
+		if err != nil {
+			lastErr = err
+			return false
 		}
-		time.Sleep(time.Second)
+		sawKey = strings.Contains(xml, chapterURL)
+		at, ok := queuedHistoryActionTime(xml, chapterURL)
+		queuedAt = at
+		return ok
+	})
+	if err == nil {
+		return queuedAt
 	}
-	t.Fatalf("%s never queued a history tombstone for %s", e.AVD, chapterURL)
+	if sawKey {
+		t.Fatalf("%s queued a history tombstone for %s without an action time: the client must append the removal's own second to the queued key",
+			e.AVD, chapterURL)
+	}
+	t.Fatalf("%s never queued a history tombstone for %s: %v (last prefs read: %v)", e.AVD, chapterURL, err, lastErr)
+	return 0
+}
+
+// queuedHistoryActionTime reads the action time the client appends to a queued history tombstone, whose
+// entry is `<sourceId>|<mangaUrl>\x1f<chapterUrl>\x1f<seconds>`. The XML writer leaves the separator
+// raw, but an escaped form is accepted too so the reader does not depend on the writer's escaping.
+func queuedHistoryActionTime(xml, chapterURL string) (int64, bool) {
+	i := strings.Index(xml, chapterURL)
+	if i < 0 {
+		return 0, false
+	}
+	rest := xml[i+len(chapterURL):]
+	for _, sep := range []string{"\x1f", "&#31;", "&#x1f;"} {
+		rest = strings.TrimPrefix(rest, sep)
+	}
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	at, err := strconv.ParseInt(rest[:end], 10, 64)
+	if err != nil || at <= 0 {
+		return 0, false
+	}
+	return at, true
 }
 
 // awaitQueueCleared polls until the queued key is gone: the client clears it on any 2xx, but the
@@ -260,17 +348,17 @@ func awaitQueuedHistory(t *testing.T, ctx context.Context, e *harness.Emulator, 
 // show it.
 func awaitQueueCleared(t *testing.T, ctx context.Context, e *harness.Emulator, chapterURL string) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
+	var lastErr error
+	err := harness.WaitFor(ctx, 30*time.Second, func() bool {
 		xml, err := e.ReadSyncPrefs(ctx)
 		if err != nil {
-			t.Fatalf("read prefs on %s: %v", e.AVD, err)
+			lastErr = err
+			return false
 		}
-		if !strings.Contains(xml, chapterURL) {
-			return
-		}
-		time.Sleep(time.Second)
+		return !strings.Contains(xml, chapterURL)
+	})
+	if err != nil {
+		t.Fatalf("%s still queues the history tombstone for %s after the server answered 2xx: %v (last prefs read: %v)",
+			e.AVD, chapterURL, err, lastErr)
 	}
-	t.Fatalf("%s still queues the history tombstone for %s after the server answered 2xx: a 2xx must clear the queue",
-		e.AVD, chapterURL)
 }
