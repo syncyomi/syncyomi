@@ -25,6 +25,8 @@ const props = defineProps({
 
 const emit = defineEmits(["confirmed", "canceled"]);
 
+const FALLBACK_SELECTOR = ".v-card";
+
 const modalVisible = ref(false);
 let confirmed = false;
 let opener: HTMLElement | null = null;
@@ -53,16 +55,30 @@ const showModal = () => {
     document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-  fallback = opener?.closest<HTMLElement>(".v-card") ?? null;
+  fallback = opener?.closest<HTMLElement>(FALLBACK_SELECTOR) ?? null;
   modalVisible.value = true;
 };
 
-const restoreFocus = () => {
-  const target = opener?.isConnected ? opener : fallback;
-  if (target?.isConnected) {
-    if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
-    target.focus();
+const isUsable = (element: HTMLElement | null): element is HTMLElement =>
+  !!element?.isConnected && !element.matches(":disabled");
+
+const focusWithoutJoiningTabOrder = (element: HTMLElement) => {
+  if (!element.hasAttribute("tabindex")) {
+    element.tabIndex = -1;
+    element.addEventListener(
+      "blur",
+      () => element.removeAttribute("tabindex"),
+      {
+        once: true,
+      },
+    );
   }
+  element.focus();
+};
+
+const restoreFocus = () => {
+  if (isUsable(opener)) opener.focus();
+  else if (fallback?.isConnected) focusWithoutJoiningTabOrder(fallback);
   opener = null;
   fallback = null;
 };

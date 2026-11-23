@@ -102,6 +102,7 @@ describe("DeleteConfirmationModal", () => {
     await flushPromises();
 
     expect(document.activeElement).toBe(opener);
+    expect(opener.hasAttribute("tabindex")).toBe(false);
     opener.remove();
     insideDialog.remove();
   });
@@ -122,6 +123,46 @@ describe("DeleteConfirmationModal", () => {
     await flushPromises();
 
     expect(document.activeElement).toBe(card);
+    expect(card.getAttribute("tabindex")).toBe("-1");
+    card.blur();
+    expect(card.hasAttribute("tabindex")).toBe(false);
     card.remove();
+  });
+
+  it("falls back to the card while the opener is still disabled by a pending action", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    opener.disabled = true;
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(card);
+    card.remove();
+  });
+
+  it("does not fail when the opener and its card are both gone", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    card.remove();
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(document.body);
   });
 });
