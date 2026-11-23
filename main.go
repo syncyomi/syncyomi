@@ -86,7 +86,7 @@ func main() {
 		updateService       = update.NewUpdate(log, cfg.Config)
 		schedulingService   = scheduler.NewService(log, cfg.Config, notificationService, updateService)
 		userService         = user.NewService(userRepo)
-		authService         = auth.NewService(log, userService)
+		authService         = auth.NewService(log, userService, notificationService)
 		syncService         = sync.NewService(log, syncRepo, syncStore, notificationService, apikeyRepo)
 	)
 
