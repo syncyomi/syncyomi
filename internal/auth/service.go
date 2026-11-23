@@ -427,20 +427,15 @@ func (s *service) CreateUser(ctx context.Context, username, password string) err
 		return errors.New("only 1 user account is supported at the moment")
 	}
 
-	hashed, err := s.hashPassword(ctx, password)
-	if err != nil {
-		return err
-	}
-
-	stamp, err := newStamp()
+	next, err := s.preparePassword(ctx, password)
 	if err != nil {
 		return err
 	}
 
 	newUser := domain.User{
 		Username: username,
-		Password: hashed,
-		Stamp:    stamp,
+		Password: next.hash,
+		Stamp:    next.stamp,
 	}
 	if err := s.userSvc.CreateUser(context.Background(), newUser); err != nil {
 		s.log.Error().Err(err).Msgf("could not create user: %v", username)
