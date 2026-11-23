@@ -56,9 +56,10 @@ Env vars:
 - A deletion may carry the client's action time as `at`, in Unix seconds. The server applies it only
   to a row it is not older than (an equal second applies, a newer row is left alone) and answers `200`
   with `applied: 0` when it declines one — a decline is still an acknowledgement, so the client clears
-  its queue instead of retrying. S31 therefore gates on the queued key appearing in the device's
-  prefs (`ReadSyncPrefs`), not on the database: the client queues the tombstone after the local rows
-  are gone, and a plus-`at` delta reports the action time, not the receipt time.
+  its queue instead of retrying. A delta reports that action time for the tombstones it carries, or the
+  server's receipt time when the client sent none. S31 therefore gates on the queued key appearing in
+  the device's prefs (`ReadSyncPrefs`), not on the database: the client queues the tombstone after the
+  local rows are gone.
 - Sync triggers: the debug-only `SyncTriggerReceiver` broadcast
   (`<pkg>.TRIGGER_SYNC`, debug source set of TachiyomiSY) for most scenarios;
   S1 exercises the real "Sync now" settings UI via Maestro once per run.
