@@ -6,8 +6,40 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
+	"github.com/gorilla/sessions"
 )
+
+const currentStamp = "stamp-1"
+
+// sessionValues maps a scenario name to what the session cookie holds.
+func sessionValues(kind string) map[string]any {
+	switch kind {
+	case "authed":
+		return map[string]any{sessionAuthenticatedKey: true, sessionStampKey: currentStamp}
+	case "unauthed":
+		return map[string]any{sessionAuthenticatedKey: false, sessionStampKey: currentStamp}
+	case "stale":
+		return map[string]any{sessionAuthenticatedKey: true, sessionStampKey: "old-stamp"}
+	case "unstamped":
+		return map[string]any{sessionAuthenticatedKey: true}
+	}
+	return nil
+}
+
+func attachSession(t *testing.T, store *sessions.CookieStore, req *http.Request, kind string) {
+	t.Helper()
+	sess, _ := store.Get(req, sessionName)
+	for k, v := range sessionValues(kind) {
+		sess.Values[k] = v
+	}
+	w := httptest.NewRecorder()
+	if err := sess.Save(req, w); err != nil {
+		t.Fatalf("saving session: %v", err)
+	}
+	req.Header.Set("Cookie", w.Header().Get("Set-Cookie"))
+}
 
 type mockAPIKeyService struct {
 	validKey string
@@ -38,7 +70,8 @@ func TestServer_IsAuthenticated(t *testing.T) {
 		name       string
 		header     string
 		query      string
-		session    string // "", "authed", "unauthed"
+		session    string // "", "authed", "unauthed", "stale", "unstamped"
+		stampErr   error
 		wantStatus int
 		wantCalls  []string
 	}{
@@ -84,6 +117,35 @@ func TestServer_IsAuthenticated(t *testing.T) {
 			wantCalls:  nil,
 		},
 		{
+			name:       "session from before a password change is rejected",
+			session:    "stale",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "session without a password stamp is rejected",
+			session:    "unstamped",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "session is rejected when no user exists",
+			session:    "authed",
+			stampErr:   auth.ErrNoUser,
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "a failing stamp lookup fails closed with a server error",
+			session:    "authed",
+			stampErr:   errTest,
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "api key does not consult the password stamp",
+			header:     validKey,
+			stampErr:   errTest,
+			wantStatus: http.StatusOK,
+			wantCalls:  []string{validKey},
+		},
+		{
 			// An invalid header must 401 outright, not quietly fall through to
 			// the session branch and let a cookie rescue it.
 			name:       "invalid header does not fall through to session",
@@ -106,7 +168,11 @@ func TestServer_IsAuthenticated(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := &mockAPIKeyService{validKey: validKey}
 			cfg := &domain.Config{BaseURL: "/", SessionSecret: "test-secret"}
-			s := Server{apiService: api, cookieStore: newCookieStore(cfg)}
+			s := Server{
+				apiService:  api,
+				authService: &mockAuthService{stamp: currentStamp, stampErr: tt.stampErr},
+				cookieStore: newCookieStore(cfg),
+			}
 
 			var nextCalled bool
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -123,13 +189,7 @@ func TestServer_IsAuthenticated(t *testing.T) {
 				req.Header.Set("X-API-Token", tt.header)
 			}
 			if tt.session != "" {
-				sess, _ := s.cookieStore.Get(req, "user_session")
-				sess.Values["authenticated"] = tt.session == "authed"
-				w := httptest.NewRecorder()
-				if err := sess.Save(req, w); err != nil {
-					t.Fatalf("saving session: %v", err)
-				}
-				req.Header.Set("Cookie", w.Header().Get("Set-Cookie"))
+				attachSession(t, s.cookieStore, req, tt.session)
 			}
 
 			rec := httptest.NewRecorder()
@@ -155,9 +215,14 @@ func TestServer_IsSessionAuthenticated(t *testing.T) {
 		name       string
 		header     string
 		session    string
+		stampErr   error
 		wantStatus int
 	}{
 		{name: "valid api token is rejected", header: validKey, wantStatus: http.StatusUnauthorized},
+		{name: "session from before a password change is rejected", session: "stale", wantStatus: http.StatusUnauthorized},
+		{name: "session without a password stamp is rejected", session: "unstamped", wantStatus: http.StatusUnauthorized},
+		{name: "session is rejected when no user exists", session: "authed", stampErr: auth.ErrNoUser, wantStatus: http.StatusUnauthorized},
+		{name: "a failing stamp lookup fails closed with a server error", session: "authed", stampErr: errTest, wantStatus: http.StatusInternalServerError},
 		{name: "no credentials is rejected", wantStatus: http.StatusUnauthorized},
 		{name: "authenticated session passes", session: "authed", wantStatus: http.StatusOK},
 		{name: "logged out session is rejected", session: "unauthed", wantStatus: http.StatusUnauthorized},
@@ -167,7 +232,11 @@ func TestServer_IsSessionAuthenticated(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := &mockAPIKeyService{validKey: validKey}
 			cfg := &domain.Config{BaseURL: "/", SessionSecret: "test-secret"}
-			s := Server{apiService: api, cookieStore: newCookieStore(cfg)}
+			s := Server{
+				apiService:  api,
+				authService: &mockAuthService{stamp: currentStamp, stampErr: tt.stampErr},
+				cookieStore: newCookieStore(cfg),
+			}
 
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
@@ -178,13 +247,7 @@ func TestServer_IsSessionAuthenticated(t *testing.T) {
 				req.Header.Set("X-API-Token", tt.header)
 			}
 			if tt.session != "" {
-				sess, _ := s.cookieStore.Get(req, "user_session")
-				sess.Values["authenticated"] = tt.session == "authed"
-				w := httptest.NewRecorder()
-				if err := sess.Save(req, w); err != nil {
-					t.Fatalf("saving session: %v", err)
-				}
-				req.Header.Set("Cookie", w.Header().Get("Set-Cookie"))
+				attachSession(t, s.cookieStore, req, tt.session)
 			}
 
 			rec := httptest.NewRecorder()

@@ -23,6 +23,8 @@ type mockAuthService struct {
 	loginUser    *domain.User
 	loginErr     error
 	createErr    error
+	stamp        string
+	stampErr     error
 }
 
 func (m *mockAuthService) GetUserCount(ctx context.Context) (int, error) {
@@ -37,6 +39,10 @@ func (m *mockAuthService) Login(ctx context.Context, username, password string) 
 		return nil, m.loginErr
 	}
 	return m.loginUser, nil
+}
+
+func (m *mockAuthService) CurrentPasswordStamp(ctx context.Context) (string, error) {
+	return m.stamp, m.stampErr
 }
 
 func (m *mockAuthService) CreateUser(ctx context.Context, username, password string) error {
@@ -283,27 +289,55 @@ func TestAuthHandler_canOnboard(t *testing.T) {
 
 func TestAuthHandler_validate(t *testing.T) {
 	cfg := &domain.Config{BaseURL: "/"}
-	r, _ := newTestAuthRouter(cfg, &mockAuthService{})
+	user := &domain.User{Username: "u", Password: "stored-hash"}
 
-	// No session cookie at all.
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/validate", nil))
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("validate() without session status = %v, want %v", rec.Code, http.StatusUnauthorized)
+	t.Run("rejects a request without a session", func(t *testing.T) {
+		r, _ := newTestAuthRouter(cfg, &mockAuthService{stamp: user.PasswordStamp()})
+
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/validate", nil))
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("validate() status = %v, want %v", rec.Code, http.StatusUnauthorized)
+		}
+	})
+
+	validateAfterLogin := func(t *testing.T, mock *mockAuthService) int {
+		t.Helper()
+		r, _ := newTestAuthRouter(cfg, mock)
+		loginRec := httptest.NewRecorder()
+		r.ServeHTTP(loginRec, loginRequest(""))
+
+		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
+		req.Header.Set("Cookie", loginRec.Header().Get("Set-Cookie"))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec.Code
 	}
 
-	// A session minted by a real login is accepted.
-	loginRec := httptest.NewRecorder()
-	r.ServeHTTP(loginRec, loginRequest(""))
-	sessionCookie := loginRec.Header().Get("Set-Cookie")
+	t.Run("accepts a session minted by a real login", func(t *testing.T) {
+		got := validateAfterLogin(t, &mockAuthService{loginUser: user, stamp: user.PasswordStamp()})
 
-	req := httptest.NewRequest(http.MethodGet, "/validate", nil)
-	req.Header.Set("Cookie", sessionCookie)
-	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("validate() with session status = %v, want %v", rec.Code, http.StatusNoContent)
-	}
+		if got != http.StatusNoContent {
+			t.Errorf("validate() status = %v, want %v", got, http.StatusNoContent)
+		}
+	})
+
+	t.Run("rejects a session once the password has changed", func(t *testing.T) {
+		got := validateAfterLogin(t, &mockAuthService{loginUser: user, stamp: "stamp-after-change"})
+
+		if got != http.StatusUnauthorized {
+			t.Errorf("validate() status = %v, want %v", got, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("fails closed when the stamp lookup errors", func(t *testing.T) {
+		got := validateAfterLogin(t, &mockAuthService{loginUser: user, stampErr: errTest})
+
+		if got != http.StatusInternalServerError {
+			t.Errorf("validate() status = %v, want %v", got, http.StatusInternalServerError)
+		}
+	})
 }
 
 func TestReadUserIP(t *testing.T) {

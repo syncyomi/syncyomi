@@ -20,6 +20,7 @@ func newRoutingTestServer() Server {
 		sse:                 sse.New(),
 		config:              &config.AppConfig{Config: cfg},
 		cookieStore:         newCookieStore(cfg),
+		authService:         &mockAuthService{stamp: currentStamp},
 		apiService:          &mockAPIKeyService{validKey: routingTestKey},
 		notificationService: &fakeNotificationService{},
 		syncService:         &mockSyncService{},
@@ -29,8 +30,8 @@ func newRoutingTestServer() Server {
 func authedSessionCookie(t *testing.T, s Server) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	sess, _ := s.cookieStore.Get(req, "user_session")
-	sess.Values["authenticated"] = true
+	sess, _ := s.cookieStore.Get(req, sessionName)
+	markSessionAuthenticated(sess, currentStamp)
 	rec := httptest.NewRecorder()
 	if err := sess.Save(req, rec); err != nil {
 		t.Fatalf("saving session: %v", err)

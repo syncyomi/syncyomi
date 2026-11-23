@@ -14,6 +14,7 @@ type authService interface {
 	GetUserCount(ctx context.Context) (int, error)
 	Login(ctx context.Context, username, password string) (*domain.User, error)
 	CreateUser(ctx context.Context, username, password string) error
+	CurrentPasswordStamp(ctx context.Context) (string, error)
 }
 
 type authHandler struct {
@@ -73,18 +74,17 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, _ := h.cookieStore.Get(r, "user_session")
+	session, _ := h.cookieStore.Get(r, sessionName)
 	session.Options = h.sessionOptions(r)
 
-	_, err := h.service.Login(ctx, data.Username, data.Password)
+	user, err := h.service.Login(ctx, data.Username, data.Password)
 	if err != nil {
 		h.log.Error().Err(err).Msgf("Auth: Failed login attempt username: [%s] ip: %s", data.Username, ReadUserIP(r))
 		h.encoder.StatusResponse(ctx, w, nil, http.StatusUnauthorized)
 		return
 	}
 
-	// Set user as authenticated
-	session.Values["authenticated"] = true
+	markSessionAuthenticated(session, user.PasswordStamp())
 	session.Save(r, w)
 
 	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
@@ -93,10 +93,10 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 func (h authHandler) logout(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	session, _ := h.cookieStore.Get(r, "user_session")
+	session, _ := h.cookieStore.Get(r, sessionName)
 
 	// Revoke users authentication
-	session.Values["authenticated"] = false
+	session.Values[sessionAuthenticatedKey] = false
 	session.Save(r, w)
 
 	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
@@ -151,10 +151,15 @@ func (h authHandler) canOnboard(w http.ResponseWriter, r *http.Request) {
 
 func (h authHandler) validate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	session, _ := h.cookieStore.Get(r, "user_session")
+	session, _ := h.cookieStore.Get(r, sessionName)
 
-	// Check if user is authenticated
-	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+	authenticated, err := sessionAuthenticated(ctx, session, h.service)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Auth: could not verify session")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
 		http.Error(w, "Forbidden", http.StatusUnauthorized)
 		return
 	}
