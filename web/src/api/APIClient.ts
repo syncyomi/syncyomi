@@ -15,7 +15,7 @@ type PostBody = BodyInit | Record<string, unknown> | unknown;
 export async function HttpClient<T>(
   endpoint: string,
   method: string,
-  { body, ...customConfig }: ConfigType = {},
+  { body, ...customConfig }: ConfigType = {}
 ): Promise<T> {
   const config = {
     method: method,
