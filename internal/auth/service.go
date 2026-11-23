@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
@@ -11,6 +12,7 @@ import (
 	"github.com/SyncYomi/SyncYomi/pkg/argon2id"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/semaphore"
 )
 
 var (
@@ -18,12 +20,14 @@ var (
 	ErrPasswordTooShort   = errors.New("password is too short")
 	ErrPasswordTooLong    = errors.New("password is too long")
 	ErrNoUser             = errors.New("no user exists")
+	ErrBusy               = errors.New("too many password checks in progress")
 )
 
 const (
 	MinPasswordLength = 8
 	MaxPasswordBytes  = 1024
 	hashSlots         = 4
+	hashSlotWait      = 10 * time.Second
 )
 
 type Service interface {
@@ -44,19 +48,21 @@ type service struct {
 	log      zerolog.Logger
 	userSvc  user.Service
 	notifier notifier
-	slots    chan struct{}
+	slots    *semaphore.Weighted
+	slotWait time.Duration
 }
 
 func NewService(log logger.Logger, userSvc user.Service, notifier notifier) Service {
-	return newService(log, userSvc, notifier, hashSlots)
+	return newService(log, userSvc, notifier, hashSlots, hashSlotWait)
 }
 
-func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int) *service {
+func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int, slotWait time.Duration) *service {
 	return &service{
 		log:      log.With().Str("module", "auth").Logger(),
 		userSvc:  userSvc,
 		notifier: notifier,
-		slots:    make(chan struct{}, slots),
+		slots:    semaphore.NewWeighted(int64(slots)),
+		slotWait: slotWait,
 	}
 }
 
@@ -75,7 +81,6 @@ func (s *service) ChangePassword(ctx context.Context, current, next string) erro
 		return err
 	}
 	if !match {
-		s.log.Warn().Msg("password change rejected: wrong current password")
 		return ErrInvalidCredentials
 	}
 
@@ -83,7 +88,6 @@ func (s *service) ChangePassword(ctx context.Context, current, next string) erro
 		return err
 	}
 
-	s.log.Info().Msg("password changed")
 	s.notifier.Send(domain.NotificationEventPasswordChanged, domain.NotificationPayload{
 		Subject:   "Password changed",
 		Message:   "The web UI password was changed and all other sessions were signed out",
@@ -152,7 +156,7 @@ func (s *service) storePassword(ctx context.Context, userID int, password string
 }
 
 func validateNewPassword(password string) error {
-	if len(password) < MinPasswordLength {
+	if utf8.RuneCountInString(password) < MinPasswordLength {
 		return ErrPasswordTooShort
 	}
 	if len(password) > MaxPasswordBytes {
@@ -163,12 +167,17 @@ func validateNewPassword(password string) error {
 }
 
 func (s *service) acquireSlot(ctx context.Context) (release func(), err error) {
-	select {
-	case s.slots <- struct{}{}:
-		return func() { <-s.slots }, nil
-	case <-ctx.Done():
+	waitCtx, cancel := context.WithTimeout(ctx, s.slotWait)
+	defer cancel()
+
+	if err := s.slots.Acquire(waitCtx, 1); err != nil {
+		if ctx.Err() == nil {
+			return nil, ErrBusy
+		}
 		return nil, ctx.Err()
 	}
+
+	return func() { s.slots.Release(1) }, nil
 }
 
 func (s *service) hashPassword(ctx context.Context, password string) (string, error) {
@@ -180,7 +189,7 @@ func (s *service) hashPassword(ctx context.Context, password string) (string, er
 
 	hashed, err := argon2id.CreateHash(password, argon2id.DefaultParams)
 	if err != nil {
-		return "", errors.New("failed to hash password")
+		return "", errors.Wrap(err, "hash password")
 	}
 
 	return hashed, nil
@@ -199,7 +208,7 @@ func (s *service) passwordMatches(ctx context.Context, password, hash string) (b
 
 	match, err := argon2id.ComparePasswordAndHash(password, hash)
 	if err != nil {
-		return false, errors.New("error checking credentials")
+		return false, errors.Wrap(err, "compare password")
 	}
 
 	return match, nil
@@ -211,18 +220,16 @@ func (s *service) GetUserCount(ctx context.Context) (int, error) {
 
 func (s *service) Login(ctx context.Context, username, password string) (*domain.User, error) {
 	if username == "" || password == "" {
-		return nil, errors.New("empty credentials supplied")
+		return nil, ErrInvalidCredentials
 	}
 
-	// find user
 	u, err := s.userSvc.FindByUsername(ctx, username)
 	if err != nil {
-		s.log.Error().Err(err).Msgf("could not find user by username: %v", username)
-		return nil, errors.Wrapf(err, "invalid login: %s", username)
+		return nil, errors.Wrap(err, "find user")
 	}
 
 	if u == nil {
-		return nil, errors.Errorf("invalid login: %s", username)
+		return nil, ErrInvalidCredentials
 	}
 
 	// compare password from request and the saved password
@@ -232,8 +239,7 @@ func (s *service) Login(ctx context.Context, username, password string) (*domain
 	}
 
 	if !match {
-		s.log.Error().Msg("bad credentials")
-		return nil, errors.Errorf("invalid login: %s", username)
+		return nil, ErrInvalidCredentials
 	}
 
 	return u, nil
@@ -242,6 +248,10 @@ func (s *service) Login(ctx context.Context, username, password string) (*domain
 func (s *service) CreateUser(ctx context.Context, username, password string) error {
 	if username == "" || password == "" {
 		return errors.New("empty credentials supplied")
+	}
+
+	if err := validateNewPassword(password); err != nil {
+		return err
 	}
 
 	userCount, err := s.userSvc.GetUserCount(ctx)
@@ -268,4 +278,15 @@ func (s *service) CreateUser(ctx context.Context, username, password string) err
 	}
 
 	return nil
+}
+
+func PolicyMessage(err error) (string, bool) {
+	switch {
+	case errors.Is(err, ErrPasswordTooShort):
+		return fmt.Sprintf("Password must be at least %d characters", MinPasswordLength), true
+	case errors.Is(err, ErrPasswordTooLong):
+		return fmt.Sprintf("Password must be at most %d bytes", MaxPasswordBytes), true
+	}
+
+	return "", false
 }

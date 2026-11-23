@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/SyncYomi/SyncYomi/pkg/argon2id"
@@ -23,6 +25,7 @@ type fakeUsers struct {
 	mu      sync.Mutex
 	user    *domain.User
 	updates int
+	findErr error
 }
 
 func (f *fakeUsers) GetUserCount(context.Context) (int, error) {
@@ -35,6 +38,9 @@ func (f *fakeUsers) GetUserCount(context.Context) (int, error) {
 func (f *fakeUsers) FindByUsername(_ context.Context, username string) (*domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.findErr != nil {
+		return nil, f.findErr
+	}
 	if f.user == nil || f.user.Username != username {
 		return nil, nil
 	}
@@ -129,10 +135,17 @@ func newFixture(t *testing.T, withUser bool) *fixture {
 	notifier := &fakeNotifier{}
 
 	return &fixture{
-		svc:      newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots),
+		svc:      newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots, time.Second),
 		users:    users,
 		notifier: notifier,
 		logs:     logs,
+	}
+}
+
+func saturateHashSlots(t *testing.T, f *fixture) {
+	t.Helper()
+	if err := f.svc.slots.Acquire(context.Background(), hashSlots); err != nil {
+		t.Fatalf("acquire hash slots: %v", err)
 	}
 }
 
@@ -207,6 +220,16 @@ func TestService_ChangePassword(t *testing.T) {
 		}
 	})
 
+	t.Run("counts characters, not bytes, for the minimum length", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		err := f.svc.ChangePassword(ctx, oldPassword, "密码很短")
+
+		if !errors.Is(err, ErrPasswordTooShort) {
+			t.Errorf("ChangePassword() error = %v, want ErrPasswordTooShort for 4 characters (12 bytes)", err)
+		}
+	})
+
 	t.Run("rejects a new password that is too long", func(t *testing.T) {
 		f := newFixture(t, true)
 
@@ -229,9 +252,7 @@ func TestService_ChangePassword(t *testing.T) {
 
 	t.Run("gives up when the request is cancelled while waiting to hash", func(t *testing.T) {
 		f := newFixture(t, true)
-		for range cap(f.svc.slots) {
-			f.svc.slots <- struct{}{}
-		}
+		saturateHashSlots(t, f)
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
 
@@ -274,6 +295,20 @@ func TestService_ResetPassword(t *testing.T) {
 		}
 		if !matches(t, newPassword, f.users.storedHash()) {
 			t.Error("stored hash does not verify the new password")
+		}
+	})
+
+	t.Run("signs every session out by changing the stamp", func(t *testing.T) {
+		f := newFixture(t, true)
+		before, _ := f.svc.CurrentPasswordStamp(ctx)
+
+		if err := f.svc.ResetPassword(ctx, newPassword); err != nil {
+			t.Fatalf("ResetPassword() error = %v", err)
+		}
+		after, _ := f.svc.CurrentPasswordStamp(ctx)
+
+		if before == after {
+			t.Error("password stamp is unchanged after a reset, want a new stamp")
 		}
 	})
 
@@ -345,12 +380,116 @@ func TestService_NotifyLoginBlocked(t *testing.T) {
 
 func TestService_Login(t *testing.T) {
 	ctx := context.Background()
-	f := newFixture(t, true)
 
-	if _, err := f.svc.Login(ctx, "admin", oldPassword); err != nil {
-		t.Errorf("Login() with the right password error = %v", err)
+	t.Run("accepts the right password", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		if _, err := f.svc.Login(ctx, "admin", oldPassword); err != nil {
+			t.Errorf("Login() error = %v", err)
+		}
+	})
+
+	t.Run("reports bad credentials as ErrInvalidCredentials", func(t *testing.T) {
+		tests := []struct{ name, username, password string }{
+			{"wrong password", "admin", "wrong-login-pw"},
+			{"unknown user", "nobody", oldPassword},
+			{"empty username", "", oldPassword},
+			{"empty password", "admin", ""},
+			{"over-long password", "admin", strings.Repeat("a", MaxPasswordBytes+1)},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				f := newFixture(t, true)
+
+				_, err := f.svc.Login(ctx, tt.username, tt.password)
+
+				if !errors.Is(err, ErrInvalidCredentials) {
+					t.Errorf("Login() error = %v, want ErrInvalidCredentials", err)
+				}
+			})
+		}
+	})
+
+	t.Run("does not report a storage failure as bad credentials", func(t *testing.T) {
+		f := newFixture(t, true)
+		f.users.findErr = errors.New("database is down")
+
+		_, err := f.svc.Login(ctx, "admin", oldPassword)
+
+		if err == nil || errors.Is(err, ErrInvalidCredentials) {
+			t.Errorf("Login() error = %v, want a non-credential error", err)
+		}
+	})
+
+	t.Run("reports ErrBusy instead of queuing without limit", func(t *testing.T) {
+		f := newFixture(t, true)
+		f.svc.slotWait = 10 * time.Millisecond
+		saturateHashSlots(t, f)
+
+		_, err := f.svc.Login(ctx, "admin", oldPassword)
+
+		if !errors.Is(err, ErrBusy) {
+			t.Errorf("Login() error = %v, want ErrBusy", err)
+		}
+	})
+}
+
+func TestService_CreateUser(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("stores a hash for a valid password", func(t *testing.T) {
+		f := newFixture(t, false)
+
+		err := f.svc.CreateUser(ctx, "admin", newPassword)
+
+		if err != nil || !matches(t, newPassword, f.users.storedHash()) {
+			t.Errorf("CreateUser() error = %v, want a stored hash of the password", err)
+		}
+	})
+
+	t.Run("applies the same password policy as a change", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			password string
+			want     error
+		}{
+			{"too short", "short", ErrPasswordTooShort},
+			{"too long", strings.Repeat("a", MaxPasswordBytes+1), ErrPasswordTooLong},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				f := newFixture(t, false)
+
+				err := f.svc.CreateUser(ctx, "admin", tt.password)
+
+				if !errors.Is(err, tt.want) || f.users.user != nil {
+					t.Errorf("CreateUser() error = %v, user stored = %v, want %v and no user", err, f.users.user != nil, tt.want)
+				}
+			})
+		}
+	})
+}
+
+func TestPolicyMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+		ok   bool
+	}{
+		{"too short", ErrPasswordTooShort, "Password must be at least 8 characters", true},
+		{"too long", ErrPasswordTooLong, "Password must be at most 1024 bytes", true},
+		{"wrapped", fmt.Errorf("ctx: %w", ErrPasswordTooShort), "Password must be at least 8 characters", true},
+		{"unrelated", errors.New("boom"), "", false},
+		{"nil", nil, "", false},
 	}
-	if _, err := f.svc.Login(ctx, "admin", "wrong-login-pw"); err == nil {
-		t.Error("Login() with a wrong password error = nil, want an error")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := PolicyMessage(tt.err)
+
+			if got != tt.want || ok != tt.ok {
+				t.Errorf("PolicyMessage() = %q, %v, want %q, %v", got, ok, tt.want, tt.ok)
+			}
+		})
 	}
 }
