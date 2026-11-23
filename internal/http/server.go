@@ -42,6 +42,7 @@ type Server struct {
 	authService         authService
 	notificationService notificationService
 	updateService       updateService
+	passkeyService      passkeyService
 
 	syncService syncService
 
@@ -74,6 +75,7 @@ func NewServer(
 	notificationSvc notificationService,
 	updateSvc updateService,
 	syncService syncService,
+	passkeySvc passkeyService,
 ) Server {
 	return Server{
 		log:     log.With().Str("module", "http").Logger(),
@@ -91,6 +93,7 @@ func NewServer(
 		notificationService: notificationSvc,
 		updateService:       updateSvc,
 		syncService:         syncService,
+		passkeyService:      passkeySvc,
 	}
 }
 
@@ -168,7 +171,12 @@ func (s Server) Handler() http.Handler {
 	syncHandler := newSyncHandler(encoder, s.log, s.syncService, s.config.Config.SyncMaxBodyBytes())
 
 	r.Route("/api", func(r chi.Router) {
-		r.Route("/auth", newAuthHandler(encoder, s.log, s.config.Config, s.cookieStore, s.authService).Routes)
+		authHandler := newAuthHandler(encoder, s.log, s.config.Config, s.cookieStore, s.authService)
+		passkeys := newPasskeyHandler(authHandler, s.passkeyService)
+		r.Route("/auth", func(r chi.Router) {
+			authHandler.Routes(r)
+			passkeys.Routes(r)
+		})
 		r.Route("/healthz", newHealthHandler(encoder, s.db).Routes)
 
 		r.Group(func(r chi.Router) {

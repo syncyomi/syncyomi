@@ -78,13 +78,23 @@ func NewPasswordSource(stdin *os.File, out io.Writer) PasswordSource {
 	}}
 }
 
-func ResetPassword(ctx context.Context, resetter PasswordResetter, source PasswordSource, out io.Writer) error {
+type PasskeyRevoker interface {
+	DeleteAll(ctx context.Context) (int, error)
+}
+
+type Reset struct {
+	Passwords    PasswordResetter
+	Passkeys     PasskeyRevoker
+	KeepPasskeys bool
+}
+
+func ResetPassword(ctx context.Context, reset Reset, source PasswordSource, out io.Writer) error {
 	password, err := source.NewPassword()
 	if err != nil {
 		return err
 	}
 
-	err = resetter.ResetPassword(ctx, password)
+	err = reset.Passwords.ResetPassword(ctx, password)
 	if message, ok := auth.PolicyMessage(err); ok {
 		return errors.New(lowerFirst(message))
 	}
@@ -98,11 +108,11 @@ func ResetPassword(ctx context.Context, resetter PasswordResetter, source Passwo
 
 	fmt.Fprintln(out, "Password updated. Every web UI session has been signed out.")
 
-	return nil
+	return revokePasskeys(ctx, reset, out)
 }
 
-func RunResetPassword(ctx context.Context, resetter PasswordResetter, stdin *os.File, stdout, stderr io.Writer) int {
-	if err := ResetPassword(ctx, resetter, NewPasswordSource(stdin, stdout), stdout); err != nil {
+func RunResetPassword(ctx context.Context, reset Reset, stdin *os.File, stdout, stderr io.Writer) int {
+	if err := ResetPassword(ctx, reset, NewPasswordSource(stdin, stdout), stdout); err != nil {
 		fmt.Fprintln(stderr, "reset-password:", err)
 		return 1
 	}
@@ -113,4 +123,20 @@ func RunResetPassword(ctx context.Context, resetter PasswordResetter, stdin *os.
 func lowerFirst(text string) string {
 	first, size := utf8.DecodeRuneInString(text)
 	return string(unicode.ToLower(first)) + text[size:]
+}
+
+func revokePasskeys(ctx context.Context, reset Reset, out io.Writer) error {
+	if reset.KeepPasskeys {
+		return nil
+	}
+
+	removed, err := reset.Passkeys.DeleteAll(ctx)
+	if err != nil {
+		return fmt.Errorf("the password was updated but the passkeys could not be removed; run the command again: %w", err)
+	}
+	if removed > 0 {
+		fmt.Fprintf(out, "Removed %d passkeys. Use --keep-passkeys to keep them next time.\n", removed)
+	}
+
+	return nil
 }

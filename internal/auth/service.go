@@ -34,11 +34,22 @@ const (
 	stampBytes        = 8
 )
 
+type PasswordChange struct {
+	Current        string
+	Next           string
+	RevokePasskeys bool
+}
+
+type PasskeyRevoker interface {
+	DeleteAll(ctx context.Context) (int, error)
+}
+
 type Service interface {
 	GetUserCount(ctx context.Context) (int, error)
 	Login(ctx context.Context, username, password string) (*domain.User, error)
 	CreateUser(ctx context.Context, username, password string) error
-	ChangePassword(ctx context.Context, current, next string) error
+	ChangePassword(ctx context.Context, change PasswordChange) error
+	VerifyCurrentPassword(ctx context.Context, password string) error
 	ResetPassword(ctx context.Context, next string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
 	NotifyLoginBlocked(client string)
@@ -52,6 +63,7 @@ type service struct {
 	log      zerolog.Logger
 	userSvc  user.Service
 	notifier notifier
+	passkeys PasskeyRevoker
 	slots    *semaphore.Weighted
 	slotWait time.Duration
 
@@ -66,15 +78,16 @@ type dummyHash struct {
 	hash   string
 }
 
-func NewService(log logger.Logger, userSvc user.Service, notifier notifier) Service {
-	return newService(log, userSvc, notifier, hashSlots, hashSlotWait, argon2id.DefaultParams, argon2id.LegacyParams)
+func NewService(log logger.Logger, userSvc user.Service, notifier notifier, passkeys PasskeyRevoker) Service {
+	return newService(log, userSvc, notifier, passkeys, hashSlots, hashSlotWait, argon2id.DefaultParams, argon2id.LegacyParams)
 }
 
-func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int, slotWait time.Duration, params, legacyParams *argon2id.Params) *service {
+func newService(log logger.Logger, userSvc user.Service, notifier notifier, passkeys PasskeyRevoker, slots int, slotWait time.Duration, params, legacyParams *argon2id.Params) *service {
 	s := &service{
 		log:      log.With().Str("module", "auth").Logger(),
 		userSvc:  userSvc,
 		notifier: notifier,
+		passkeys: passkeys,
 		slots:    semaphore.NewWeighted(int64(slots)),
 		slotWait: slotWait,
 
@@ -123,8 +136,8 @@ func (s *service) dummyHashFor(ctx context.Context) string {
 	return s.dummies[0].hash
 }
 
-func (s *service) ChangePassword(ctx context.Context, current, next string) error {
-	if err := validateNewPassword(next); err != nil {
+func (s *service) ChangePassword(ctx context.Context, change PasswordChange) error {
+	if err := validateNewPassword(change.Next); err != nil {
 		return err
 	}
 
@@ -133,15 +146,22 @@ func (s *service) ChangePassword(ctx context.Context, current, next string) erro
 		return err
 	}
 
-	match, err := s.passwordMatches(ctx, current, u.Password)
+	if err := s.checkPassword(ctx, u, change.Current); err != nil {
+		return err
+	}
+
+	next, err := s.preparePassword(ctx, change.Next)
 	if err != nil {
 		return err
 	}
-	if !match {
-		return ErrInvalidCredentials
+
+	if change.RevokePasskeys {
+		if _, err := s.passkeys.DeleteAll(ctx); err != nil {
+			return errors.Wrap(err, "remove passkeys")
+		}
 	}
 
-	if err := s.storePassword(ctx, u.ID, next); err != nil {
+	if err := s.storePrepared(ctx, u.ID, next); err != nil {
 		return err
 	}
 
@@ -151,6 +171,27 @@ func (s *service) ChangePassword(ctx context.Context, current, next string) erro
 		Event:     domain.NotificationEventPasswordChanged,
 		Timestamp: time.Now(),
 	})
+
+	return nil
+}
+
+func (s *service) VerifyCurrentPassword(ctx context.Context, password string) error {
+	u, err := s.onlyUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	return s.checkPassword(ctx, u, password)
+}
+
+func (s *service) checkPassword(ctx context.Context, u *domain.User, password string) error {
+	match, err := s.passwordMatches(ctx, password, u.Password)
+	if err != nil {
+		return err
+	}
+	if !match {
+		return ErrInvalidCredentials
+	}
 
 	return nil
 }
@@ -199,22 +240,40 @@ func (s *service) onlyUser(ctx context.Context) (*domain.User, error) {
 	return u, nil
 }
 
-func (s *service) storePassword(ctx context.Context, userID int, password string) error {
+type preparedPassword struct {
+	hash  string
+	stamp string
+}
+
+func (s *service) preparePassword(ctx context.Context, password string) (preparedPassword, error) {
 	hashed, err := s.hashPassword(ctx, password)
 	if err != nil {
-		return err
+		return preparedPassword{}, err
 	}
 
 	stamp, err := newStamp()
 	if err != nil {
-		return err
+		return preparedPassword{}, err
 	}
 
-	if err := s.userSvc.UpdatePassword(ctx, userID, hashed, stamp); err != nil {
+	return preparedPassword{hash: hashed, stamp: stamp}, nil
+}
+
+func (s *service) storePrepared(ctx context.Context, userID int, next preparedPassword) error {
+	if err := s.userSvc.UpdatePassword(ctx, userID, next.hash, next.stamp); err != nil {
 		return errors.Wrap(err, "update password")
 	}
 
 	return nil
+}
+
+func (s *service) storePassword(ctx context.Context, userID int, password string) error {
+	next, err := s.preparePassword(ctx, password)
+	if err != nil {
+		return err
+	}
+
+	return s.storePrepared(ctx, userID, next)
 }
 
 func newStamp() (string, error) {
@@ -368,20 +427,15 @@ func (s *service) CreateUser(ctx context.Context, username, password string) err
 		return errors.New("only 1 user account is supported at the moment")
 	}
 
-	hashed, err := s.hashPassword(ctx, password)
-	if err != nil {
-		return err
-	}
-
-	stamp, err := newStamp()
+	next, err := s.preparePassword(ctx, password)
 	if err != nil {
 		return err
 	}
 
 	newUser := domain.User{
 		Username: username,
-		Password: hashed,
-		Stamp:    stamp,
+		Password: next.hash,
+		Stamp:    next.stamp,
 	}
 	if err := s.userSvc.CreateUser(context.Background(), newUser); err != nil {
 		s.log.Error().Err(err).Msgf("could not create user: %v", username)

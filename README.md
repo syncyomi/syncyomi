@@ -122,7 +122,7 @@ After the first run of the SyncYomi service, several files will be generated in 
 
 #### Changing or resetting the web UI password
 
-Change it in the web UI under *Settings → Security*. If you are locked out, run `syncyomi reset-password --config <config dir>` (see [Operations](docs/operations.md#web-ui-password-and-login-protection)).
+Change it in the web UI under *Settings → Security*. If you are locked out, run `syncyomi reset-password --config <config dir>` (see [Operations](docs/operations.md#web-ui-password-and-login-protection)). To sign in with passkeys, set `webauthnOrigin` in `config.toml`.
 
 #### Configuration for Reverse Proxy Users
 

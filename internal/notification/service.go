@@ -222,6 +222,12 @@ func (s *service) Test(ctx context.Context, notification domain.Notification) er
 			Timestamp: time.Now(),
 		},
 		{
+			Subject:   "Passkey added",
+			Message:   "A passkey named Laptop was added for the web UI",
+			Event:     domain.NotificationEventPasskeyAdded,
+			Timestamp: time.Now(),
+		},
+		{
 			Subject:   "Login blocked",
 			Message:   "Too many failed logins from 203.0.113.7; it is blocked for 15 minutes",
 			Event:     domain.NotificationEventLoginBlocked,

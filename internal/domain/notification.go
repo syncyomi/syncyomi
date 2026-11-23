@@ -77,6 +77,7 @@ const (
 	NotificationEventSyncCancelled      NotificationEvent = "SYNC_CANCELLED"
 	NotificationEventPasswordChanged    NotificationEvent = "PASSWORD_CHANGED"
 	NotificationEventLoginBlocked       NotificationEvent = "LOGIN_BLOCKED"
+	NotificationEventPasskeyAdded       NotificationEvent = "PASSKEY_ADDED"
 	NotificationEventTest               NotificationEvent = "TEST"
 )
 

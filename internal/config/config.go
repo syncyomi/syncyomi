@@ -175,6 +175,19 @@ sessionSecret = "{{ .sessionSecret }}"
 # Sync clients are not browsers and need nothing.
 #
 #corsAllowedOrigins = []
+
+# Passkeys
+#
+# Default: off
+#
+# Set webauthnOrigin to the exact address people use to open SyncYomi to allow
+# signing in with passkeys, for example "https://sync.example.com". It must be a
+# domain name served over https (plain http only works for localhost) and
+# passkeys only work through this address: if the domain changes, passkeys have
+# to be added again. webauthnRpName is the name shown by the browser prompt.
+#
+#webauthnOrigin = ""
+#webauthnRpName = "SyncYomi"
 `
 
 func writeConfig(configPath string, configFile string) error {
@@ -304,6 +317,8 @@ func (c *AppConfig) defaults() {
 
 		SyncMaxBodySizeMB: 64,
 		SyncHistoryLimit:  10,
+
+		WebauthnRpName: defaultWebauthnRpName,
 	}
 }
 
@@ -334,6 +349,15 @@ func (c *AppConfig) load(configPath string) {
 		log.Fatalf("Could not unmarshal config file: %v", viper.ConfigFileUsed())
 	}
 
+	origin, err := normalizeWebauthnOrigin(c.Config.WebauthnOrigin)
+	if err != nil {
+		log.Fatalf("Invalid configuration in %v: %v", viper.ConfigFileUsed(), err)
+	}
+	c.Config.WebauthnOrigin = origin
+	if strings.TrimSpace(c.Config.WebauthnRpName) == "" {
+		c.Config.WebauthnRpName = defaultWebauthnRpName
+	}
+
 	origins, err := NormalizeOrigins(c.Config.CorsAllowedOrigins)
 	if err != nil {
 		log.Fatalf("Invalid configuration in %v: %v", viper.ConfigFileUsed(), err)
@@ -346,8 +370,9 @@ func (c *AppConfig) load(configPath string) {
 }
 
 const (
-	legacySessionSecret = "secret-session-key"
-	sessionSecretBytes  = 32
+	defaultWebauthnRpName = "SyncYomi"
+	legacySessionSecret   = "secret-session-key"
+	sessionSecretBytes    = 32
 )
 
 func (c *AppConfig) ensureSessionSecret() bool {

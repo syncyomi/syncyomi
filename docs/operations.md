@@ -12,6 +12,8 @@
 | `sessionSecret` | generated | signs the web UI session cookie; generated and written to `config.toml` on start when the key is missing or still the old placeholder |
 | `secureCookie` | `false` | mark the session cookie `Secure`; enable only behind HTTPS |
 | `corsAllowedOrigins` | empty | origins (`scheme://host[:port]`, no path, default ports dropped) of pages on the same site, such as another port or a subdomain, that may send the web UI session cookie; every other origin can still make requests without credentials |
+| `webauthnOrigin` | empty | the exact address people use to open SyncYomi (for example `https://sync.example.com`); setting it turns passkeys on. Needs a domain name over https (plain http only for `localhost`) |
+| `webauthnRpName` | `SyncYomi` | name shown by the browser's passkey prompt |
 | `logLevel` | `DEBUG` | `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE` |
 | `logPath` | empty | log file path; empty logs to stdout only |
 | `logMaxSize`, `logMaxBackups` | `50`, `3` | log rotation (MB, files) |
@@ -57,7 +59,8 @@ The same view shows which devices have synced with the key, when they were last 
   ```
 
   It never takes the password as an argument or environment variable (those end up in shell history and process lists), works for both SQLite and PostgreSQL (it uses the database from `config.toml`), and refuses to run until the account exists. The new password follows the same rules as in the UI (at least 8 characters, at most 1024 bytes), which also apply when the account is first created. This does not send a *Password Changed* notification.
-- **Notifications:** the *Password Changed* and *Login Blocked* events can be enabled per notification target. *Login Blocked* is sent once when an address becomes blocked, not on every refused attempt.
+- **Passkeys** let you sign in without typing the password. Set `webauthnOrigin` to the exact address you use (a domain name served over https, or `http://localhost:<port>` for local use) and restart. Registering a passkey asks for the current password, and the password keeps working. Changing the password keeps passkeys unless the request sets `revoke_passkeys`. Passkeys are bound to that domain: if the address changes, add them again. They cannot work on a plain `http://IP:port` address, because browsers only offer passkeys on secure origins. A failed passkey sign-in counts towards the same limit as a wrong password. `reset-password` removes every passkey, since a lockout reset may follow a compromise; add `--keep-passkeys` to keep them.
+- **Notifications:** the *Password Changed* and *Login Blocked* events can be enabled per notification target. *Login Blocked* is sent once when an address becomes blocked, not on every refused attempt. *Passkey Added* is sent when a passkey is registered.
 
 ## Notifications
 
@@ -94,6 +97,7 @@ Authorization: Bearer <token>        (only when a token is set)
 - Web UI sessions now carry a stamp of the current password, so changing the password signs every other session out. Sessions created before the upgrade have no stamp: everyone signs in once after updating.
 - Cross-origin browser requests no longer carry the web UI session cookie unless the page's origin is listed in `corsAllowedOrigins`. Before, any page on the same site (another port, a sibling subdomain) could send credentialed requests to the API; the `SameSite` cookie already kept other sites out. Same-origin use, the sync clients and requests that use an API key are unaffected; if you serve another page on your site that talks to the API with the session cookie, add its origin to the list.
 - Passwords are hashed with the RFC 9106 memory-constrained Argon2id profile (3 passes, 64 MiB, 4 lanes), about three times the CPU of before. Existing hashes keep working and are upgraded silently at the next successful login, without signing anyone out. A schema migration adds `users.password_stamp`; as with every migration, an older binary refuses to start on the upgraded database, so back it up before upgrading if you may need to roll back.
+- Signing in with passkeys is new and off by default; it only turns on when you set `webauthnOrigin`. It adds a `passkeys` table (another schema migration). `reset-password` now also removes passkeys unless you pass `--keep-passkeys`.
 
 ### 1.6.0
 

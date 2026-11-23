@@ -145,10 +145,25 @@ func (l bufferLogger) With() zerolog.Context         { return l.Logger.With() }
 func (l bufferLogger) RegisterSSEWriter(*sse.Server) {}
 func (l bufferLogger) SetLogLevel(string)            {}
 
+type fakeRevoker struct {
+	calls  int
+	err    error
+	onCall func()
+}
+
+func (f *fakeRevoker) DeleteAll(context.Context) (int, error) {
+	f.calls++
+	if f.onCall != nil {
+		f.onCall()
+	}
+	return 0, f.err
+}
+
 type fixture struct {
 	svc      *service
 	users    *fakeUsers
 	notifier *fakeNotifier
+	revoker  *fakeRevoker
 	logs     *bytes.Buffer
 }
 
@@ -171,13 +186,15 @@ func newFixtureWithParams(t *testing.T, withUser bool, params, legacyParams *arg
 
 	logs := &bytes.Buffer{}
 	notifier := &fakeNotifier{}
+	revoker := &fakeRevoker{}
 
-	svc := newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots, time.Second, params, legacyParams)
+	svc := newService(bufferLogger{zerolog.New(logs)}, users, notifier, revoker, hashSlots, time.Second, params, legacyParams)
 
 	return &fixture{
 		svc:      svc,
 		users:    users,
 		notifier: notifier,
+		revoker:  revoker,
 		logs:     logs,
 	}
 }
@@ -204,7 +221,7 @@ func TestService_ChangePassword(t *testing.T) {
 	t.Run("stores a hash of the new password and notifies", func(t *testing.T) {
 		f := newFixture(t, true)
 
-		err := f.svc.ChangePassword(ctx, oldPassword, newPassword)
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword})
 
 		if err != nil {
 			t.Fatalf("ChangePassword() error = %v", err)
@@ -222,7 +239,7 @@ func TestService_ChangePassword(t *testing.T) {
 		f := newFixture(t, true)
 		before := f.users.storedHash()
 
-		err := f.svc.ChangePassword(ctx, "not-the-password", newPassword)
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: "not-the-password", Next: newPassword})
 
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("ChangePassword() error = %v, want ErrInvalidCredentials", err)
@@ -238,7 +255,7 @@ func TestService_ChangePassword(t *testing.T) {
 	t.Run("rejects an empty current password", func(t *testing.T) {
 		f := newFixture(t, true)
 
-		err := f.svc.ChangePassword(ctx, "", newPassword)
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: "", Next: newPassword})
 
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("ChangePassword() error = %v, want ErrInvalidCredentials", err)
@@ -249,7 +266,7 @@ func TestService_ChangePassword(t *testing.T) {
 		for _, next := range []string{"", "short", "1234567"} {
 			f := newFixture(t, true)
 
-			err := f.svc.ChangePassword(ctx, oldPassword, next)
+			err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: next})
 
 			if !errors.Is(err, ErrPasswordTooShort) {
 				t.Errorf("ChangePassword(%q) error = %v, want ErrPasswordTooShort", next, err)
@@ -263,7 +280,7 @@ func TestService_ChangePassword(t *testing.T) {
 	t.Run("counts characters, not bytes, for the minimum length", func(t *testing.T) {
 		f := newFixture(t, true)
 
-		err := f.svc.ChangePassword(ctx, oldPassword, "密码很短")
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: "密码很短"})
 
 		if !errors.Is(err, ErrPasswordTooShort) {
 			t.Errorf("ChangePassword() error = %v, want ErrPasswordTooShort for 4 characters (12 bytes)", err)
@@ -273,7 +290,7 @@ func TestService_ChangePassword(t *testing.T) {
 	t.Run("rejects a new password that is too long", func(t *testing.T) {
 		f := newFixture(t, true)
 
-		err := f.svc.ChangePassword(ctx, oldPassword, strings.Repeat("a", MaxPasswordBytes+1))
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: strings.Repeat("a", MaxPasswordBytes+1)})
 
 		if !errors.Is(err, ErrPasswordTooLong) {
 			t.Errorf("ChangePassword() error = %v, want ErrPasswordTooLong", err)
@@ -283,7 +300,7 @@ func TestService_ChangePassword(t *testing.T) {
 	t.Run("fails when no user exists", func(t *testing.T) {
 		f := newFixture(t, false)
 
-		err := f.svc.ChangePassword(ctx, oldPassword, newPassword)
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword})
 
 		if !errors.Is(err, ErrNoUser) {
 			t.Errorf("ChangePassword() error = %v, want ErrNoUser", err)
@@ -296,7 +313,7 @@ func TestService_ChangePassword(t *testing.T) {
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
 
-		err := f.svc.ChangePassword(cancelled, oldPassword, newPassword)
+		err := f.svc.ChangePassword(cancelled, PasswordChange{Current: oldPassword, Next: newPassword})
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("ChangePassword() error = %v, want context.Canceled", err)
@@ -310,14 +327,121 @@ func TestService_ChangePassword(t *testing.T) {
 		f := newFixture(t, true)
 		original := f.users.storedHash()
 
-		_ = f.svc.ChangePassword(ctx, "wrong-current-pw", newPassword)
-		_ = f.svc.ChangePassword(ctx, oldPassword, newPassword)
+		_ = f.svc.ChangePassword(ctx, PasswordChange{Current: "wrong-current-pw", Next: newPassword})
+		_ = f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword})
 		_, _ = f.svc.Login(ctx, "admin", "wrong-login-pw")
 
 		for _, secret := range []string{"wrong-current-pw", oldPassword, newPassword, "wrong-login-pw", original, f.users.storedHash()} {
 			if strings.Contains(f.logs.String(), secret) {
 				t.Errorf("log output contains secret %q: %s", secret, f.logs.String())
 			}
+		}
+	})
+}
+
+func TestService_ChangePasswordRevokingPasskeys(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("removes the passkeys before storing the new password when asked", func(t *testing.T) {
+		f := newFixture(t, true)
+		hashWhenRevoked := ""
+		f.revoker.onCall = func() { hashWhenRevoked = f.users.storedHash() }
+		original := f.users.storedHash()
+
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword, RevokePasskeys: true})
+
+		if err != nil || f.revoker.calls != 1 {
+			t.Fatalf("error = %v, revoke calls = %d, want success and one revocation", err, f.revoker.calls)
+		}
+		if hashWhenRevoked != original || f.users.storedHash() == original {
+			t.Error("passkeys must be removed before the password is replaced, and the password must then change")
+		}
+	})
+
+	t.Run("hashes the new password before removing the passkeys", func(t *testing.T) {
+		f := newFixture(t, true)
+		f.revoker.onCall = func() { saturateHashSlots(t, f) }
+		original := f.users.storedHash()
+
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword, RevokePasskeys: true})
+
+		if err != nil || f.users.storedHash() == original {
+			t.Errorf("error = %v, password changed = %v, want the change to finish once the passkeys are gone", err, f.users.storedHash() != original)
+		}
+	})
+
+	t.Run("leaves the passkeys alone by default", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		if err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword}); err != nil {
+			t.Fatal(err)
+		}
+
+		if f.revoker.calls != 0 {
+			t.Errorf("revoke calls = %d, want 0", f.revoker.calls)
+		}
+	})
+
+	t.Run("does not touch the passkeys when the current password is wrong", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: "wrong-current-pw", Next: newPassword, RevokePasskeys: true})
+
+		if !errors.Is(err, ErrInvalidCredentials) || f.revoker.calls != 0 {
+			t.Errorf("error = %v, revoke calls = %d, want ErrInvalidCredentials and no revocation", err, f.revoker.calls)
+		}
+	})
+
+	t.Run("keeps the old password when the passkeys cannot be removed", func(t *testing.T) {
+		f := newFixture(t, true)
+		f.revoker.err = errors.New("database is read-only")
+		original := f.users.storedHash()
+
+		err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword, RevokePasskeys: true})
+
+		if err == nil || f.users.storedHash() != original || len(f.notifier.sent()) != 0 {
+			t.Errorf("error = %v, hash changed = %v, want a failure with the password untouched", err, f.users.storedHash() != original)
+		}
+	})
+}
+
+func TestService_VerifyCurrentPassword(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("accepts the current password", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		if err := f.svc.VerifyCurrentPassword(ctx, oldPassword); err != nil {
+			t.Errorf("VerifyCurrentPassword() error = %v", err)
+		}
+	})
+
+	t.Run("rejects a wrong or empty password", func(t *testing.T) {
+		for _, password := range []string{"wrong-password-1", "", strings.Repeat("a", MaxPasswordBytes+1)} {
+			f := newFixture(t, true)
+
+			if err := f.svc.VerifyCurrentPassword(ctx, password); !errors.Is(err, ErrInvalidCredentials) {
+				t.Errorf("VerifyCurrentPassword(%d bytes) error = %v, want ErrInvalidCredentials", len(password), err)
+			}
+		}
+	})
+
+	t.Run("fails when no user exists", func(t *testing.T) {
+		f := newFixture(t, false)
+
+		if err := f.svc.VerifyCurrentPassword(ctx, oldPassword); !errors.Is(err, ErrNoUser) {
+			t.Errorf("VerifyCurrentPassword() error = %v, want ErrNoUser", err)
+		}
+	})
+
+	t.Run("does not change the stored password or notify", func(t *testing.T) {
+		f := newFixture(t, true)
+		before := f.users.storedHash()
+
+		_ = f.svc.VerifyCurrentPassword(ctx, oldPassword)
+
+		if f.users.storedHash() != before || len(f.notifier.sent()) != 0 {
+			t.Error("VerifyCurrentPassword changed the password or sent a notification")
 		}
 	})
 }
@@ -383,7 +507,7 @@ func TestService_CurrentPasswordStamp(t *testing.T) {
 			t.Fatalf("CurrentPasswordStamp() error = %v", err)
 		}
 
-		if err := f.svc.ChangePassword(ctx, oldPassword, newPassword); err != nil {
+		if err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword}); err != nil {
 			t.Fatalf("ChangePassword() error = %v", err)
 		}
 		after, err := f.svc.CurrentPasswordStamp(ctx)
@@ -614,7 +738,7 @@ func TestPolicyMessage(t *testing.T) {
 }
 
 func TestNewService_defaultsToTheRFC9106Profile(t *testing.T) {
-	s := NewService(bufferLogger{zerolog.New(&bytes.Buffer{})}, &fakeUsers{}, &fakeNotifier{}).(*service)
+	s := NewService(bufferLogger{zerolog.New(&bytes.Buffer{})}, &fakeUsers{}, &fakeNotifier{}, &fakeRevoker{}).(*service)
 
 	if s.params != argon2id.DefaultParams || s.legacyParams != argon2id.LegacyParams {
 		t.Errorf("params = %+v, legacy = %+v, want the package defaults", s.params, s.legacyParams)
@@ -712,7 +836,7 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 	t.Run("does not rehash while verifying a password change", func(t *testing.T) {
 		f := newFixtureWithParams(t, true, strongParams, testParams)
 
-		if err := f.svc.ChangePassword(ctx, oldPassword, newPassword); err != nil {
+		if err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword}); err != nil {
 			t.Fatalf("ChangePassword() error = %v", err)
 		}
 
@@ -743,7 +867,7 @@ func TestService_StampsRotateOnExplicitPasswordSets(t *testing.T) {
 		first, _ := f.svc.CurrentPasswordStamp(ctx)
 		seen[first] = true
 
-		if err := f.svc.ChangePassword(ctx, oldPassword, newPassword); err != nil {
+		if err := f.svc.ChangePassword(ctx, PasswordChange{Current: oldPassword, Next: newPassword}); err != nil {
 			t.Fatal(err)
 		}
 		second, _ := f.svc.CurrentPasswordStamp(ctx)

@@ -16,6 +16,7 @@ import (
 	"github.com/SyncYomi/SyncYomi/internal/http"
 	"github.com/SyncYomi/SyncYomi/internal/logger"
 	"github.com/SyncYomi/SyncYomi/internal/notification"
+	"github.com/SyncYomi/SyncYomi/internal/passkey"
 	"github.com/SyncYomi/SyncYomi/internal/scheduler"
 	"github.com/SyncYomi/SyncYomi/internal/server"
 	"github.com/SyncYomi/SyncYomi/internal/sync"
@@ -37,6 +38,8 @@ var (
 func main() {
 	var configPath string
 	pflag.StringVar(&configPath, "config", "", "path to configuration file")
+	var keepPasskeys bool
+	pflag.BoolVar(&keepPasskeys, "keep-passkeys", false, "reset-password: keep registered passkeys instead of removing them")
 	pflag.Parse()
 
 	command := pflag.Arg(0)
@@ -79,6 +82,7 @@ func main() {
 		apikeyRepo       = database.NewAPIRepo(log, db)
 		notificationRepo = database.NewNotificationRepo(log, db)
 		userRepo         = database.NewUserRepo(log, db)
+		passkeyRepo      = database.NewPasskeyRepo(log, db)
 		syncRepo         = database.NewSyncRepo(log, db, cfg.Config.SyncHistoryLimit)
 		syncStore        = database.NewSyncStore(log, db, cfg.Config.SyncHistoryLimit)
 	)
@@ -90,12 +94,18 @@ func main() {
 		updateService       = update.NewUpdate(log, cfg.Config)
 		schedulingService   = scheduler.NewService(log, cfg.Config, notificationService, updateService)
 		userService         = user.NewService(userRepo)
-		authService         = auth.NewService(log, userService, notificationService)
 		syncService         = sync.NewService(log, syncRepo, syncStore, notificationService, apikeyRepo)
 	)
 
+	passkeyService, err := passkey.NewService(log, passkey.Config{Origin: cfg.Config.WebauthnOrigin, RPName: cfg.Config.WebauthnRpName}, passkeyRepo, userService, notificationService)
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not set up passkeys")
+	}
+
+	authService := auth.NewService(log, userService, notificationService, passkeyService)
+
 	if command == resetPasswordCommand {
-		exitCode := cli.RunResetPassword(context.Background(), authService, os.Stdin, os.Stdout, os.Stderr)
+		exitCode := cli.RunResetPassword(context.Background(), cli.Reset{Passwords: authService, Passkeys: passkeyService, KeepPasskeys: keepPasskeys}, os.Stdin, os.Stdout, os.Stderr)
 		if err := db.Close(); err != nil {
 			log.Error().Err(err).Msg("could not close db connection")
 		}
@@ -108,6 +118,9 @@ func main() {
 	log.Info().Msgf("Build date: %s", date)
 	log.Info().Msgf("Log-level: %s", cfg.Config.LogLevel)
 	log.Info().Msgf("Using database: %s", db.Driver)
+	if passkeyService.Enabled() {
+		log.Info().Msgf("Passkeys enabled for %s", cfg.Config.WebauthnOrigin)
+	}
 
 	// register event subscribers
 	events.NewSubscribers(log, bus, notificationService)
@@ -128,6 +141,7 @@ func main() {
 			notificationService,
 			updateService,
 			syncService,
+			passkeyService,
 		)
 		errorChannel <- httpServer.Open()
 	}()
