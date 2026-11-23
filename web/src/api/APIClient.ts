@@ -80,6 +80,11 @@ export const APIClient = {
         password: password,
       }),
     canOnboard: () => appClient.Get("api/auth/onboard"),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      appClient.Post("api/auth/password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
   },
   apikeys: {
     getAll: () => appClient.Get<APIKey[]>("api/keys"),

@@ -11,24 +11,29 @@
           :grow="!isDesktop"
           color="primary"
         >
-          <v-tab value="option-1">
+          <v-tab :min-width="tabMinWidth" value="option-1">
             <v-icon start> mdi-application</v-icon>
             <span v-if="isDesktop"> Application </span>
           </v-tab>
 
-          <v-tab value="option-2">
+          <v-tab :min-width="tabMinWidth" value="option-2">
             <v-icon start> mdi-file-document-outline</v-icon>
             <span v-if="isDesktop"> Logs </span>
           </v-tab>
 
-          <v-tab value="option-3">
+          <v-tab :min-width="tabMinWidth" value="option-3">
             <v-icon start> mdi-bell-outline</v-icon>
             <span v-if="isDesktop"> Notifications </span>
           </v-tab>
 
-          <v-tab value="option-4">
+          <v-tab :min-width="tabMinWidth" value="option-4">
             <v-icon start> mdi-key</v-icon>
             <span v-if="isDesktop">Api Keys </span>
+          </v-tab>
+
+          <v-tab :min-width="tabMinWidth" value="option-5">
+            <v-icon start> mdi-lock-outline</v-icon>
+            <span v-if="isDesktop">Security </span>
           </v-tab>
         </v-tabs>
 
@@ -49,6 +54,10 @@
             <v-window-item value="option-4">
               <ApiKeySettings />
             </v-window-item>
+
+            <v-window-item value="option-5">
+              <PasswordSettings />
+            </v-window-item>
           </v-window>
         </v-container>
       </div>
@@ -64,6 +73,7 @@ import { computed, ref, watchEffect } from "vue";
 import { useDisplay } from "vuetify";
 import NotificationSettings from "@/components/settings/NotificationSettings.vue";
 import ApiKeySettings from "@/components/settings/ApiKeySettings.vue";
+import PasswordSettings from "@/components/settings/PasswordSettings.vue";
 
 const tab = ref("option-1");
 const toolbarTitle = ref("User Profile");
@@ -72,6 +82,11 @@ const { width } = useDisplay();
 const isDesktop = computed(() => {
   return width.value > 700;
 });
+
+const MOBILE_TAB_MIN_WIDTH = 48;
+const tabMinWidth = computed(() =>
+  isDesktop.value ? undefined : MOBILE_TAB_MIN_WIDTH,
+);
 
 // use watchEffect to switch toolbar title based on tab value.
 watchEffect(() => {
@@ -87,6 +102,9 @@ watchEffect(() => {
       break;
     case "option-4":
       toolbarTitle.value = "Api Keys";
+      break;
+    case "option-5":
+      toolbarTitle.value = "Security";
       break;
   }
 });

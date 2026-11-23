@@ -12,7 +12,7 @@ vi.mock("@/router", () => ({
   },
 }));
 
-import { HttpClient } from "./APIClient";
+import { APIClient, HttpClient } from "./APIClient";
 import { useAuthStore } from "@/store/auth/authStore";
 
 const mockResponse = (init: {
@@ -79,5 +79,48 @@ describe("HttpClient", () => {
     );
 
     await expect(HttpClient("api/thing", "GET")).rejects.toThrow("boom");
+  });
+});
+
+describe("APIClient.auth.changePassword", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.stubGlobal("window", {
+      APP: { baseUrl: "/" },
+      fetch: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts both passwords as JSON to the password endpoint", async () => {
+    window.fetch = vi
+      .fn()
+      .mockResolvedValue(mockResponse({ ok: true, status: 204 }));
+
+    await APIClient.auth.changePassword("old-password", "new-password-1");
+
+    expect(window.fetch).toHaveBeenCalledWith(
+      "/api/auth/password",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          current_password: "old-password",
+          new_password: "new-password-1",
+        }),
+      })
+    );
+  });
+
+  it("surfaces the server's reason when the current password is wrong", async () => {
+    window.fetch = vi.fn().mockResolvedValue(
+      mockResponse({ ok: false, status: 403, text: "Current password is incorrect" })
+    );
+
+    await expect(
+      APIClient.auth.changePassword("wrong", "new-password-1")
+    ).rejects.toThrow("Current password is incorrect");
   });
 });
