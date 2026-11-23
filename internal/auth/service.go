@@ -39,6 +39,7 @@ type Service interface {
 	Login(ctx context.Context, username, password string) (*domain.User, error)
 	CreateUser(ctx context.Context, username, password string) error
 	ChangePassword(ctx context.Context, current, next string) error
+	VerifyCurrentPassword(ctx context.Context, password string) error
 	ResetPassword(ctx context.Context, next string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
 	NotifyLoginBlocked(client string)
@@ -151,6 +152,23 @@ func (s *service) ChangePassword(ctx context.Context, current, next string) erro
 		Event:     domain.NotificationEventPasswordChanged,
 		Timestamp: time.Now(),
 	})
+
+	return nil
+}
+
+func (s *service) VerifyCurrentPassword(ctx context.Context, password string) error {
+	u, err := s.onlyUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	match, err := s.passwordMatches(ctx, password, u.Password)
+	if err != nil {
+		return err
+	}
+	if !match {
+		return ErrInvalidCredentials
+	}
 
 	return nil
 }

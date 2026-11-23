@@ -322,6 +322,47 @@ func TestService_ChangePassword(t *testing.T) {
 	})
 }
 
+func TestService_VerifyCurrentPassword(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("accepts the current password", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		if err := f.svc.VerifyCurrentPassword(ctx, oldPassword); err != nil {
+			t.Errorf("VerifyCurrentPassword() error = %v", err)
+		}
+	})
+
+	t.Run("rejects a wrong or empty password", func(t *testing.T) {
+		for _, password := range []string{"wrong-password-1", "", strings.Repeat("a", MaxPasswordBytes+1)} {
+			f := newFixture(t, true)
+
+			if err := f.svc.VerifyCurrentPassword(ctx, password); !errors.Is(err, ErrInvalidCredentials) {
+				t.Errorf("VerifyCurrentPassword(%d bytes) error = %v, want ErrInvalidCredentials", len(password), err)
+			}
+		}
+	})
+
+	t.Run("fails when no user exists", func(t *testing.T) {
+		f := newFixture(t, false)
+
+		if err := f.svc.VerifyCurrentPassword(ctx, oldPassword); !errors.Is(err, ErrNoUser) {
+			t.Errorf("VerifyCurrentPassword() error = %v, want ErrNoUser", err)
+		}
+	})
+
+	t.Run("does not change the stored password or notify", func(t *testing.T) {
+		f := newFixture(t, true)
+		before := f.users.storedHash()
+
+		_ = f.svc.VerifyCurrentPassword(ctx, oldPassword)
+
+		if f.users.storedHash() != before || len(f.notifier.sent()) != 0 {
+			t.Error("VerifyCurrentPassword changed the password or sent a notification")
+		}
+	})
+}
+
 func TestService_ResetPassword(t *testing.T) {
 	ctx := context.Background()
 
