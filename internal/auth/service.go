@@ -34,11 +34,21 @@ const (
 	stampBytes        = 8
 )
 
+type PasswordChange struct {
+	Current        string
+	Next           string
+	RevokePasskeys bool
+}
+
+type PasskeyRevoker interface {
+	DeleteAll(ctx context.Context) (int, error)
+}
+
 type Service interface {
 	GetUserCount(ctx context.Context) (int, error)
 	Login(ctx context.Context, username, password string) (*domain.User, error)
 	CreateUser(ctx context.Context, username, password string) error
-	ChangePassword(ctx context.Context, current, next string) error
+	ChangePassword(ctx context.Context, change PasswordChange) error
 	VerifyCurrentPassword(ctx context.Context, password string) error
 	ResetPassword(ctx context.Context, next string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
@@ -53,6 +63,7 @@ type service struct {
 	log      zerolog.Logger
 	userSvc  user.Service
 	notifier notifier
+	passkeys PasskeyRevoker
 	slots    *semaphore.Weighted
 	slotWait time.Duration
 
@@ -67,15 +78,16 @@ type dummyHash struct {
 	hash   string
 }
 
-func NewService(log logger.Logger, userSvc user.Service, notifier notifier) Service {
-	return newService(log, userSvc, notifier, hashSlots, hashSlotWait, argon2id.DefaultParams, argon2id.LegacyParams)
+func NewService(log logger.Logger, userSvc user.Service, notifier notifier, passkeys PasskeyRevoker) Service {
+	return newService(log, userSvc, notifier, passkeys, hashSlots, hashSlotWait, argon2id.DefaultParams, argon2id.LegacyParams)
 }
 
-func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int, slotWait time.Duration, params, legacyParams *argon2id.Params) *service {
+func newService(log logger.Logger, userSvc user.Service, notifier notifier, passkeys PasskeyRevoker, slots int, slotWait time.Duration, params, legacyParams *argon2id.Params) *service {
 	s := &service{
 		log:      log.With().Str("module", "auth").Logger(),
 		userSvc:  userSvc,
 		notifier: notifier,
+		passkeys: passkeys,
 		slots:    semaphore.NewWeighted(int64(slots)),
 		slotWait: slotWait,
 
@@ -124,8 +136,8 @@ func (s *service) dummyHashFor(ctx context.Context) string {
 	return s.dummies[0].hash
 }
 
-func (s *service) ChangePassword(ctx context.Context, current, next string) error {
-	if err := validateNewPassword(next); err != nil {
+func (s *service) ChangePassword(ctx context.Context, change PasswordChange) error {
+	if err := validateNewPassword(change.Next); err != nil {
 		return err
 	}
 
@@ -134,15 +146,17 @@ func (s *service) ChangePassword(ctx context.Context, current, next string) erro
 		return err
 	}
 
-	match, err := s.passwordMatches(ctx, current, u.Password)
-	if err != nil {
+	if err := s.checkPassword(ctx, u, change.Current); err != nil {
 		return err
 	}
-	if !match {
-		return ErrInvalidCredentials
+
+	if change.RevokePasskeys {
+		if _, err := s.passkeys.DeleteAll(ctx); err != nil {
+			return errors.Wrap(err, "remove passkeys")
+		}
 	}
 
-	if err := s.storePassword(ctx, u.ID, next); err != nil {
+	if err := s.storePassword(ctx, u.ID, change.Next); err != nil {
 		return err
 	}
 
@@ -162,6 +176,10 @@ func (s *service) VerifyCurrentPassword(ctx context.Context, password string) er
 		return err
 	}
 
+	return s.checkPassword(ctx, u, password)
+}
+
+func (s *service) checkPassword(ctx context.Context, u *domain.User, password string) error {
 	match, err := s.passwordMatches(ctx, password, u.Password)
 	if err != nil {
 		return err

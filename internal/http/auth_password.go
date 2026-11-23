@@ -14,6 +14,7 @@ const sessionRefreshFailed = "Password changed, but the session could not be ref
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+	RevokePasskeys  bool   `json:"revoke_passkeys"`
 }
 
 func (h authHandler) changePassword(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +34,11 @@ func (h authHandler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.ChangePassword(r.Context(), data.CurrentPassword, data.NewPassword)
+	err := h.service.ChangePassword(r.Context(), auth.PasswordChange{
+		Current:        data.CurrentPassword,
+		Next:           data.NewPassword,
+		RevokePasskeys: data.RevokePasskeys,
+	})
 	switch {
 	case err == nil:
 		h.limiter.clear(client)

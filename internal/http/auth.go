@@ -20,7 +20,8 @@ type authService interface {
 	Login(ctx context.Context, username, password string) (*domain.User, error)
 	CreateUser(ctx context.Context, username, password string) error
 	CurrentPasswordStamp(ctx context.Context) (string, error)
-	ChangePassword(ctx context.Context, current, next string) error
+	ChangePassword(ctx context.Context, change auth.PasswordChange) error
+	VerifyCurrentPassword(ctx context.Context, password string) error
 	NotifyLoginBlocked(client string)
 }
 

@@ -308,3 +308,28 @@ func TestServer_EventStreamDoesNotWarnWhenTheClientLeavesMidRecheck(t *testing.T
 		t.Errorf("log output = %q, want no warning for a re-check cancelled by the client leaving", got)
 	}
 }
+
+func TestServer_HandlerServesPasskeyCapabilitiesWithoutASession(t *testing.T) {
+	handler := newRoutingTestServer().Handler()
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/capabilities", nil))
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"passkeys":false`) {
+		t.Errorf("status = %d, body = %q, want 200 with passkeys false when none are configured", rec.Code, rec.Body.String())
+	}
+}
+
+func TestServer_HandlerKeepsPasskeyManagementBehindTheSession(t *testing.T) {
+	s := newRoutingTestServer()
+	s.passkeyService = &mockPasskeyService{enabled: true}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/passkeys", nil)
+	req.Header.Set("X-API-Token", routingTestKey)
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/auth/passkeys with only an API key = %d, want 401", rec.Code)
+	}
+}

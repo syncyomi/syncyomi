@@ -29,9 +29,11 @@ type mockAuthService struct {
 	stamp        string
 	stampErr     error
 	changeErr    error
-	changeCalls  [][2]string
+	changeCalls  []auth.PasswordChange
 	blocked      []string
 	loginCalls   int
+	verifyErr    error
+	verifyCalls  []string
 }
 
 func (m *mockAuthService) GetUserCount(ctx context.Context) (int, error) {
@@ -53,8 +55,8 @@ func (m *mockAuthService) CurrentPasswordStamp(ctx context.Context) (string, err
 	return m.stamp, m.stampErr
 }
 
-func (m *mockAuthService) ChangePassword(ctx context.Context, current, next string) error {
-	m.changeCalls = append(m.changeCalls, [2]string{current, next})
+func (m *mockAuthService) ChangePassword(ctx context.Context, change auth.PasswordChange) error {
+	m.changeCalls = append(m.changeCalls, change)
 	if m.changeErr != nil {
 		return m.changeErr
 	}
@@ -64,6 +66,11 @@ func (m *mockAuthService) ChangePassword(ctx context.Context, current, next stri
 
 func (m *mockAuthService) NotifyLoginBlocked(client string) {
 	m.blocked = append(m.blocked, client)
+}
+
+func (m *mockAuthService) VerifyCurrentPassword(ctx context.Context, password string) error {
+	m.verifyCalls = append(m.verifyCalls, password)
+	return m.verifyErr
 }
 
 func (m *mockAuthService) CreateUser(ctx context.Context, username, password string) error {
@@ -432,7 +439,7 @@ func TestAuthHandler_changePassword(t *testing.T) {
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("changePassword() status = %v, want %v", rec.Code, http.StatusNoContent)
 		}
-		if len(mock.changeCalls) != 1 || mock.changeCalls[0] != [2]string{current, next} {
+		if len(mock.changeCalls) != 1 || mock.changeCalls[0] != (auth.PasswordChange{Current: current, Next: next}) {
 			t.Errorf("ChangePassword calls = %v, want one call with the submitted passwords", mock.changeCalls)
 		}
 		if got := validate(r, rec.Header().Get("Set-Cookie")); got != http.StatusNoContent {
