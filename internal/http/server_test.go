@@ -1,9 +1,13 @@
 package http
 
 import (
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/SyncYomi/SyncYomi/internal/config"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
@@ -112,5 +116,64 @@ func TestServer_HandlerServesSyncRoutesToAPIKey(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("got status %v, want %v", rec.Code, http.StatusOK)
+	}
+}
+
+type switchableStamp struct {
+	*mockAuthService
+	mu    sync.Mutex
+	stamp string
+}
+
+func (s *switchableStamp) CurrentPasswordStamp(context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stamp, nil
+}
+
+func (s *switchableStamp) set(stamp string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stamp = stamp
+}
+
+func TestServer_EventStreamEndsWhenThePasswordChanges(t *testing.T) {
+	auth := &switchableStamp{mockAuthService: &mockAuthService{}, stamp: currentStamp}
+	s := newRoutingTestServer()
+	s.authService = auth
+	s.streamRecheckInterval = 10 * time.Millisecond
+	s.sse.CreateStream("logs")
+	cookie := authedSessionCookie(t, s)
+	server := httptest.NewServer(s.Handler())
+	t.Cleanup(server.Close)
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/events?stream=logs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Cookie", cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	ended := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		close(ended)
+	}()
+
+	select {
+	case <-ended:
+		t.Fatal("stream ended while the session was still valid")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	auth.set("stamp-after-password-change")
+
+	select {
+	case <-ended:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream still open after the password changed")
 	}
 }
