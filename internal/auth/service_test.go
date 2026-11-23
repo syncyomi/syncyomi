@@ -21,11 +21,20 @@ const (
 	newPassword = "brand-new-pass"
 )
 
+var (
+	testParams   = &argon2id.Params{Memory: 8 * 1024, Iterations: 1, Parallelism: 2, SaltLength: 16, KeyLength: 32}
+	strongParams = &argon2id.Params{Memory: 8 * 1024, Iterations: 2, Parallelism: 2, SaltLength: 16, KeyLength: 32}
+)
+
 type fakeUsers struct {
-	mu      sync.Mutex
-	user    *domain.User
-	updates int
-	findErr error
+	mu           sync.Mutex
+	user         *domain.User
+	updates      int
+	rehashes     int
+	findErr      error
+	firstErr     error
+	rehashErr    error
+	beforeRehash func()
 }
 
 func (f *fakeUsers) GetUserCount(context.Context) (int, error) {
@@ -51,6 +60,9 @@ func (f *fakeUsers) FindByUsername(_ context.Context, username string) (*domain.
 func (f *fakeUsers) FindFirst(context.Context) (*domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.firstErr != nil {
+		return nil, f.firstErr
+	}
 	if f.user == nil {
 		return nil, nil
 	}
@@ -58,12 +70,33 @@ func (f *fakeUsers) FindFirst(context.Context) (*domain.User, error) {
 	return &copied, nil
 }
 
-func (f *fakeUsers) UpdatePassword(_ context.Context, id int, hash string) error {
+func (f *fakeUsers) UpdatePassword(_ context.Context, id int, hash, stamp string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updates++
 	f.user.Password = hash
+	f.user.Stamp = stamp
 	return nil
+}
+
+func (f *fakeUsers) RehashPassword(_ context.Context, id int, oldHash, newHash string) (bool, error) {
+	if f.beforeRehash != nil {
+		f.beforeRehash()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rehashErr != nil {
+		return false, f.rehashErr
+	}
+	if f.user.Password != oldHash {
+		return false, nil
+	}
+	f.rehashes++
+	if f.user.Stamp == "" {
+		f.user.Stamp = f.user.LegacyPasswordStamp()
+	}
+	f.user.Password = newHash
+	return true, nil
 }
 
 func (f *fakeUsers) CreateUser(_ context.Context, user domain.User) error {
@@ -121,10 +154,15 @@ type fixture struct {
 
 func newFixture(t *testing.T, withUser bool) *fixture {
 	t.Helper()
+	return newFixtureWithParams(t, withUser, testParams, testParams)
+}
+
+func newFixtureWithParams(t *testing.T, withUser bool, params, legacyParams *argon2id.Params) *fixture {
+	t.Helper()
 
 	users := &fakeUsers{}
 	if withUser {
-		hash, err := argon2id.CreateHash(oldPassword, argon2id.DefaultParams)
+		hash, err := argon2id.CreateHash(oldPassword, testParams)
 		if err != nil {
 			t.Fatalf("hash: %v", err)
 		}
@@ -134,8 +172,10 @@ func newFixture(t *testing.T, withUser bool) *fixture {
 	logs := &bytes.Buffer{}
 	notifier := &fakeNotifier{}
 
+	svc := newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots, time.Second, params, legacyParams)
+
 	return &fixture{
-		svc:      newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots, time.Second),
+		svc:      svc,
 		users:    users,
 		notifier: notifier,
 		logs:     logs,
@@ -428,6 +468,53 @@ func TestService_Login(t *testing.T) {
 		}
 	})
 
+	t.Run("falls back to the target cost when the stored hash gives no better hint", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			setup func(f *fixture)
+		}{
+			{"stored hash already at the target cost", func(f *fixture) {}},
+			{"no user yet", func(f *fixture) { f.users.user = nil }},
+			{"undecodable stored hash", func(f *fixture) { f.users.user.Password = "not-a-hash" }},
+			{"storage failure", func(f *fixture) { f.users.firstErr = errors.New("database is down") }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				f := newFixtureWithParams(t, true, strongParams, testParams)
+				f.users.user.Password = hashWith(t, oldPassword, strongParams)
+				tt.setup(f)
+				var hashedWith *argon2id.Params
+				f.svc.compareHash = func(password, hash string) (bool, error) {
+					params, _, _, err := argon2id.DecodeHash(hash)
+					hashedWith = params
+					return false, err
+				}
+
+				_, _ = f.svc.Login(ctx, "nobody", "wrong-login-pw")
+
+				if hashedWith == nil || !hashedWith.SameCost(strongParams) {
+					t.Errorf("unknown-user check used %+v, want the target cost", hashedWith)
+				}
+			})
+		}
+	})
+
+	t.Run("hashes the dummy with the cost of the stored hash while old hashes remain", func(t *testing.T) {
+		f := newFixtureWithParams(t, true, strongParams, testParams)
+		var hashedWith *argon2id.Params
+		f.svc.compareHash = func(password, hash string) (bool, error) {
+			params, _, _, err := argon2id.DecodeHash(hash)
+			hashedWith = params
+			return false, err
+		}
+
+		_, _ = f.svc.Login(ctx, "nobody", "wrong-login-pw")
+
+		if hashedWith == nil || !hashedWith.SameCost(testParams) {
+			t.Errorf("unknown-user check used %+v, want the stored hash's cost %+v", hashedWith, testParams)
+		}
+	})
+
 	t.Run("reports a busy server the same way for known and unknown usernames", func(t *testing.T) {
 		for _, username := range []string{"admin", "nobody"} {
 			f := newFixture(t, true)
@@ -524,4 +611,151 @@ func TestPolicyMessage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewService_defaultsToTheRFC9106Profile(t *testing.T) {
+	s := NewService(bufferLogger{zerolog.New(&bytes.Buffer{})}, &fakeUsers{}, &fakeNotifier{}).(*service)
+
+	if s.params != argon2id.DefaultParams || s.legacyParams != argon2id.LegacyParams {
+		t.Errorf("params = %+v, legacy = %+v, want the package defaults", s.params, s.legacyParams)
+	}
+}
+
+func hashWith(t *testing.T, password string, params *argon2id.Params) string {
+	t.Helper()
+	hash, err := argon2id.CreateHash(password, params)
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	return hash
+}
+
+func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("rehashes with the current parameters and keeps sessions valid", func(t *testing.T) {
+		f := newFixtureWithParams(t, true, strongParams, testParams)
+		stampBefore, _ := f.svc.CurrentPasswordStamp(ctx)
+
+		user, err := f.svc.Login(ctx, "admin", oldPassword)
+
+		if err != nil {
+			t.Fatalf("Login() error = %v", err)
+		}
+		stored := f.users.storedHash()
+		_, params, err := argon2id.CheckHash(oldPassword, stored)
+		if err != nil || params.Iterations != strongParams.Iterations {
+			t.Errorf("stored hash params = %+v, %v, want iterations %d", params, err, strongParams.Iterations)
+		}
+		if f.users.rehashes != 1 {
+			t.Errorf("rehashes = %d, want 1", f.users.rehashes)
+		}
+		stampAfter, _ := f.svc.CurrentPasswordStamp(ctx)
+		if stampAfter != stampBefore || user.PasswordStamp() != stampBefore {
+			t.Errorf("stamp before = %q, after = %q, returned = %q, want all equal so sessions survive", stampBefore, stampAfter, user.PasswordStamp())
+		}
+	})
+
+	t.Run("keeps the loaded user unchanged when a concurrent change wins", func(t *testing.T) {
+		f := newFixtureWithParams(t, true, strongParams, testParams)
+		original := f.users.storedHash()
+		stampBefore := f.users.user.PasswordStamp()
+		f.users.beforeRehash = func() {
+			f.users.mu.Lock()
+			f.users.user.Password = "$argon2id$changed-by-someone-else"
+			f.users.mu.Unlock()
+		}
+
+		user, err := f.svc.Login(ctx, "admin", oldPassword)
+
+		if err != nil {
+			t.Fatalf("Login() error = %v", err)
+		}
+		if user.Password != original || user.PasswordStamp() != stampBefore || f.users.rehashes != 0 {
+			t.Errorf("returned hash = %q, stamp = %q (rehashes %d), want the pre-upgrade hash %q and stamp %q untouched", user.Password, user.PasswordStamp(), f.users.rehashes, original, stampBefore)
+		}
+	})
+
+	t.Run("leaves a hash that already matches the current parameters alone", func(t *testing.T) {
+		f := newFixture(t, true)
+
+		if _, err := f.svc.Login(ctx, "admin", oldPassword); err != nil {
+			t.Fatalf("Login() error = %v", err)
+		}
+
+		if f.users.rehashes != 0 {
+			t.Errorf("rehashes = %d, want 0", f.users.rehashes)
+		}
+	})
+
+	t.Run("never rehashes after a wrong password", func(t *testing.T) {
+		f := newFixtureWithParams(t, true, strongParams, testParams)
+
+		_, _ = f.svc.Login(ctx, "admin", "wrong-login-pw")
+
+		if f.users.rehashes != 0 {
+			t.Errorf("rehashes = %d, want 0", f.users.rehashes)
+		}
+	})
+
+	t.Run("still signs in when the upgrade cannot be stored", func(t *testing.T) {
+		f := newFixtureWithParams(t, true, strongParams, testParams)
+		f.users.rehashErr = errors.New("database is read-only")
+
+		_, err := f.svc.Login(ctx, "admin", oldPassword)
+
+		if err != nil {
+			t.Errorf("Login() error = %v, want the login to succeed without the upgrade", err)
+		}
+	})
+
+	t.Run("does not rehash while verifying a password change", func(t *testing.T) {
+		f := newFixtureWithParams(t, true, strongParams, testParams)
+
+		if err := f.svc.ChangePassword(ctx, oldPassword, newPassword); err != nil {
+			t.Fatalf("ChangePassword() error = %v", err)
+		}
+
+		if f.users.rehashes != 0 {
+			t.Errorf("rehashes = %d, want 0", f.users.rehashes)
+		}
+	})
+}
+
+func TestService_StampsRotateOnExplicitPasswordSets(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("onboarding stores a random stamp", func(t *testing.T) {
+		f := newFixture(t, false)
+
+		if err := f.svc.CreateUser(ctx, "admin", newPassword); err != nil {
+			t.Fatalf("CreateUser() error = %v", err)
+		}
+
+		if got := f.users.user.Stamp; len(got) != 16 || got == f.users.user.LegacyPasswordStamp() {
+			t.Errorf("stamp = %q, want 16 random characters, not the hash-derived value", got)
+		}
+	})
+
+	t.Run("a change and a reset each issue a new stamp", func(t *testing.T) {
+		f := newFixture(t, true)
+		seen := map[string]bool{}
+		first, _ := f.svc.CurrentPasswordStamp(ctx)
+		seen[first] = true
+
+		if err := f.svc.ChangePassword(ctx, oldPassword, newPassword); err != nil {
+			t.Fatal(err)
+		}
+		second, _ := f.svc.CurrentPasswordStamp(ctx)
+		seen[second] = true
+		if err := f.svc.ResetPassword(ctx, "another-pass-99"); err != nil {
+			t.Fatal(err)
+		}
+		third, _ := f.svc.CurrentPasswordStamp(ctx)
+		seen[third] = true
+
+		if len(seen) != 3 {
+			t.Errorf("stamps %q, %q, %q: want three different values", first, second, third)
+		}
+	})
 }

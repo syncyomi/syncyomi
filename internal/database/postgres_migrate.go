@@ -6,6 +6,7 @@ CREATE TABLE users
     id         SERIAL PRIMARY KEY,
     username   TEXT NOT NULL,
     password   TEXT NOT NULL,
+    password_stamp TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (username)
@@ -306,5 +307,8 @@ ALTER TABLE sync_data ADD COLUMN raw_pending BOOLEAN NOT NULL DEFAULT FALSE;
 `,
 	`
 UPDATE sync_item SET modified_at = modified_at / 1000 WHERE modified_at >= 100000000000;
+`,
+	`
+ALTER TABLE users ADD COLUMN password_stamp TEXT NOT NULL DEFAULT '';
 `,
 }

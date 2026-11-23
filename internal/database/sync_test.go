@@ -507,6 +507,9 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := len(sqliteMigrations) - 1
+	if _, err := db.handler.Exec(`ALTER TABLE users DROP COLUMN password_stamp`); err != nil {
+		t.Fatalf("undo the last migration: %v", err)
+	}
 	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", previous)); err != nil {
 		t.Fatalf("rewind user_version: %v", err)
 	}
@@ -574,7 +577,10 @@ func TestSQLiteMigrationNormalizesModifiedAtToSeconds(t *testing.T) {
 		}
 	}
 
-	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-1)); err != nil {
+	if _, err := db.handler.Exec(`ALTER TABLE users DROP COLUMN password_stamp`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-2)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.migrateSQLite(); err != nil {
@@ -639,4 +645,30 @@ func TestSyncRepo_TimestampsAreUTC(t *testing.T) {
 		t.Fatalf("status = %v, %v", st, err)
 	}
 	check("data.updated_at", *st.DataUpdatedAt)
+}
+
+func TestSQLiteMigrationAddsThePasswordStampToExistingUsers(t *testing.T) {
+	db := newTestDB(t)
+	if _, err := db.handler.Exec(`ALTER TABLE users DROP COLUMN password_stamp`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.handler.Exec(`INSERT INTO users (username, password) VALUES ('admin', 'hash')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-1)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.migrateSQLite(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	repo := &UserRepo{log: zerolog.Nop(), db: db}
+	got, err := repo.FindFirst(context.Background())
+	if err != nil || got == nil || got.Password != "hash" || got.Stamp != "" {
+		t.Errorf("FindFirst() = %+v, %v, want the existing user with an empty stamp", got, err)
+	}
+	if got.PasswordStamp() != got.LegacyPasswordStamp() {
+		t.Error("an upgraded user must keep the legacy stamp so existing sessions stay valid")
+	}
 }
