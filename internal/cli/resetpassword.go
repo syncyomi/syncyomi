@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"golang.org/x/term"
@@ -84,7 +86,7 @@ func ResetPassword(ctx context.Context, resetter PasswordResetter, source Passwo
 
 	err = resetter.ResetPassword(ctx, password)
 	if message, ok := auth.PolicyMessage(err); ok {
-		return errors.New(message)
+		return errors.New(lowerFirst(message))
 	}
 
 	switch {
@@ -106,4 +108,9 @@ func RunResetPassword(ctx context.Context, resetter PasswordResetter, stdin *os.
 	}
 
 	return 0
+}
+
+func lowerFirst(text string) string {
+	first, size := utf8.DecodeRuneInString(text)
+	return string(unicode.ToLower(first)) + text[size:]
 }

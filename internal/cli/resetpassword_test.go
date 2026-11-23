@@ -113,8 +113,8 @@ func TestResetPassword(t *testing.T) {
 
 		err := ResetPassword(ctx, resetter, fixedSource{password: "short"}, &bytes.Buffer{})
 
-		if err == nil || !strings.Contains(err.Error(), "at least") {
-			t.Errorf("ResetPassword() error = %v, want it to state the minimum length", err)
+		if err == nil || err.Error() != "password must be at least 8 characters" {
+			t.Errorf("ResetPassword() error = %v, want a lower-case statement of the minimum length", err)
 		}
 	})
 

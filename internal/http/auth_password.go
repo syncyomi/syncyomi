@@ -89,11 +89,6 @@ func (h authHandler) writePasswordChangeError(w http.ResponseWriter, err error) 
 		http.Error(w, message, http.StatusBadRequest)
 		return
 	}
-	if errors.Is(err, auth.ErrBusy) {
-		http.Error(w, "Server busy, try again shortly", http.StatusServiceUnavailable)
-		return
-	}
 
-	h.log.Error().Err(err).Msg("Auth: could not change password")
-	http.Error(w, "Internal server error", http.StatusInternalServerError)
+	h.writeAuthFailure(w, err, "could not change password")
 }

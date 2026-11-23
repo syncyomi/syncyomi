@@ -96,14 +96,9 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn().Msgf("Auth: Failed login attempt username: [%s] ip: %s", data.Username, client)
 		h.encoder.StatusResponse(ctx, w, nil, http.StatusUnauthorized)
 		return
-	case errors.Is(err, auth.ErrBusy):
-		h.limiter.release(client)
-		http.Error(w, "Server busy, try again shortly", http.StatusServiceUnavailable)
-		return
 	default:
 		h.limiter.release(client)
-		h.log.Error().Err(err).Msg("Auth: login failed")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		h.writeAuthFailure(w, err, "login failed")
 		return
 	}
 
@@ -145,6 +140,10 @@ func (h authHandler) onboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, http.StatusBadRequest)
 		return
 	}
+	if errors.Is(err, auth.ErrBusy) {
+		writeBusy(w)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
@@ -180,6 +179,21 @@ func (h authHandler) validate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.encoder.StatusResponse(r.Context(), w, nil, http.StatusNoContent)
+}
+
+func writeBusy(w http.ResponseWriter) {
+	http.Error(w, "Server busy, try again shortly", http.StatusServiceUnavailable)
+}
+
+func (h authHandler) writeAuthFailure(w http.ResponseWriter, err error, action string) {
+	switch {
+	case errors.Is(err, auth.ErrBusy):
+		writeBusy(w)
+	case errors.Is(err, context.Canceled):
+	default:
+		h.log.Error().Err(err).Msgf("Auth: %s", action)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {

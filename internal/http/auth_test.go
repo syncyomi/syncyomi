@@ -518,6 +518,14 @@ func TestAuthHandler_changePassword(t *testing.T) {
 			wantCalled:  true,
 		},
 		{
+			name:        "a busy server is reported as 503",
+			contentType: "application/json",
+			body:        validBody,
+			prepare:     func(m *mockAuthService) { m.changeErr = auth.ErrBusy },
+			wantStatus:  http.StatusServiceUnavailable,
+			wantCalled:  true,
+		},
+		{
 			name:        "an unexpected failure is a server error",
 			contentType: "application/json",
 			body:        validBody,
@@ -679,16 +687,68 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 		}
 	})
 
-	t.Run("does not count server errors or malformed requests as failed attempts", func(t *testing.T) {
-		mock := &mockAuthService{loginErr: errTest}
+	t.Run("does not count outcomes that are not a wrong password", func(t *testing.T) {
+		outcomes := map[string]error{
+			"server error":      errTest,
+			"busy server":       auth.ErrBusy,
+			"cancelled request": context.Canceled,
+		}
+		for name, loginErr := range outcomes {
+			t.Run(name, func(t *testing.T) {
+				mock := &mockAuthService{loginErr: loginErr}
+				r, _ := newTestAuthRouter(cfg, mock)
+				for range maxFailedAttempts * 2 {
+					loginFrom(r, "203.0.113.5:1000")
+				}
+				mock.loginErr, mock.loginUser = nil, user
+
+				if got := loginFrom(r, "203.0.113.5:1000").Code; got != http.StatusNoContent {
+					t.Errorf("login() status = %v, want %v", got, http.StatusNoContent)
+				}
+			})
+		}
+	})
+
+	t.Run("does not count malformed login bodies", func(t *testing.T) {
+		mock := &mockAuthService{loginUser: user}
 		r, _ := newTestAuthRouter(cfg, mock)
 		for range maxFailedAttempts * 2 {
-			loginFrom(r, "203.0.113.5:1000")
+			req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(`{"username":`))
+			req.RemoteAddr = "203.0.113.5:1000"
+			r.ServeHTTP(httptest.NewRecorder(), req)
 		}
-		mock.loginErr, mock.loginUser = nil, user
 
 		if got := loginFrom(r, "203.0.113.5:1000").Code; got != http.StatusNoContent {
-			t.Errorf("login() status = %v, want %v after only server errors", got, http.StatusNoContent)
+			t.Errorf("login() status = %v, want %v after only malformed bodies", got, http.StatusNoContent)
+		}
+	})
+
+	t.Run("does not count rejected password change requests", func(t *testing.T) {
+		mock := &mockAuthService{loginUser: user, stamp: user.PasswordStamp()}
+		r, _ := newTestAuthRouter(cfg, mock)
+		cookie := loginFrom(r, "203.0.113.5:1000").Header().Get("Set-Cookie")
+		change := func(contentType, body string, changeErr error) int {
+			mock.changeErr = changeErr
+			req := httptest.NewRequest(http.MethodPost, "/password", strings.NewReader(body))
+			if contentType != "" {
+				req.Header.Set("Content-Type", contentType)
+			}
+			req.Header.Set("Cookie", cookie)
+			req.RemoteAddr = "203.0.113.5:3000"
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			return rec.Code
+		}
+		valid := `{"current_password":"x","new_password":"long-enough-1"}`
+		for range maxFailedAttempts * 2 {
+			change("text/plain", valid, nil)
+			change("application/json", `{"current_password":`, nil)
+			change("application/json", valid, auth.ErrPasswordTooShort)
+			change("application/json", valid, auth.ErrBusy)
+		}
+
+		if got := change("application/json", valid, nil); got != http.StatusNoContent {
+			t.Errorf("changePassword() status = %v, want %v after only rejected requests", got, http.StatusNoContent)
 		}
 	})
 
@@ -771,6 +831,7 @@ func TestAuthHandler_onboard(t *testing.T) {
 		{"creates the account", &mockAuthService{}, http.StatusNoContent},
 		{"rejects a password that breaks the policy", &mockAuthService{createErr: auth.ErrPasswordTooShort}, http.StatusBadRequest},
 		{"refuses a second account", &mockAuthService{createErr: errTest}, http.StatusForbidden},
+		{"reports a busy server as 503", &mockAuthService{createErr: auth.ErrBusy}, http.StatusServiceUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

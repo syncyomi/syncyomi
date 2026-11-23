@@ -134,7 +134,12 @@ func (s Server) cancelWhenSessionEnds(ctx context.Context, cancel context.Cancel
 			return
 		case <-ticker.C:
 			session, _ := s.cookieStore.Get(r, sessionName)
-			if authenticated, err := sessionAuthenticated(ctx, session, s.authService); err == nil && !authenticated {
+			authenticated, err := sessionAuthenticated(ctx, session, s.authService)
+			if err != nil {
+				s.log.Warn().Err(err).Msg("could not re-check the session of an open event stream")
+				continue
+			}
+			if !authenticated {
 				cancel()
 				return
 			}
