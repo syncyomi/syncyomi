@@ -274,12 +274,10 @@ func (s *Service) FinishLogin(ctx context.Context, ceremonyID string, r *http.Re
 
 	var owner *domain.User
 	var known []domain.Passkey
-	var storageErr error
 	lookup := func(rawID, handle []byte) (webauthn.User, error) {
 		passkey, err := s.repo.FindByCredentialID(ctx, rawID)
 		if err != nil {
-			storageErr = err
-			return nil, err
+			return nil, storageFailure(err)
 		}
 		if passkey == nil {
 			return nil, errors.New("unknown credential")
@@ -287,10 +285,10 @@ func (s *Service) FinishLogin(ctx context.Context, ceremonyID string, r *http.Re
 
 		user, err := s.onlyUser(ctx)
 		if err != nil {
-			if !errors.Is(err, ErrNoUser) {
-				storageErr = err
+			if errors.Is(err, ErrNoUser) {
+				return nil, err
 			}
-			return nil, err
+			return nil, storageFailure(err)
 		}
 		if user.ID != passkey.UserID || !bytes.Equal(handle, userHandle(*user)) {
 			return nil, errors.New("credential does not belong to the user")
@@ -298,8 +296,7 @@ func (s *Service) FinishLogin(ctx context.Context, ceremonyID string, r *http.Re
 
 		passkeys, credentials, err := s.loadCredentials(ctx, user.ID)
 		if err != nil {
-			storageErr = err
-			return nil, err
+			return nil, storageFailure(err)
 		}
 		owner, known = user, passkeys
 
@@ -307,8 +304,8 @@ func (s *Service) FinishLogin(ctx context.Context, ceremonyID string, r *http.Re
 	}
 
 	_, credential, err := s.wa.FinishPasskeyLogin(lookup, started.session, r)
-	if storageErr != nil {
-		return nil, fmt.Errorf("look up passkey: %w", storageErr)
+	if errors.Is(err, errStorage) {
+		return nil, fmt.Errorf("look up passkey: %w", err)
 	}
 	if err != nil {
 		s.log.Warn().Err(err).Msg("passkey login rejected")
@@ -369,4 +366,10 @@ func (s *Service) DeleteAll(ctx context.Context) (int, error) {
 	}
 
 	return s.repo.DeleteAll(ctx, user.ID)
+}
+
+var errStorage = errors.New("storage failure")
+
+func storageFailure(err error) error {
+	return fmt.Errorf("%w: %w", errStorage, err)
 }

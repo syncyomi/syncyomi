@@ -19,6 +19,7 @@ const (
 
 type fakeRepo struct {
 	findErr   error
+	listErr   error
 	updateErr error
 	mu        sync.Mutex
 	passkeys  []domain.Passkey
@@ -28,6 +29,9 @@ type fakeRepo struct {
 func (f *fakeRepo) List(_ context.Context, userID int) ([]domain.Passkey, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
 	var out []domain.Passkey
 	for _, p := range f.passkeys {
 		if p.UserID == userID {
@@ -93,9 +97,12 @@ func (f *fakeRepo) DeleteAll(_ context.Context, userID int) (int, error) {
 	return before - len(f.passkeys), nil
 }
 
-type fakeUsers struct{ user *domain.User }
+type fakeUsers struct {
+	user *domain.User
+	err  error
+}
 
-func (f fakeUsers) FindFirst(context.Context) (*domain.User, error) { return f.user, nil }
+func (f *fakeUsers) FindFirst(context.Context) (*domain.User, error) { return f.user, f.err }
 
 type fakeNotifier struct {
 	mu     sync.Mutex
@@ -111,6 +118,7 @@ func (n *fakeNotifier) Send(_ domain.NotificationEvent, payload domain.Notificat
 type fixture struct {
 	svc      *Service
 	repo     *fakeRepo
+	users    *fakeUsers
 	notifier *fakeNotifier
 	now      *time.Time
 }
@@ -124,13 +132,13 @@ func newFixtureWith(t *testing.T, cfg Config, user *domain.User) *fixture {
 	t.Helper()
 
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	repo, notifier := &fakeRepo{}, &fakeNotifier{}
-	svc, err := newService(cfg, repo, fakeUsers{user: user}, notifier, func() time.Time { return now })
+	repo, notifier, users := &fakeRepo{}, &fakeNotifier{}, &fakeUsers{user: user}
+	svc, err := newService(cfg, repo, users, notifier, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("newService() error = %v", err)
 	}
 
-	return &fixture{svc: svc, repo: repo, notifier: notifier, now: &now}
+	return &fixture{svc: svc, repo: repo, users: users, notifier: notifier, now: &now}
 }
 
 func (f *fixture) register(t *testing.T, name string) *softAuthenticator {
@@ -391,9 +399,8 @@ func TestService_ceremoniesStayApart(t *testing.T) {
 	t.Run("a registration ceremony cannot finish a login", func(t *testing.T) {
 		f := newFixture(t)
 		authenticator := f.register(t, "Laptop")
-		id, creation, _ := f.svc.BeginRegistration(ctx, "Phone")
+		id, _, _ := f.svc.BeginRegistration(ctx, "Phone")
 		_, assertion, _ := f.svc.BeginLogin()
-		_ = creation
 
 		_, err := f.svc.FinishLogin(ctx, id, authenticator.assert(t, assertion))
 
@@ -443,6 +450,42 @@ func TestService_storageFailures(t *testing.T) {
 
 		if err == nil || errors.Is(err, ErrRejected) {
 			t.Errorf("FinishLogin() error = %v, want a non-rejection error", err)
+		}
+	})
+
+	t.Run("a failing user lookup is a server error, not a rejected passkey", func(t *testing.T) {
+		f := newFixture(t)
+		authenticator := f.register(t, "Laptop")
+		f.users.err = errors.New("database is down")
+
+		_, err := f.login(t, authenticator)
+
+		if err == nil || errors.Is(err, ErrRejected) {
+			t.Errorf("FinishLogin() error = %v, want a non-rejection error", err)
+		}
+	})
+
+	t.Run("a failing passkey listing is a server error, not a rejected passkey", func(t *testing.T) {
+		f := newFixture(t)
+		authenticator := f.register(t, "Laptop")
+		f.repo.listErr = errors.New("database is down")
+
+		_, err := f.login(t, authenticator)
+
+		if err == nil || errors.Is(err, ErrRejected) {
+			t.Errorf("FinishLogin() error = %v, want a non-rejection error", err)
+		}
+	})
+
+	t.Run("rejects the passkey when no user exists any more", func(t *testing.T) {
+		f := newFixture(t)
+		authenticator := f.register(t, "Laptop")
+		f.users.user = nil
+
+		_, err := f.login(t, authenticator)
+
+		if !errors.Is(err, ErrRejected) {
+			t.Errorf("FinishLogin() error = %v, want ErrRejected", err)
 		}
 	})
 
