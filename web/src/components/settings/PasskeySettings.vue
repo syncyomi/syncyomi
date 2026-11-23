@@ -106,10 +106,23 @@
               @submit.prevent="submit"
             >
               <v-row>
+                <input
+                  v-if="username"
+                  :value="username"
+                  aria-hidden="true"
+                  autocomplete="username"
+                  class="pairing-username"
+                  readonly
+                  tabindex="-1"
+                  type="text"
+                />
+
                 <v-col cols="12" md="6">
                   <v-text-field
+                    ref="nameField"
                     v-model="name"
-                    :counter="MAX_NAME_LENGTH"
+                    :counter="MAX_PASSKEY_NAME_LENGTH"
+                    :counter-value="passkeyNameLength"
                     :rules="nameRules"
                     aria-required="true"
                     autocomplete="off"
@@ -123,6 +136,7 @@
 
                 <v-col cols="12" md="6">
                   <v-text-field
+                    ref="passwordField"
                     v-model="password"
                     :rules="[required]"
                     :type="showPassword ? 'text' : 'password'"
@@ -172,9 +186,9 @@
 
     <ConfirmationModal
       ref="confirmation"
+      confirm-label="Remove"
       :message="`${pending?.name ?? 'This passkey'} will no longer sign you in. You can add it again later.`"
       title="Remove passkey"
-      @canceled="pending = null"
       @confirmed="remove"
     />
   </v-card>
@@ -183,27 +197,33 @@
 <script lang="ts" setup>
 import { computed, nextTick, ref } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import {
+  PASSKEYS_KEY,
+  capabilitiesQuery,
+  passkeysQuery,
+} from "@/api/passkeyQueries";
 import { APIClient } from "@/api/APIClient";
 import ConfirmationModal from "@/components/modals/DeleteConfirmationModal.vue";
-import { PasskeyPromptError } from "@/utils/passkeyErrors";
+import { settingsErrorMessage } from "@/components/settings/settingsError";
+import {
+  MAX_PASSKEYS,
+  MAX_PASSKEY_NAME_LENGTH,
+  passkeyNameLength,
+} from "@/domain/passkeyPolicy";
+import { useAuthStore } from "@/store/auth/authStore";
 import { addPasskey, passkeysAvailable } from "@/utils/passkeys";
-import type { VForm } from "vuetify/components";
+import type { VForm, VTextField } from "vuetify/components";
 
 interface Status {
   kind: "success" | "error";
   message: string;
 }
 
-const MAX_PASSKEYS = 10;
-const MAX_NAME_LENGTH = 64;
-const PASSKEYS_KEY = ["passkeys"];
-
 const TEXT = {
   required: "Required.",
-  nameTooLong: `Use at most ${MAX_NAME_LENGTH} characters.`,
+  nameTooLong: `Use at most ${MAX_PASSKEY_NAME_LENGTH} characters.`,
   added: "Passkey added.",
   removed: "Passkey removed.",
-  network: "Could not reach the server. Check your connection and try again.",
   addFailed: "Could not add the passkey. Try again.",
   removeFailed: "Could not remove the passkey. Try again.",
   loadFailed: "Could not load your passkeys. Reload the page to try again.",
@@ -211,22 +231,17 @@ const TEXT = {
 
 const queryClient = useQueryClient();
 const browserSupported = passkeysAvailable();
+const username = computed(() => useAuthStore().loggedInUser);
 
-const capabilities = useQuery({
-  queryKey: ["auth", "capabilities"],
-  queryFn: APIClient.auth.capabilities,
-  retry: false,
-});
+const capabilities = useQuery(capabilitiesQuery);
 const serverOff = computed(
   () => capabilities.isSuccess.value && !capabilities.data.value?.passkeys,
 );
 const loadFailed = computed(() => capabilities.isError.value);
 
 const listing = useQuery({
-  queryKey: PASSKEYS_KEY,
-  queryFn: APIClient.passkeys.list,
+  ...passkeysQuery,
   enabled: computed(() => capabilities.data.value?.passkeys === true),
-  retry: false,
 });
 const passkeys = computed(() => listing.data.value ?? []);
 const atLimit = computed(() => passkeys.value.length >= MAX_PASSKEYS);
@@ -235,6 +250,8 @@ const canAdd = computed(
 );
 
 const form = ref<InstanceType<typeof VForm>>();
+const nameField = ref<InstanceType<typeof VTextField>>();
+const passwordField = ref<InstanceType<typeof VTextField>>();
 const name = ref("");
 const password = ref("");
 const showPassword = ref(false);
@@ -243,7 +260,8 @@ const status = ref<Status | null>(null);
 const required = (value: string) => !!value.trim() || TEXT.required;
 const nameRules = [
   required,
-  (value: string) => value.length <= MAX_NAME_LENGTH || TEXT.nameTooLong,
+  (value: string) =>
+    passkeyNameLength(value) <= MAX_PASSKEY_NAME_LENGTH || TEXT.nameTooLong,
 ];
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
@@ -255,21 +273,18 @@ const usage = (passkey: Passkey) => {
   return `${added} · ${used}`;
 };
 
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof TypeError) return TEXT.network;
-  if (error instanceof PasskeyPromptError) return error.message;
-  return (error instanceof Error && error.message.trim()) || fallback;
-};
+const refreshList = () =>
+  queryClient.invalidateQueries({ queryKey: PASSKEYS_KEY });
 
 const adding = useMutation({
   mutationFn: (request: { name: string; password: string }) =>
     addPasskey(request.name, request.password),
+  gcTime: 0,
   onSuccess: async () => {
     name.value = "";
     password.value = "";
     showPassword.value = false;
     status.value = { kind: "success", message: TEXT.added };
-    await queryClient.invalidateQueries({ queryKey: PASSKEYS_KEY });
     await nextTick();
     form.value?.resetValidation();
   },
@@ -278,10 +293,14 @@ const adding = useMutation({
     showPassword.value = false;
     status.value = {
       kind: "error",
-      message: errorMessage(error, TEXT.addFailed),
+      message: settingsErrorMessage(error, TEXT.addFailed),
     };
     await nextTick();
     form.value?.resetValidation();
+  },
+  onSettled: async () => {
+    await refreshList();
+    adding.reset();
   },
 });
 
@@ -290,7 +309,11 @@ const submit = async () => {
 
   status.value = null;
   const { valid } = (await form.value?.validate()) ?? { valid: false };
-  if (!valid) return;
+  if (!valid) {
+    const nameInvalid = nameRules.some((rule) => rule(name.value) !== true);
+    (nameInvalid ? nameField : passwordField).value?.focus();
+    return;
+  }
 
   adding.mutate({ name: name.value.trim(), password: password.value });
 };
@@ -305,26 +328,32 @@ const askToRemove = (passkey: Passkey) => {
 
 const removal = useMutation({
   mutationFn: (id: number) => APIClient.passkeys.delete(id),
-  onSuccess: async () => {
+  onSuccess: () => {
     status.value = { kind: "success", message: TEXT.removed };
-    await queryClient.invalidateQueries({ queryKey: PASSKEYS_KEY });
   },
   onError: (error) => {
     status.value = {
       kind: "error",
-      message: errorMessage(error, TEXT.removeFailed),
+      message: settingsErrorMessage(error, TEXT.removeFailed),
     };
   },
+  onSettled: refreshList,
 });
 
 const remove = () => {
-  const target = pending.value;
-  pending.value = null;
-  if (!target) return;
+  if (!pending.value) return;
 
   status.value = null;
-  removal.mutate(target.id);
+  removal.mutate(pending.value.id);
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+.pairing-username {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>

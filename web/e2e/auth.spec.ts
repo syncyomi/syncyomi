@@ -58,7 +58,7 @@ test.describe.serial("auth", () => {
     // Browser-level guard for the fix: gorilla/sessions 1.4.0 defaulted the
     // cookie to Secure, which browsers drop on plain http, breaking IP:PORT.
     const session = (await context.cookies()).find(
-      (c) => c.name === "user_session"
+      (c) => c.name === "user_session",
     );
     expect(session, "user_session cookie must be set").toBeTruthy();
     expect(session!.secure, "cookie must not be Secure over http").toBe(false);
@@ -177,7 +177,9 @@ test.describe.serial("auth", () => {
 
       await addPasskey(page, "Work laptop", "not-the-password");
 
-      await expect(page.getByText("Current password is incorrect")).toBeVisible();
+      await expect(
+        page.getByText("Current password is incorrect"),
+      ).toBeVisible();
       await expect(page.getByText("No passkeys yet.")).toBeVisible();
     });
 
@@ -209,7 +211,7 @@ test.describe.serial("auth", () => {
       await page
         .getByRole("button", { name: "Remove passkey Work laptop" })
         .click();
-      await page.getByRole("button", { name: "Confirm", exact: true }).click();
+      await page.getByRole("button", { name: "Remove", exact: true }).click();
 
       await expect(page.getByText("Passkey removed.")).toBeVisible();
       await expect(page.getByText("No passkeys yet.")).toBeVisible();

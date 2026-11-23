@@ -3,6 +3,7 @@ import { flushPromises, mount, VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { VueQueryPlugin } from "@tanstack/vue-query";
 import { vuetify } from "@/test/setup";
+import { ApiError } from "@/api/ApiError";
 import { useAuthStore } from "@/store/auth/authStore";
 
 const { changePasswordMock, capabilitiesMock, listPasskeysMock } = vi.hoisted(
@@ -194,6 +195,14 @@ describe("PasswordSettings", () => {
       expect(removeBox(wrapper).exists()).toBe(false);
     });
 
+    it("explains the option as the checkbox's own hint", async () => {
+      const wrapper = await withPasskeys();
+
+      const hint = wrapper.find(".v-checkbox .v-messages");
+      expect(hint.text()).toContain("someone else may have had access");
+      expect(removeBox(wrapper).attributes("aria-describedby")).toBeDefined();
+    });
+
     it("keeps the passkeys unless asked to remove them", async () => {
       changePasswordMock.mockResolvedValue(undefined);
       const wrapper = await withPasskeys();
@@ -216,6 +225,20 @@ describe("PasswordSettings", () => {
       expect(changePasswordMock).toHaveBeenCalledWith(CURRENT, NEXT, true);
       expect(removeBox(wrapper).element.checked).toBe(false);
     });
+  });
+
+  it("does not print an HTML error page from a proxy", async () => {
+    changePasswordMock.mockRejectedValue(
+      new ApiError("<html><body>502 Bad Gateway</body></html>", 502),
+    );
+    const wrapper = mountForm();
+    await fill(wrapper, { current: CURRENT, next: NEXT, confirm: NEXT });
+
+    await submit(wrapper);
+
+    expect(wrapper.find('.v-alert[role="alert"]').text()).toBe(
+      "Could not change the password. Try again.",
+    );
   });
 
   it("does not flag the cleared fields as required after a successful change", async () => {

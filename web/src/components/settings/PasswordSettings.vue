@@ -78,14 +78,11 @@
             <v-checkbox
               v-model="revokePasskeys"
               density="comfortable"
-              hide-details
+              hint="Tick this if you changed the password because someone else may have had access. Passkeys are kept otherwise."
               label="Also remove my passkeys"
               name="revoke-passkeys"
+              persistent-hint
             ></v-checkbox>
-            <p class="text-caption text-medium-emphasis ml-10">
-              Tick this if you changed the password because someone else may
-              have had access. Passkeys are kept otherwise.
-            </p>
           </v-col>
 
           <v-col v-if="status" cols="12" lg="6" md="8">
@@ -118,6 +115,12 @@
 import { computed, nextTick, reactive, ref } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
+import {
+  PASSKEYS_KEY,
+  capabilitiesQuery,
+  passkeysQuery,
+} from "@/api/passkeyQueries";
+import { settingsErrorMessage } from "@/components/settings/settingsError";
 import { useAuthStore } from "@/store/auth/authStore";
 import {
   MAX_PASSWORD_BYTES,
@@ -147,7 +150,6 @@ const TEXT = {
     "Password changed. Every other signed in device has been signed out.",
   successRevoked:
     "Password changed and passkeys removed. Every other signed in device has been signed out.",
-  network: "Could not reach the server. Check your connection and try again.",
   failed: "Could not change the password. Try again.",
 };
 
@@ -199,16 +201,10 @@ const status = ref<Status | null>(null);
 const revokePasskeys = ref(false);
 
 const queryClient = useQueryClient();
-const capabilities = useQuery({
-  queryKey: ["auth", "capabilities"],
-  queryFn: APIClient.auth.capabilities,
-  retry: false,
-});
+const capabilities = useQuery(capabilitiesQuery);
 const passkeyList = useQuery({
-  queryKey: ["passkeys"],
-  queryFn: APIClient.passkeys.list,
+  ...passkeysQuery,
   enabled: computed(() => capabilities.data.value?.passkeys === true),
-  retry: false,
 });
 const hasPasskeys = computed(() => (passkeyList.data.value?.length ?? 0) > 0);
 
@@ -245,11 +241,6 @@ const firstInvalidField = () =>
     rulesFor[key].some((rule) => rule(values[key]) !== true),
   );
 
-const errorMessage = (error: unknown) => {
-  if (error instanceof TypeError) return TEXT.network;
-  return (error instanceof Error && error.message.trim()) || TEXT.failed;
-};
-
 const clearPasswords = async () => {
   for (const { key } of fields) {
     values[key] = "";
@@ -260,6 +251,7 @@ const clearPasswords = async () => {
 };
 
 const mutation = useMutation({
+  gcTime: 0,
   mutationFn: (request: {
     current: string;
     next: string;
@@ -278,10 +270,16 @@ const mutation = useMutation({
       message: request.revokePasskeys ? TEXT.successRevoked : TEXT.success,
     };
     if (request.revokePasskeys)
-      await queryClient.invalidateQueries({ queryKey: ["passkeys"] });
+      await queryClient.invalidateQueries({ queryKey: PASSKEYS_KEY });
   },
   onError: (error) => {
-    status.value = { kind: "error", message: errorMessage(error) };
+    status.value = {
+      kind: "error",
+      message: settingsErrorMessage(error, TEXT.failed),
+    };
+  },
+  onSettled: (): void => {
+    mutation.reset();
   },
 });
 
