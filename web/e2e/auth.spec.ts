@@ -57,7 +57,7 @@ test.describe.serial("auth", () => {
     // Browser-level guard for the fix: gorilla/sessions 1.4.0 defaulted the
     // cookie to Secure, which browsers drop on plain http, breaking IP:PORT.
     const session = (await context.cookies()).find(
-      (c) => c.name === "user_session",
+      (c) => c.name === "user_session"
     );
     expect(session, "user_session cookie must be set").toBeTruthy();
     expect(session!.secure, "cookie must not be Secure over http").toBe(false);
@@ -118,7 +118,6 @@ test.describe.serial("auth", () => {
     await fillPasswordForm(page, PASS, NEW_PASS);
     await expect(page.getByText(/password changed/i)).toBeVisible();
 
-    // The caller stays signed in; every other session is gone.
     await page.reload();
     await expect(page).toHaveURL(/settings/);
     await otherPage.reload();
