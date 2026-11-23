@@ -343,17 +343,6 @@ func TestPasskeyHandler_loginFinish(t *testing.T) {
 	})
 }
 
-func TestAuthHandler_changePasswordCanRemovePasskeys(t *testing.T) {
-	rig := newPasskeyRig(t)
-
-	rec := rig.do(call{method: http.MethodPost, path: "/password", session: true, contentType: "application/json",
-		body: `{"current_password":"right-password-1","new_password":"another-pass-22","revoke_passkeys":true}`})
-
-	if rec.Code != http.StatusNoContent || len(rig.authSvc.changeCalls) != 1 || !rig.authSvc.changeCalls[0].RevokePasskeys {
-		t.Errorf("status = %d, calls = %+v, want the request to remove passkeys forwarded", rec.Code, rig.authSvc.changeCalls)
-	}
-}
-
 func TestPasskeyHandler_registerBegin(t *testing.T) {
 	begin := func(rig *passkeyRig, c call) *httptest.ResponseRecorder {
 		c.method, c.path = http.MethodPost, "/passkeys/register/begin"

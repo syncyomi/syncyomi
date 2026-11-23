@@ -428,6 +428,19 @@ func TestAuthHandler_changePassword(t *testing.T) {
 		return rec.Code
 	}
 
+	t.Run("forwards the request to remove passkeys", func(t *testing.T) {
+		mock := newMock()
+		r, _ := newTestAuthRouter(cfg, mock)
+		body := `{"current_password":"` + current + `","new_password":"` + next + `","revoke_passkeys":true}`
+
+		rec := post(r, loginCookie(t, r), "application/json", body)
+
+		want := auth.PasswordChange{Current: current, Next: next, RevokePasskeys: true}
+		if rec.Code != http.StatusNoContent || len(mock.changeCalls) != 1 || mock.changeCalls[0] != want {
+			t.Errorf("status = %d, calls = %+v, want 204 and one call %+v", rec.Code, mock.changeCalls, want)
+		}
+	})
+
 	t.Run("changes the password, keeps the caller signed in and signs out other sessions", func(t *testing.T) {
 		mock := newMock()
 		r, _ := newTestAuthRouter(cfg, mock)
