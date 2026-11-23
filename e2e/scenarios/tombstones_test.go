@@ -64,6 +64,10 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		t.Errorf("no-op delta carries manga %v, want none", got)
 	}
 
+	// Only a body that is not JSON and a missing or invalid device id are refused: an entry the server
+	// cannot apply is acknowledged but not applied, so a client can always clear its queue
+	// (docs/sync-protocol-v2.md, "The only 400 answers are a body that is not JSON and a missing or
+	// invalid X-Device-ID").
 	seq0 := seqNow(t, ctx, srv)
 	validation := []struct {
 		name         string
@@ -72,9 +76,9 @@ func TestS29_UnifiedTombstones(t *testing.T) {
 		acknowledged int
 		applied      int
 	}{
-		{"unknown kind", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "bogus", Key: "x"}}}, 400, 0, 0},
-		{"empty key", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: ""}}}, 400, 0, 0},
-		{"oversized key", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: strings.Repeat("k", 4097)}}}, 400, 0, 0},
+		{"unknown kind", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "bogus", Key: "x"}}}, 200, 1, 0},
+		{"empty key", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: ""}}}, 200, 1, 0},
+		{"oversized key", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: strings.Repeat("k", 4097)}}}, 200, 1, 0},
 		{"malformed body", harness.DeletionsOptions{RawBody: []byte("{")}, 400, 0, 0},
 		{"unknown key", harness.DeletionsOptions{Items: []harness.DeletionItem{{Kind: "manga", Key: "9999999999|/missing"}}}, 200, 1, 0},
 		{"empty body", harness.DeletionsOptions{RawBody: []byte{}}, 200, 0, 0},
