@@ -84,7 +84,9 @@ Report sync progress; drives notifications and the status shown in the web UI.
 | Endpoint | Purpose |
 |---|---|
 | `POST /auth/login`, `POST /auth/logout`, `GET /auth/validate` | web UI session |
-| `GET /auth/onboard`, `POST /auth/onboard` | first-run admin user creation |
+| `POST /auth/password` | change the web UI password: `{"current_password":…,"new_password":…}` (at least 8 characters, at most 1024 bytes), session only, `Content-Type: application/json`. `204` signs every other session out and keeps the caller's; `400` invalid new password, `401` no session, `403` wrong current password, `413` body over 4 KiB, `415` wrong content type, `429` blocked (see below), `503` too many password checks in progress |
+| `POST /auth/login`, `POST /auth/password` rate limit | at most 5 attempts per client address per 15 minutes (a success resets the count; IPv6 addresses count per /64). Beyond that: `429` with `Retry-After` (seconds), even for correct credentials. `POST /auth/login` also answers `413` for bodies over 4 KiB and `503` when too many password checks are running |
+| `GET /auth/onboard`, `POST /auth/onboard` | first-run admin user creation; the password follows the same rules (`400` otherwise) |
 | `GET /keys`, `POST /keys`, `DELETE /keys/{apikey}` | API key management (deleting a key removes everything stored under it) |
 | `GET /config`, `PATCH /config` | server configuration |
 | `GET /notification`, `POST /notification`, `POST /notification/test`, `PUT /notification/{id}`, `DELETE /notification/{id}` | notification targets; type `WEBHOOK` posts JSON to `webhook` and sends `token` as a bearer token when set, and a rejected URL answers `500 {"message": …}` |

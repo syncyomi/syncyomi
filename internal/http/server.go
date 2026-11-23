@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"github.com/SyncYomi/SyncYomi/internal/config"
 	"github.com/SyncYomi/SyncYomi/internal/database"
@@ -22,6 +23,8 @@ const (
 	readHeaderTimeout = 15 * time.Second
 	requestTimeout    = 10 * time.Minute
 	idleTimeout       = 2 * time.Minute
+
+	defaultStreamRecheckInterval = 15 * time.Second
 )
 
 type Server struct {
@@ -42,6 +45,8 @@ type Server struct {
 	updateService       updateService
 
 	syncService syncService
+
+	streamRecheckInterval time.Duration
 }
 
 // newCookieStore builds the session store with an explicit baseline.
@@ -114,6 +119,36 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	}
 }
 
+func (s Server) cancelWhenSessionEnds(ctx context.Context, cancel context.CancelFunc, r *http.Request) {
+	interval := s.streamRecheckInterval
+	if interval == 0 {
+		interval = defaultStreamRecheckInterval
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			session, _ := s.cookieStore.Get(r, sessionName)
+			authenticated, err := sessionAuthenticated(ctx, session, s.authService)
+			if err != nil {
+				if ctx.Err() == nil {
+					s.log.Warn().Err(err).Msg("could not re-check the session of an open event stream")
+				}
+				continue
+			}
+			if !authenticated {
+				cancel()
+				return
+			}
+		}
+	}
+}
+
 func streamForever(w http.ResponseWriter) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Time{})
@@ -167,7 +202,18 @@ func (s Server) Handler() http.Handler {
 					"X-Accel-Buffering": "no",
 				}
 
-				s.sse.ServeHTTP(w, r)
+				ctx, cancel := context.WithCancel(r.Context())
+				watcherDone := make(chan struct{})
+				go func() {
+					defer close(watcherDone)
+					s.cancelWhenSessionEnds(ctx, cancel, r)
+				}()
+				defer func() {
+					cancel()
+					<-watcherDone
+				}()
+
+				s.sse.ServeHTTP(w, r.WithContext(ctx))
 			})
 		})
 

@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 const USER = "e2euser";
 const PASS = "e2epassword123";
+const NEW_PASS = "e2e-new-password-456";
 
 async function login(page: Page) {
   await page.goto("/login");
@@ -9,6 +10,23 @@ async function login(page: Page) {
   await page.getByLabel("Password", { exact: true }).fill(PASS);
   await page.getByRole("button", { name: /^login$/i }).click();
   await expect(page).toHaveURL(/settings/);
+}
+
+async function openSecurityTab(page: Page) {
+  await page.getByRole("tab", { name: "Security" }).click();
+}
+
+async function fillPasswordForm(page: Page, current: string, next: string) {
+  await page
+    .getByRole("textbox", { name: "Current password", exact: true })
+    .fill(current);
+  await page
+    .getByRole("textbox", { name: "New password", exact: true })
+    .fill(next);
+  await page
+    .getByRole("textbox", { name: "Confirm new password", exact: true })
+    .fill(next);
+  await page.getByRole("button", { name: /change password/i }).click();
 }
 
 // One shared backend + DB, so the single-user constraint forces an order:
@@ -72,5 +90,50 @@ test.describe.serial("auth", () => {
 
     await page.getByRole("button", { name: /logout/i }).click();
     await expect(page).toHaveURL(/login/);
+  });
+
+  test("a wrong current password is rejected and keeps the session", async ({
+    page,
+  }) => {
+    await login(page);
+    await openSecurityTab(page);
+
+    await fillPasswordForm(page, "not-the-password", NEW_PASS);
+
+    await expect(page.getByText("Current password is incorrect")).toBeVisible();
+    await expect(page).toHaveURL(/settings/);
+  });
+
+  test("changing the password signs out other sessions and swaps the working password", async ({
+    page,
+    browser,
+  }) => {
+    test.slow();
+    await login(page);
+    const otherContext = await browser.newContext();
+    const otherPage = await otherContext.newPage();
+    await login(otherPage);
+
+    await openSecurityTab(page);
+    await fillPasswordForm(page, PASS, NEW_PASS);
+    await expect(page.getByText(/password changed/i)).toBeVisible();
+
+    await page.reload();
+    await expect(page).toHaveURL(/settings/);
+    await otherPage.reload();
+    await expect(otherPage).toHaveURL(/login/);
+    await otherContext.close();
+
+    await page.getByRole("button", { name: /logout/i }).click();
+    await expect(page).toHaveURL(/login/);
+
+    await page.getByLabel("Username").fill(USER);
+    await page.getByLabel("Password", { exact: true }).fill(PASS);
+    await page.getByRole("button", { name: /^login$/i }).click();
+    await expect(page.getByText(/login failed/i)).toBeVisible();
+
+    await page.getByLabel("Password", { exact: true }).fill(NEW_PASS);
+    await page.getByRole("button", { name: /^login$/i }).click();
+    await expect(page).toHaveURL(/settings/);
   });
 });

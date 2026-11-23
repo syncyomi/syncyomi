@@ -25,12 +25,7 @@ func (s Server) IsAuthenticated(next http.Handler) http.Handler {
 				return
 			}
 		} else {
-			// check session
-			session, _ := s.cookieStore.Get(r, "user_session")
-
-			// Check if user is authenticated
-			if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			if !s.requireSession(w, r) {
 				return
 			}
 		}
@@ -42,15 +37,17 @@ func (s Server) IsAuthenticated(next http.Handler) http.Handler {
 // IsSessionAuthenticated only accepts the web UI session; API keys are rejected.
 func (s Server) IsSessionAuthenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := s.cookieStore.Get(r, "user_session")
-
-		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		if !s.requireSession(w, r) {
 			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s Server) requireSession(w http.ResponseWriter, r *http.Request) bool {
+	_, ok := requireSession(w, r, s.cookieStore, s.authService, s.log)
+	return ok
 }
 
 func LoggerMiddleware(logger *zerolog.Logger) func(next http.Handler) http.Handler {

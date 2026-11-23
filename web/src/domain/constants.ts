@@ -73,4 +73,16 @@ export const EventOptions = [
     subtitle: "Synchronization was cancelled",
     enabled: false,
   },
+  {
+    title: "Password Changed",
+    value: "PASSWORD_CHANGED",
+    subtitle: "The web UI password was changed",
+    enabled: false,
+  },
+  {
+    title: "Login Blocked",
+    value: "LOGIN_BLOCKED",
+    subtitle: "Too many failed logins from one address",
+    enabled: false,
+  },
 ];

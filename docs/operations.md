@@ -39,6 +39,25 @@ Every upload keeps the previous payload (up to `syncHistoryLimit`). In the web U
 
 The same view shows which devices have synced with the key, when they were last seen and the last status they reported. Devices appear once they report sync events or send the `X-Device-ID`/`X-Device-Name` headers.
 
+## Web UI password and login protection
+
+- **Change the password** under *Settings → Security*. It needs the current password, at least 8 characters, and signs every other browser and device out; the one you used stays signed in.
+- **Failed logins are rate limited.** After 5 attempts within 15 minutes (login, or changing the password; a successful one resets the count, and IPv6 clients count per /64) the client address is refused with `429` and a `Retry-After` header until the 15 minutes are over, even with the right password. The counter lives in memory, so a restart clears it, and it is per address on purpose: a per-username lock would let anyone lock you out. The address comes from `X-Real-IP` or `X-Forwarded-For`, so run the server behind a reverse proxy that sets them. A server exposed directly trusts whatever the client sends, which makes the limit easy to evade.
+- **Locked out? Reset the password from the command line**, on the machine or container that has the config directory. The server may keep running; every web UI session is signed out.
+
+  ```bash
+  syncyomi reset-password --config /path/to/config
+  ```
+
+  In a terminal it asks for the new password twice without echoing it. When stdin is not a terminal it reads one line, which is how to run it in a container:
+
+  ```bash
+  printf '%s\n' "$NEW_PASSWORD" | docker exec -i syncyomi syncyomi reset-password --config /config
+  ```
+
+  It never takes the password as an argument or environment variable (those end up in shell history and process lists), works for both SQLite and PostgreSQL (it uses the database from `config.toml`), and refuses to run until the account exists. The new password follows the same rules as in the UI (at least 8 characters, at most 1024 bytes), which also apply when the account is first created. This does not send a *Password Changed* notification.
+- **Notifications:** the *Password Changed* and *Login Blocked* events can be enabled per notification target. *Login Blocked* is sent once when an address becomes blocked, not on every refused attempt.
+
 ## Notifications
 
 Notification targets are managed under *Settings → Notifications*. Discord, Telegram, ntfy and Notifiarr have fixed formats; the *Webhook* type delivers to any HTTP endpoint you control.
@@ -68,6 +87,10 @@ Authorization: Bearer <token>        (only when a token is set)
 - Like the Discord and ntfy senders, the webhook target can point at any address the server can reach, and any API-key holder or logged-in user can configure one. Treat notification access as trusted.
 
 ## Upgrade notes
+
+### 1.8.0
+
+- Web UI sessions now carry a stamp of the current password, so changing the password signs every other session out. Sessions created before the upgrade have no stamp: everyone signs in once after updating.
 
 ### 1.6.0
 

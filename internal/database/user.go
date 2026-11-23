@@ -44,26 +44,25 @@ func (r *UserRepo) GetUserCount(ctx context.Context) (int, error) {
 }
 
 func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*domain.User, error) {
-
 	queryBuilder := r.db.squirrel.
 		Select("id", "username", "password").
 		From("users").
 		Where(sq.Eq{"username": username})
 
+	return r.findOne(ctx, queryBuilder)
+}
+
+func (r *UserRepo) findOne(ctx context.Context, queryBuilder sq.SelectBuilder) (*domain.User, error) {
 	query, args, err := queryBuilder.ToSql()
 	if err != nil {
 		return nil, errors.Wrap(err, "error building query")
 	}
 
-	row := r.db.handler.QueryRowContext(ctx, query, args...)
-	if err := row.Err(); err != nil {
-		return nil, errors.Wrap(err, "error executing query")
-	}
-
 	var user domain.User
 
+	row := r.db.handler.QueryRowContext(ctx, query, args...)
 	if err := row.Scan(&user.ID, &user.Username, &user.Password); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 
@@ -116,4 +115,41 @@ func (r *UserRepo) Update(ctx context.Context, user domain.User) error {
 	}
 
 	return err
+}
+
+func (r *UserRepo) FindFirst(ctx context.Context) (*domain.User, error) {
+	queryBuilder := r.db.squirrel.
+		Select("id", "username", "password").
+		From("users").
+		OrderBy("id ASC").
+		Limit(1)
+
+	return r.findOne(ctx, queryBuilder)
+}
+
+func (r *UserRepo) UpdatePassword(ctx context.Context, id int, hash string) error {
+	queryBuilder := r.db.squirrel.
+		Update("users").
+		Set("password", hash).
+		Where(sq.Eq{"id": id})
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return errors.Wrap(err, "error building query")
+	}
+
+	result, err := r.db.handler.ExecContext(ctx, query, args...)
+	if err != nil {
+		return errors.Wrap(err, "error executing query")
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "error reading affected rows")
+	}
+	if affected == 0 {
+		return errors.New("no user with id %d", id)
+	}
+
+	return nil
 }

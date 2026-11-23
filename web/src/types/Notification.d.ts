@@ -10,7 +10,9 @@ export type NotificationEvent =
   | "SYNC_FAILED"
   | "SYNC_ERROR"
   | "SYNC_CANCELLED"
-  | "SERVER_UPDATE_AVAILABLE";
+  | "SERVER_UPDATE_AVAILABLE"
+  | "PASSWORD_CHANGED"
+  | "LOGIN_BLOCKED";
 
 interface Notification {
   id: number;

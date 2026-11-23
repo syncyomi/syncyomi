@@ -27,7 +27,7 @@
                 <v-col cols="12">
                   <v-text-field
                     v-model="password"
-                    :rules="[rules.required]"
+                    :rules="[rules.required, rules.min, rules.max]"
                     dense
                     label="Password"
                     prepend-inner-icon="mdi-lock-outline"
@@ -94,6 +94,13 @@ import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/store/auth/authStore";
+import { ONBOARD_FAILED_MESSAGE, onboardErrorMessage } from "./onboardError";
+import {
+  MAX_PASSWORD_BYTES,
+  MIN_PASSWORD_LENGTH,
+  passwordBytes,
+  passwordLength,
+} from "@/domain/passwordPolicy";
 
 interface InputValues {
   username: string;
@@ -107,14 +114,16 @@ const username = ref<string>("");
 const password = ref<string>("");
 const passwordConfirm = ref<string>("");
 const snackbar = ref<boolean>(false);
-const message = ref<string>(
-  "Failed to create account! currently only one account is allowed, make sure browser cookies are cleared.",
-);
+const message = ref<string>(ONBOARD_FAILED_MESSAGE);
 const authStore = useAuthStore();
 
 const rules = {
   required: (value: string) => !!value || "Required.",
-  min: (v: string) => v.length >= 8 || "Min 8 characters",
+  min: (v: string) =>
+    passwordLength(v) >= MIN_PASSWORD_LENGTH ||
+    `Min ${MIN_PASSWORD_LENGTH} characters`,
+  max: (v: string) =>
+    passwordBytes(v) <= MAX_PASSWORD_BYTES || `Max ${MAX_PASSWORD_BYTES} bytes`,
   match: (v: string) => v === password.value || "Passwords must match",
 };
 
@@ -127,7 +136,8 @@ const mutation = useMutation({
     await APIClient.auth.login(variables.username, variables.password1);
     router.push("/");
   },
-  onError: () => {
+  onError: (error) => {
+    message.value = onboardErrorMessage(error);
     snackbar.value = true;
   },
 });

@@ -31,10 +31,11 @@ flowchart LR
 
 | Package | Role |
 |---|---|
-| `internal/http` | chi router, handlers, auth middleware (`IsAuthenticated` for API key or session, `IsSessionAuthenticated` for web-UI-only endpoints) |
+| `internal/http` | chi router, handlers, auth middleware (`IsAuthenticated` for API key or session, `IsSessionAuthenticated` for web-UI-only endpoints), per-address login rate limiter |
 | `internal/sync` | sync service: content storage pass-through, device/status bookkeeping, sync-event notifications |
 | `internal/api` | API key service with an in-process key cache used on every authenticated request |
-| `internal/auth`, `internal/user` | web UI login / onboarding, argon2id password hashing (`pkg/argon2id`) |
+| `internal/auth`, `internal/user` | web UI login / onboarding / password change and reset, session password stamp, argon2id password hashing (`pkg/argon2id`) with a bounded number of concurrent hashes |
+| `internal/cli` | the `reset-password` command (`main.go` dispatches to it before the server starts) |
 | `internal/database` | repositories (raw SQL via squirrel) and schema migrations for both dialects |
 | `internal/domain` | interfaces and models shared by the layers |
 | `internal/notification` | notification senders |

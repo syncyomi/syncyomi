@@ -24,6 +24,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sync v0.24.0
+	golang.org/x/term v0.47.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	modernc.org/sqlite v1.61.0

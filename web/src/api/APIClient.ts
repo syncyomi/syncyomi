@@ -3,6 +3,7 @@ import { GithubRelease } from "@/types/Update";
 import { useAuthStore } from "@/store/auth/authStore";
 import router from "@/router";
 import { Notification } from "@/types/Notification";
+import { ApiError } from "./ApiError";
 
 interface ConfigType {
   body?: BodyInit | Record<string, unknown> | unknown;
@@ -44,7 +45,9 @@ export async function HttpClient<T>(
           return Promise.reject(new Error("Unauthorized"));
         }
 
-        return Promise.reject(new Error(await response.text()));
+        return Promise.reject(
+          new ApiError(await response.text(), response.status),
+        );
       }
 
       // Resolve immediately since 204 contains no data
@@ -80,6 +83,11 @@ export const APIClient = {
         password: password,
       }),
     canOnboard: () => appClient.Get("api/auth/onboard"),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      appClient.Post("api/auth/password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
   },
   apikeys: {
     getAll: () => appClient.Get<APIKey[]>("api/keys"),

@@ -9,6 +9,8 @@ import (
 type Service interface {
 	GetUserCount(ctx context.Context) (int, error)
 	FindByUsername(ctx context.Context, username string) (*domain.User, error)
+	FindFirst(ctx context.Context) (*domain.User, error)
+	UpdatePassword(ctx context.Context, id int, hash string) error
 	CreateUser(ctx context.Context, user domain.User) error
 }
 
@@ -33,6 +35,14 @@ func (s *service) FindByUsername(ctx context.Context, username string) (*domain.
 	}
 
 	return user, nil
+}
+
+func (s *service) FindFirst(ctx context.Context) (*domain.User, error) {
+	return s.repo.FindFirst(ctx)
+}
+
+func (s *service) UpdatePassword(ctx context.Context, id int, hash string) error {
+	return s.repo.UpdatePassword(ctx, id, hash)
 }
 
 func (s *service) CreateUser(ctx context.Context, newUser domain.User) error {

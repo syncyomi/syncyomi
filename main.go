@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/SyncYomi/SyncYomi/internal/api"
 	"github.com/SyncYomi/SyncYomi/internal/auth"
+	"github.com/SyncYomi/SyncYomi/internal/cli"
 	"github.com/SyncYomi/SyncYomi/internal/config"
 	"github.com/SyncYomi/SyncYomi/internal/database"
 	"github.com/SyncYomi/SyncYomi/internal/events"
@@ -23,6 +26,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const resetPasswordCommand = "reset-password"
+
 var (
 	version = "dev"
 	commit  = ""
@@ -33,6 +38,12 @@ func main() {
 	var configPath string
 	pflag.StringVar(&configPath, "config", "", "path to configuration file")
 	pflag.Parse()
+
+	command := pflag.Arg(0)
+	if command != "" && command != resetPasswordCommand {
+		fmt.Fprintf(os.Stderr, "unknown command %q; supported: %s\n", command, resetPasswordCommand)
+		os.Exit(2)
+	}
 
 	// read config
 	cfg := config.New(configPath, version)
@@ -63,13 +74,6 @@ func main() {
 		log.Fatal().Err(err).Msg("could not open db connection")
 	}
 
-	log.Info().Msgf("Starting SyncYomi")
-	log.Info().Msgf("Version: %s", version)
-	log.Info().Msgf("Commit: %s", commit)
-	log.Info().Msgf("Build date: %s", date)
-	log.Info().Msgf("Log-level: %s", cfg.Config.LogLevel)
-	log.Info().Msgf("Using database: %s", db.Driver)
-
 	// setup repos
 	var (
 		apikeyRepo       = database.NewAPIRepo(log, db)
@@ -86,9 +90,24 @@ func main() {
 		updateService       = update.NewUpdate(log, cfg.Config)
 		schedulingService   = scheduler.NewService(log, cfg.Config, notificationService, updateService)
 		userService         = user.NewService(userRepo)
-		authService         = auth.NewService(log, userService)
+		authService         = auth.NewService(log, userService, notificationService)
 		syncService         = sync.NewService(log, syncRepo, syncStore, notificationService, apikeyRepo)
 	)
+
+	if command == resetPasswordCommand {
+		exitCode := cli.RunResetPassword(context.Background(), authService, os.Stdin, os.Stdout, os.Stderr)
+		if err := db.Close(); err != nil {
+			log.Error().Err(err).Msg("could not close db connection")
+		}
+		os.Exit(exitCode)
+	}
+
+	log.Info().Msgf("Starting SyncYomi")
+	log.Info().Msgf("Version: %s", version)
+	log.Info().Msgf("Commit: %s", commit)
+	log.Info().Msgf("Build date: %s", date)
+	log.Info().Msgf("Log-level: %s", cfg.Config.LogLevel)
+	log.Info().Msgf("Using database: %s", db.Driver)
 
 	// register event subscribers
 	events.NewSubscribers(log, bus, notificationService)
