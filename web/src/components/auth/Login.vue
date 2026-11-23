@@ -53,6 +53,27 @@
                 </v-btn>
               </div>
             </v-form>
+
+            <template v-if="passkeysEnabled">
+              <div class="d-flex align-center my-4">
+                <v-divider></v-divider>
+                <span class="mx-3 text-medium-emphasis">or</span>
+                <v-divider></v-divider>
+              </div>
+
+              <v-btn
+                :loading="passkeyMutation.isPending.value"
+                block
+                class="text-uppercase"
+                color="primary"
+                prepend-icon="mdi-fingerprint"
+                rounded
+                variant="outlined"
+                @click="passkeyMutation.mutate()"
+              >
+                Sign in with passkey
+              </v-btn>
+            </template>
           </v-container>
         </v-sheet>
 
@@ -80,7 +101,12 @@ import { onMounted, ref } from "vue";
 import { useMutation } from "@tanstack/vue-query";
 import { APIClient } from "@/api/APIClient";
 import { useAuthStore } from "@/store/auth/authStore";
-import { LOGIN_FAILED_MESSAGE, loginErrorMessage } from "./loginError";
+import { passkeysAvailable, signInWithPasskey } from "@/utils/passkeys";
+import {
+  LOGIN_FAILED_MESSAGE,
+  loginErrorMessage,
+  passkeyErrorMessage,
+} from "./loginError";
 
 interface LoginFormFields {
   username: string;
@@ -113,6 +139,20 @@ const mutation = useMutation({
   },
 });
 
+const passkeysEnabled = ref<boolean>(false);
+
+const passkeyMutation = useMutation({
+  mutationFn: signInWithPasskey,
+  onSuccess: (signedInUser: string) => {
+    store.login(signedInUser);
+    router.push("/");
+  },
+  onError: (error) => {
+    message.value = passkeyErrorMessage(error);
+    snackbar.value = true;
+  },
+});
+
 const submit = () => {
   if (!valid.value) return;
   mutation.mutate({
@@ -129,6 +169,13 @@ onMounted(async () => {
     }
   } catch (error) {
     console.error("Error checking onboarding availability:", error);
+  }
+
+  try {
+    const { passkeys } = await APIClient.auth.capabilities();
+    passkeysEnabled.value = passkeys && passkeysAvailable();
+  } catch (error) {
+    console.error("Error checking sign-in methods:", error);
   }
 });
 </script>
