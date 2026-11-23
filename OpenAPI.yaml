@@ -195,6 +195,8 @@ paths:
           description: No valid web UI session
         '404':
           description: Passkeys are not enabled
+        '500':
+          description: Internal server error
   /auth/passkeys/register/begin:
     post:
       tags:
@@ -294,6 +296,8 @@ paths:
           description: No valid web UI session
         '404':
           description: No such passkey, or passkeys are not enabled
+        '500':
+          description: Internal server error
   /auth/password:
     post:
       tags:
