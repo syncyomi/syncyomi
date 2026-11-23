@@ -67,10 +67,10 @@ type dummyHash struct {
 }
 
 func NewService(log logger.Logger, userSvc user.Service, notifier notifier) Service {
-	return newService(log, userSvc, notifier, hashSlots, hashSlotWait)
+	return newService(log, userSvc, notifier, hashSlots, hashSlotWait, argon2id.DefaultParams, argon2id.LegacyParams)
 }
 
-func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int, slotWait time.Duration) *service {
+func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int, slotWait time.Duration, params, legacyParams *argon2id.Params) *service {
 	s := &service{
 		log:      log.With().Str("module", "auth").Logger(),
 		userSvc:  userSvc,
@@ -78,8 +78,8 @@ func newService(log logger.Logger, userSvc user.Service, notifier notifier, slot
 		slots:    semaphore.NewWeighted(int64(slots)),
 		slotWait: slotWait,
 
-		params:       argon2id.DefaultParams,
-		legacyParams: argon2id.LegacyParams,
+		params:       params,
+		legacyParams: legacyParams,
 		compareHash:  argon2id.ComparePasswordAndHash,
 	}
 	s.dummies = s.newDummyHashes()
@@ -106,7 +106,11 @@ func (s *service) newDummyHashes() []dummyHash {
 }
 
 func (s *service) dummyHashFor(ctx context.Context) string {
-	if u, err := s.userSvc.FindFirst(ctx); err == nil && u != nil {
+	u, err := s.userSvc.FindFirst(ctx)
+	if err != nil {
+		s.log.Debug().Err(err).Msg("could not read the stored hash to pick the dummy hash cost")
+	}
+	if err == nil && u != nil {
 		if stored, _, _, err := argon2id.DecodeHash(u.Password); err == nil {
 			for _, dummy := range s.dummies {
 				if dummy.params.SameCost(stored) {
@@ -234,8 +238,12 @@ func (s *service) upgradeHash(ctx context.Context, u *domain.User, password stri
 		return
 	}
 
-	if err := s.userSvc.RehashPassword(ctx, u.ID, u.Password, upgraded); err != nil {
+	applied, err := s.userSvc.RehashPassword(ctx, u.ID, u.Password, upgraded)
+	if err != nil {
 		s.log.Warn().Err(err).Msg("could not store the upgraded password hash")
+		return
+	}
+	if !applied {
 		return
 	}
 

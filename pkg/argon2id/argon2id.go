@@ -30,7 +30,6 @@ var DefaultParams = &Params{
 	KeyLength:   32,
 }
 
-// LegacyParams is the profile used for every hash created before DefaultParams moved to RFC 9106.
 var LegacyParams = &Params{
 	Memory:      64 * 1024,
 	Iterations:  1,
@@ -170,7 +169,6 @@ func DecodeHash(hash string) (params *Params, salt, key []byte, err error) {
 	return params, salt, key, nil
 }
 
-// SameCost reports whether both profiles cost the same to compute; the salt length does not matter.
 func (p *Params) SameCost(other *Params) bool {
 	return p.Memory == other.Memory &&
 		p.Iterations == other.Iterations &&

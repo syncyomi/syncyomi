@@ -32,6 +32,7 @@ type fakeUsers struct {
 	updates   int
 	rehashes  int
 	findErr   error
+	firstErr  error
 	rehashErr error
 }
 
@@ -58,6 +59,9 @@ func (f *fakeUsers) FindByUsername(_ context.Context, username string) (*domain.
 func (f *fakeUsers) FindFirst(context.Context) (*domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.firstErr != nil {
+		return nil, f.firstErr
+	}
 	if f.user == nil {
 		return nil, nil
 	}
@@ -74,21 +78,21 @@ func (f *fakeUsers) UpdatePassword(_ context.Context, id int, hash, stamp string
 	return nil
 }
 
-func (f *fakeUsers) RehashPassword(_ context.Context, id int, oldHash, newHash string) error {
+func (f *fakeUsers) RehashPassword(_ context.Context, id int, oldHash, newHash string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.rehashErr != nil {
-		return f.rehashErr
+		return false, f.rehashErr
 	}
 	if f.user.Password != oldHash {
-		return nil
+		return false, nil
 	}
 	f.rehashes++
 	if f.user.Stamp == "" {
 		f.user.Stamp = f.user.LegacyPasswordStamp()
 	}
 	f.user.Password = newHash
-	return nil
+	return true, nil
 }
 
 func (f *fakeUsers) CreateUser(_ context.Context, user domain.User) error {
@@ -146,6 +150,11 @@ type fixture struct {
 
 func newFixture(t *testing.T, withUser bool) *fixture {
 	t.Helper()
+	return newFixtureWithParams(t, withUser, testParams, testParams)
+}
+
+func newFixtureWithParams(t *testing.T, withUser bool, params, legacyParams *argon2id.Params) *fixture {
+	t.Helper()
 
 	users := &fakeUsers{}
 	if withUser {
@@ -159,10 +168,7 @@ func newFixture(t *testing.T, withUser bool) *fixture {
 	logs := &bytes.Buffer{}
 	notifier := &fakeNotifier{}
 
-	svc := newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots, time.Second)
-	svc.params = testParams
-	svc.legacyParams = testParams
-	svc.dummies = svc.newDummyHashes()
+	svc := newService(bufferLogger{zerolog.New(logs)}, users, notifier, hashSlots, time.Second, params, legacyParams)
 
 	return &fixture{
 		svc:      svc,
@@ -458,11 +464,40 @@ func TestService_Login(t *testing.T) {
 		}
 	})
 
+	t.Run("falls back to the target cost when the stored hash gives no better hint", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			setup  func(f *fixture)
+			wantOK func(params *argon2id.Params) bool
+		}{
+			{"stored hash already at the target cost", func(f *fixture) {}, func(p *argon2id.Params) bool { return p.SameCost(strongParams) }},
+			{"no user yet", func(f *fixture) { f.users.user = nil }, func(p *argon2id.Params) bool { return p.SameCost(strongParams) }},
+			{"undecodable stored hash", func(f *fixture) { f.users.user.Password = "not-a-hash" }, func(p *argon2id.Params) bool { return p.SameCost(strongParams) }},
+			{"storage failure", func(f *fixture) { f.users.firstErr = errors.New("database is down") }, func(p *argon2id.Params) bool { return p.SameCost(strongParams) }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				f := newFixtureWithParams(t, true, strongParams, testParams)
+				f.users.user.Password = hashWith(t, oldPassword, strongParams)
+				tt.setup(f)
+				var hashedWith *argon2id.Params
+				f.svc.compareHash = func(password, hash string) (bool, error) {
+					params, _, _, err := argon2id.DecodeHash(hash)
+					hashedWith = params
+					return false, err
+				}
+
+				_, _ = f.svc.Login(ctx, "nobody", "wrong-login-pw")
+
+				if hashedWith == nil || !tt.wantOK(hashedWith) {
+					t.Errorf("unknown-user check used %+v, want the target cost", hashedWith)
+				}
+			})
+		}
+	})
+
 	t.Run("hashes the dummy with the cost of the stored hash while old hashes remain", func(t *testing.T) {
-		f := newFixture(t, true)
-		f.svc.params = strongParams
-		f.svc.legacyParams = testParams
-		f.svc.dummies = f.svc.newDummyHashes()
+		f := newFixtureWithParams(t, true, strongParams, testParams)
 		var hashedWith *argon2id.Params
 		f.svc.compareHash = func(password, hash string) (bool, error) {
 			params, _, _, err := argon2id.DecodeHash(hash)
@@ -576,7 +611,7 @@ func TestPolicyMessage(t *testing.T) {
 }
 
 func TestNewService_defaultsToTheRFC9106Profile(t *testing.T) {
-	s := newService(bufferLogger{zerolog.New(&bytes.Buffer{})}, &fakeUsers{}, &fakeNotifier{}, hashSlots, time.Second)
+	s := NewService(bufferLogger{zerolog.New(&bytes.Buffer{})}, &fakeUsers{}, &fakeNotifier{}).(*service)
 
 	if s.params != argon2id.DefaultParams || s.legacyParams != argon2id.LegacyParams {
 		t.Errorf("params = %+v, legacy = %+v, want the package defaults", s.params, s.legacyParams)
@@ -596,8 +631,7 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("rehashes with the current parameters and keeps sessions valid", func(t *testing.T) {
-		f := newFixture(t, true)
-		f.svc.params = strongParams
+		f := newFixtureWithParams(t, true, strongParams, testParams)
 		stampBefore, _ := f.svc.CurrentPasswordStamp(ctx)
 
 		user, err := f.svc.Login(ctx, "admin", oldPassword)
@@ -632,8 +666,7 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 	})
 
 	t.Run("never rehashes after a wrong password", func(t *testing.T) {
-		f := newFixture(t, true)
-		f.svc.params = strongParams
+		f := newFixtureWithParams(t, true, strongParams, testParams)
 
 		_, _ = f.svc.Login(ctx, "admin", "wrong-login-pw")
 
@@ -643,8 +676,7 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 	})
 
 	t.Run("still signs in when the upgrade cannot be stored", func(t *testing.T) {
-		f := newFixture(t, true)
-		f.svc.params = strongParams
+		f := newFixtureWithParams(t, true, strongParams, testParams)
 		f.users.rehashErr = errors.New("database is read-only")
 
 		_, err := f.svc.Login(ctx, "admin", oldPassword)
@@ -655,8 +687,7 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 	})
 
 	t.Run("does not rehash while verifying a password change", func(t *testing.T) {
-		f := newFixture(t, true)
-		f.svc.params = strongParams
+		f := newFixtureWithParams(t, true, strongParams, testParams)
 
 		if err := f.svc.ChangePassword(ctx, oldPassword, newPassword); err != nil {
 			t.Fatalf("ChangePassword() error = %v", err)
