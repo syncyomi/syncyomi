@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/sessions"
 	"github.com/r3labs/sse/v2"
-	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"net"
 	"net/http"
@@ -163,16 +162,7 @@ func (s Server) Handler() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(LoggerMiddleware(&s.log))
 
-	c := cors.New(cors.Options{
-		AllowCredentials:   true,
-		AllowedMethods:     []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowOriginFunc:    func(origin string) bool { return true },
-		OptionsPassthrough: true,
-		// Enable Debugging for testing, consider disabling in production
-		Debug: false,
-	})
-
-	r.Use(c.Handler)
+	r.Use(newCORS(s.config.Config.CorsAllowedOrigins))
 
 	encoder := encoder{}
 	syncHandler := newSyncHandler(encoder, s.log, s.syncService, s.config.Config.SyncMaxBodyBytes())
