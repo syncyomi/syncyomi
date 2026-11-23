@@ -184,7 +184,6 @@ func (s Server) Handler() http.Handler {
 			r.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 				streamForever(w)
 
-				// inject CORS headers to bypass checks
 				s.sse.Headers = map[string]string{
 					"Content-Type":      "text/event-stream",
 					"Cache-Control":     "no-cache",

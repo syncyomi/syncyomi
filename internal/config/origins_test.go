@@ -15,6 +15,15 @@ func TestNormalizeOrigins(t *testing.T) {
 		}
 	})
 
+	t.Run("drops a port that is the scheme default", func(t *testing.T) {
+		got, err := NormalizeOrigins([]string{"https://example.com:443", "http://example.com:80", "http://example.com:8080"})
+
+		want := []string{"https://example.com", "http://example.com", "http://example.com:8080"}
+		if err != nil || !slices.Equal(got, want) {
+			t.Errorf("NormalizeOrigins() = %v, %v, want %v", got, err, want)
+		}
+	})
+
 	t.Run("accepts an empty list", func(t *testing.T) {
 		got, err := NormalizeOrigins(nil)
 
@@ -33,6 +42,9 @@ func TestNormalizeOrigins(t *testing.T) {
 		"https://example.com?x=1",
 		"https://user@example.com",
 		"https://",
+		"https://*.example.com",
+		"http://example.com:",
+		"https://münchen.de",
 	}
 	for _, origin := range invalid {
 		t.Run("rejects "+origin, func(t *testing.T) {

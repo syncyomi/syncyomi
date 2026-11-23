@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -81,6 +82,16 @@ func TestCORS(t *testing.T) {
 
 		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 			t.Errorf("Allow-Origin = %q, want none", got)
+		}
+	})
+
+	t.Run("tells caches the response depends on Origin", func(t *testing.T) {
+		for _, origin := range []string{"https://sync.example.com", "https://evil.example", ""} {
+			rec := serveCORS(t, allowed, http.MethodGet, origin, nil)
+
+			if !slices.Contains(rec.Header().Values("Vary"), "Origin") {
+				t.Errorf("Vary for origin %q = %v, want it to include Origin", origin, rec.Header().Values("Vary"))
+			}
 		}
 	})
 

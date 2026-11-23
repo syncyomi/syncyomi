@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 func NormalizeOrigins(origins []string) ([]string, error) {
@@ -24,11 +25,31 @@ func NormalizeOrigins(origins []string) ([]string, error) {
 			return nil, fmt.Errorf("corsAllowedOrigins: %q must be scheme://host[:port] with no path, query or credentials", origin)
 		}
 
-		entry := scheme + "://" + strings.ToLower(parsed.Host)
+		host := strings.ToLower(parsed.Host)
+		if strings.ContainsAny(host, "*") || strings.HasSuffix(host, ":") || !isASCII(host) {
+			return nil, fmt.Errorf("corsAllowedOrigins: %q must be an exact ASCII host (no wildcard, empty port or non-ASCII characters; use the punycode form)", origin)
+		}
+		if parsed.Port() == defaultPorts[scheme] {
+			host = strings.TrimSuffix(host, ":"+parsed.Port())
+		}
+
+		entry := scheme + "://" + host
 		if !slices.Contains(normalized, entry) {
 			normalized = append(normalized, entry)
 		}
 	}
 
 	return normalized, nil
+}
+
+var defaultPorts = map[string]string{"http": "80", "https": "443"}
+
+func isASCII(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+
+	return true
 }

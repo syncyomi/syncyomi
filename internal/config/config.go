@@ -168,9 +168,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Default: [] (none)
 #
 # Web pages served from another origin can always read public responses, but
-# only the origins listed here may also send the web UI session cookie. Each
-# entry is scheme://host[:port] without a path, for example
-# ["https://sync.example.com"]. Sync clients are not browsers and need nothing.
+# only the origins listed here may also send the web UI session cookie. This
+# matters for pages on the same site but another origin (another port or a
+# subdomain); the session cookie is never sent from other sites. Each entry is
+# scheme://host[:port] without a path, for example ["https://sync.example.com"].
+# Sync clients are not browsers and need nothing.
 #
 #corsAllowedOrigins = []
 `

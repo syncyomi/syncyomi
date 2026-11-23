@@ -10,8 +10,10 @@ import (
 var corsMethods = []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"}
 
 func newCORS(allowedOrigins []string) func(http.Handler) http.Handler {
+	isListed := func(origin string) bool { return slices.Contains(allowedOrigins, origin) }
+
 	credentialed := cors.New(cors.Options{
-		AllowOriginFunc:    func(origin string) bool { return slices.Contains(allowedOrigins, origin) },
+		AllowOriginFunc:    isListed,
 		AllowCredentials:   true,
 		AllowedMethods:     corsMethods,
 		OptionsPassthrough: true,
@@ -26,7 +28,7 @@ func newCORS(allowedOrigins []string) func(http.Handler) http.Handler {
 		withCredentials, withoutCredentials := credentialed.Handler(next), anonymous.Handler(next)
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if slices.Contains(allowedOrigins, r.Header.Get("Origin")) {
+			if isListed(r.Header.Get("Origin")) {
 				withCredentials.ServeHTTP(w, r)
 				return
 			}
