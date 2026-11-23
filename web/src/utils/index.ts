@@ -15,8 +15,6 @@ export function baseUrl() {
 
 // get sseBaseUrl for SSE
 export function sseBaseUrl() {
-  if (import.meta.env.DEV) return "http://localhost:8282/";
-
   return `${window.location.origin}${baseUrl()}`;
 }
 
