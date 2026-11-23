@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { baseUrl, relativeDate, simplifyDate } from "./index";
+import { baseUrl, relativeDate, simplifyDate, sseBaseUrl } from "./index";
 
 describe("baseUrl", () => {
   afterEach(() => {
@@ -58,5 +58,20 @@ describe("relativeDate", () => {
   it("describes a past date relative to now", () => {
     const past = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     expect(relativeDate(past)).toBe("5 minutes ago");
+  });
+});
+
+describe("sseBaseUrl", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stays on the page's own origin so the event stream is same-origin, in development too", () => {
+    vi.stubGlobal("window", {
+      APP: { baseUrl: "/syncyomi/" },
+      location: { origin: "http://localhost:3000" },
+    });
+
+    expect(sseBaseUrl()).toBe("http://localhost:3000/syncyomi/");
   });
 });
