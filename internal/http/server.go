@@ -203,8 +203,15 @@ func (s Server) Handler() http.Handler {
 				}
 
 				ctx, cancel := context.WithCancel(r.Context())
-				defer cancel()
-				go s.cancelWhenSessionEnds(ctx, cancel, r)
+				watcherDone := make(chan struct{})
+				go func() {
+					defer close(watcherDone)
+					s.cancelWhenSessionEnds(ctx, cancel, r)
+				}()
+				defer func() {
+					cancel()
+					<-watcherDone
+				}()
 
 				s.sse.ServeHTTP(w, r.WithContext(ctx))
 			})

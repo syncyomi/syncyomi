@@ -123,21 +123,48 @@ func TestServer_HandlerServesSyncRoutesToAPIKey(t *testing.T) {
 
 type switchableStamp struct {
 	*mockAuthService
-	mu    sync.Mutex
-	stamp string
-	err   error
+	mu        sync.Mutex
+	stamp     string
+	err       error
+	blocking  bool
+	lookupRan chan struct{}
 }
 
-func (s *switchableStamp) CurrentPasswordStamp(context.Context) (string, error) {
+func (s *switchableStamp) CurrentPasswordStamp(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	blocking, lookupRan := s.blocking, s.lookupRan
+	stamp, err := s.stamp, s.err
+	s.mu.Unlock()
+
+	if blocking {
+		select {
+		case lookupRan <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+
+	return stamp, err
+}
+
+func (s *switchableStamp) set(stamp string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.stamp, s.err
+	s.stamp = stamp
 }
 
 func (s *switchableStamp) setErr(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.err = err
+}
+
+func (s *switchableStamp) blockLookups() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.blocking = true
+	s.lookupRan = make(chan struct{}, 1)
 }
 
 type lockedBuffer struct {
@@ -155,12 +182,6 @@ func (b *lockedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
-}
-
-func (s *switchableStamp) set(stamp string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.stamp = stamp
 }
 
 func TestServer_EventStreamEndsWhenThePasswordChanges(t *testing.T) {
@@ -204,13 +225,16 @@ func TestServer_EventStreamEndsWhenThePasswordChanges(t *testing.T) {
 	}
 }
 
-func TestServer_EventStreamSurvivesAFailedSessionRecheck(t *testing.T) {
-	auth := &switchableStamp{mockAuthService: &mockAuthService{}, stamp: currentStamp}
-	logs := &lockedBuffer{}
-	s := newRoutingTestServer()
-	s.log = zerolog.New(logs)
-	s.authService = auth
-	s.streamRecheckInterval = 10 * time.Millisecond
+const recheckWarning = "could not re-check the session"
+
+type openStream struct {
+	server *httptest.Server
+	resp   *http.Response
+	ended  chan struct{}
+}
+
+func openEventStream(t *testing.T, s Server) openStream {
+	t.Helper()
 	s.sse.CreateStream("logs")
 	cookie := authedSessionCookie(t, s)
 	server := httptest.NewServer(s.Handler())
@@ -225,15 +249,29 @@ func TestServer_EventStreamSurvivesAFailedSessionRecheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { resp.Body.Close() })
+
 	ended := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		close(ended)
 	}()
 
+	return openStream{server: server, resp: resp, ended: ended}
+}
+
+func TestServer_EventStreamSurvivesAFailedSessionRecheck(t *testing.T) {
+	auth := &switchableStamp{mockAuthService: &mockAuthService{}, stamp: currentStamp}
+	logs := &lockedBuffer{}
+	s := newRoutingTestServer()
+	s.log = zerolog.New(logs)
+	s.authService = auth
+	s.streamRecheckInterval = 10 * time.Millisecond
+	stream := openEventStream(t, s)
+
 	auth.setErr(errTest)
 	deadline := time.After(2 * time.Second)
-	for !strings.Contains(logs.String(), "could not re-check the session") {
+	for !strings.Contains(logs.String(), recheckWarning) {
 		select {
 		case <-deadline:
 			t.Fatal("no warning was logged for the failed re-check")
@@ -242,16 +280,27 @@ func TestServer_EventStreamSurvivesAFailedSessionRecheck(t *testing.T) {
 	}
 
 	select {
-	case <-ended:
+	case <-stream.ended:
 		t.Fatal("stream ended because of a transient lookup error")
 	case <-time.After(100 * time.Millisecond):
 	}
+}
 
-	resp.Body.Close()
-	<-ended
-	before := strings.Count(logs.String(), "could not re-check the session")
-	time.Sleep(60 * time.Millisecond)
-	if after := strings.Count(logs.String(), "could not re-check the session"); after != before {
-		t.Errorf("warnings after the client left = %d, want %d (no log for a cancelled re-check)", after, before)
+func TestServer_EventStreamDoesNotWarnWhenTheClientLeavesMidRecheck(t *testing.T) {
+	auth := &switchableStamp{mockAuthService: &mockAuthService{}, stamp: currentStamp}
+	logs := &lockedBuffer{}
+	s := newRoutingTestServer()
+	s.log = zerolog.New(logs)
+	s.authService = auth
+	s.streamRecheckInterval = 10 * time.Millisecond
+	stream := openEventStream(t, s)
+	auth.blockLookups()
+	<-auth.lookupRan
+
+	stream.resp.Body.Close()
+	stream.server.Close()
+
+	if got := logs.String(); strings.Contains(got, recheckWarning) {
+		t.Errorf("log output = %q, want no warning for a re-check cancelled by the client leaving", got)
 	}
 }
