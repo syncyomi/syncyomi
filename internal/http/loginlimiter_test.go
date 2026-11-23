@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -16,93 +17,127 @@ func newTestLimiter() (*loginLimiter, *fakeClock) {
 	return newLoginLimiter(clock.now), clock
 }
 
-func failTimes(l *loginLimiter, client string, n int) {
+func reserveTimes(l *loginLimiter, client string, n int) {
 	for range n {
-		l.recordFailure(client)
+		l.reserve(client)
 	}
 }
 
 func TestLoginLimiter(t *testing.T) {
-	t.Run("allows attempts below the failure limit", func(t *testing.T) {
+	t.Run("allows attempts up to the limit", func(t *testing.T) {
 		l, _ := newTestLimiter()
 
-		failTimes(l, "10.0.0.1", maxFailedAttempts-1)
-
-		if _, blocked := l.blockedFor("10.0.0.1"); blocked {
-			t.Error("blockedFor() = true after fewer failures than the limit, want false")
+		for i := 1; i <= maxFailedAttempts; i++ {
+			if got := l.reserve("10.0.0.1"); !got.allowed {
+				t.Fatalf("reserve() attempt %d allowed = false, want true", i)
+			}
 		}
 	})
 
-	t.Run("blocks at the failure limit and reports the time left", func(t *testing.T) {
+	t.Run("refuses the attempt after the limit and reports the time left", func(t *testing.T) {
 		l, clock := newTestLimiter()
-		failTimes(l, "10.0.0.1", maxFailedAttempts)
+		reserveTimes(l, "10.0.0.1", maxFailedAttempts)
 		clock.advance(5 * time.Minute)
 
-		retryAfter, blocked := l.blockedFor("10.0.0.1")
+		got := l.reserve("10.0.0.1")
 
-		if !blocked || retryAfter != failureWindow-5*time.Minute {
-			t.Errorf("blockedFor() = %v, %v, want %v, true", retryAfter, blocked, failureWindow-5*time.Minute)
+		if got.allowed || got.retryAfter != failureWindow-5*time.Minute {
+			t.Errorf("reserve() = %+v, want refused with %v left", got, failureWindow-5*time.Minute)
 		}
 	})
 
-	t.Run("reports the block only on the failure that causes it", func(t *testing.T) {
+	t.Run("reports the block once, on the first refused attempt", func(t *testing.T) {
 		l, _ := newTestLimiter()
 		var blockedOn []int
 
-		for i := 1; i <= maxFailedAttempts+2; i++ {
-			if l.recordFailure("10.0.0.1") {
+		for i := 1; i <= maxFailedAttempts+3; i++ {
+			if l.reserve("10.0.0.1").justBlocked {
 				blockedOn = append(blockedOn, i)
 			}
 		}
 
-		if len(blockedOn) != 1 || blockedOn[0] != maxFailedAttempts {
-			t.Errorf("recordFailure() reported a block on attempts %v, want only %d", blockedOn, maxFailedAttempts)
+		if len(blockedOn) != 1 || blockedOn[0] != maxFailedAttempts+1 {
+			t.Errorf("justBlocked on attempts %v, want only %d", blockedOn, maxFailedAttempts+1)
 		}
 	})
 
 	t.Run("lets the client back in once the window has passed", func(t *testing.T) {
 		l, clock := newTestLimiter()
-		failTimes(l, "10.0.0.1", maxFailedAttempts)
+		reserveTimes(l, "10.0.0.1", maxFailedAttempts+1)
 		clock.advance(failureWindow)
 
-		if _, blocked := l.blockedFor("10.0.0.1"); blocked {
-			t.Error("blockedFor() = true after the window elapsed, want false")
-		}
-		if l.recordFailure("10.0.0.1") {
-			t.Error("recordFailure() reported a block on the first failure of a new window")
+		if got := l.reserve("10.0.0.1"); !got.allowed {
+			t.Error("reserve() refused after the window elapsed, want allowed")
 		}
 	})
 
-	t.Run("forgets earlier failures after a success", func(t *testing.T) {
+	t.Run("forgets earlier attempts after a success", func(t *testing.T) {
 		l, _ := newTestLimiter()
-		failTimes(l, "10.0.0.1", maxFailedAttempts-1)
+		reserveTimes(l, "10.0.0.1", maxFailedAttempts-1)
 
-		l.recordSuccess("10.0.0.1")
-		failTimes(l, "10.0.0.1", maxFailedAttempts-1)
+		l.clear("10.0.0.1")
 
-		if _, blocked := l.blockedFor("10.0.0.1"); blocked {
-			t.Error("blockedFor() = true, want a success to reset the failure count")
+		for i := 1; i <= maxFailedAttempts; i++ {
+			if got := l.reserve("10.0.0.1"); !got.allowed {
+				t.Fatalf("reserve() attempt %d after clear refused, want allowed", i)
+			}
+		}
+	})
+
+	t.Run("gives an attempt back when it reached no verdict", func(t *testing.T) {
+		l, _ := newTestLimiter()
+		reserveTimes(l, "10.0.0.1", maxFailedAttempts)
+
+		l.release("10.0.0.1")
+
+		if got := l.reserve("10.0.0.1"); !got.allowed {
+			t.Error("reserve() refused after a release, want the freed attempt usable")
 		}
 	})
 
 	t.Run("tracks clients independently", func(t *testing.T) {
 		l, _ := newTestLimiter()
+		reserveTimes(l, "10.0.0.1", maxFailedAttempts+1)
 
-		failTimes(l, "10.0.0.1", maxFailedAttempts)
-
-		if _, blocked := l.blockedFor("10.0.0.2"); blocked {
-			t.Error("blockedFor() = true for a client that never failed, want false")
+		if got := l.reserve("10.0.0.2"); !got.allowed {
+			t.Error("reserve() refused a client that never attempted, want allowed")
 		}
 	})
 
-	t.Run("bounds memory when many clients fail once", func(t *testing.T) {
+	t.Run("lets only the limit through when attempts race", func(t *testing.T) {
+		l, _ := newTestLimiter()
+		var (
+			wg      sync.WaitGroup
+			mu      sync.Mutex
+			allowed int
+		)
+
+		for range 200 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if l.reserve("10.0.0.1").allowed {
+					mu.Lock()
+					allowed++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+
+		if allowed != maxFailedAttempts {
+			t.Errorf("allowed attempts = %d, want %d", allowed, maxFailedAttempts)
+		}
+	})
+
+	t.Run("bounds memory when many clients attempt once", func(t *testing.T) {
 		l, _ := newTestLimiter()
 
 		for i := range maxTrackedClients + 500 {
-			l.recordFailure(fmt.Sprintf("client-%d", i))
+			l.reserve(fmt.Sprintf("client-%d", i))
 		}
 
-		if got := len(l.failures); got > maxTrackedClients {
+		if got := len(l.attempts); got > maxTrackedClients {
 			t.Errorf("tracked clients = %d, want at most %d", got, maxTrackedClients)
 		}
 	})
@@ -110,13 +145,13 @@ func TestLoginLimiter(t *testing.T) {
 	t.Run("drops expired clients before evicting live ones", func(t *testing.T) {
 		l, clock := newTestLimiter()
 		for i := range maxTrackedClients {
-			l.recordFailure(fmt.Sprintf("old-%d", i))
+			l.reserve(fmt.Sprintf("old-%d", i))
 		}
 		clock.advance(failureWindow)
 
-		l.recordFailure("fresh")
+		l.reserve("fresh")
 
-		if got := len(l.failures); got != 1 {
+		if got := len(l.attempts); got != 1 {
 			t.Errorf("tracked clients = %d, want only the fresh one", got)
 		}
 	})

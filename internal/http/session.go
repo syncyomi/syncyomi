@@ -3,10 +3,12 @@ package http
 import (
 	"context"
 	"crypto/subtle"
+	"net/http"
 
 	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"github.com/SyncYomi/SyncYomi/pkg/errors"
 	"github.com/gorilla/sessions"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -43,4 +45,21 @@ func sessionAuthenticated(ctx context.Context, session *sessions.Session, source
 func markSessionAuthenticated(session *sessions.Session, stamp string) {
 	session.Values[sessionAuthenticatedKey] = true
 	session.Values[sessionStampKey] = stamp
+}
+
+func requireSession(w http.ResponseWriter, r *http.Request, store *sessions.CookieStore, source stampSource, log zerolog.Logger) (*sessions.Session, bool) {
+	session, _ := store.Get(r, sessionName)
+
+	authenticated, err := sessionAuthenticated(r.Context(), session, source)
+	if err != nil {
+		log.Error().Err(err).Msg("could not verify session")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return nil, false
+	}
+	if !authenticated {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return nil, false
+	}
+
+	return session, true
 }

@@ -13,25 +13,27 @@ import (
 
 const currentStamp = "stamp-1"
 
-// sessionValues maps a scenario name to what the session cookie holds.
-func sessionValues(kind string) map[string]any {
-	switch kind {
-	case "authed":
-		return map[string]any{sessionAuthenticatedKey: true, sessionStampKey: currentStamp}
-	case "unauthed":
-		return map[string]any{sessionAuthenticatedKey: false, sessionStampKey: currentStamp}
-	case "stale":
-		return map[string]any{sessionAuthenticatedKey: true, sessionStampKey: "old-stamp"}
-	case "unstamped":
-		return map[string]any{sessionAuthenticatedKey: true}
-	}
-	return nil
+type sessionKind string
+
+const (
+	noSession        sessionKind = ""
+	authedSession    sessionKind = "authed"
+	unauthedSession  sessionKind = "unauthed"
+	staleSession     sessionKind = "stale"
+	unstampedSession sessionKind = "unstamped"
+)
+
+var sessionValues = map[sessionKind]map[string]any{
+	authedSession:    {sessionAuthenticatedKey: true, sessionStampKey: currentStamp},
+	unauthedSession:  {sessionAuthenticatedKey: false, sessionStampKey: currentStamp},
+	staleSession:     {sessionAuthenticatedKey: true, sessionStampKey: "old-stamp"},
+	unstampedSession: {sessionAuthenticatedKey: true},
 }
 
-func attachSession(t *testing.T, store *sessions.CookieStore, req *http.Request, kind string) {
+func attachSession(t *testing.T, store *sessions.CookieStore, req *http.Request, kind sessionKind) {
 	t.Helper()
 	sess, _ := store.Get(req, sessionName)
-	for k, v := range sessionValues(kind) {
+	for k, v := range sessionValues[kind] {
 		sess.Values[k] = v
 	}
 	w := httptest.NewRecorder()
@@ -70,7 +72,7 @@ func TestServer_IsAuthenticated(t *testing.T) {
 		name       string
 		header     string
 		query      string
-		session    string // "", "authed", "unauthed", "stale", "unstamped"
+		session    sessionKind
 		stampErr   error
 		wantStatus int
 		wantCalls  []string
@@ -106,35 +108,35 @@ func TestServer_IsAuthenticated(t *testing.T) {
 		},
 		{
 			name:       "authenticated session passes",
-			session:    "authed",
+			session:    authedSession,
 			wantStatus: http.StatusOK,
 			wantCalls:  nil,
 		},
 		{
 			name:       "logged out session is rejected",
-			session:    "unauthed",
+			session:    unauthedSession,
 			wantStatus: http.StatusUnauthorized,
 			wantCalls:  nil,
 		},
 		{
 			name:       "session from before a password change is rejected",
-			session:    "stale",
+			session:    staleSession,
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:       "session without a password stamp is rejected",
-			session:    "unstamped",
+			session:    unstampedSession,
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:       "session is rejected when no user exists",
-			session:    "authed",
+			session:    authedSession,
 			stampErr:   auth.ErrNoUser,
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:       "a failing stamp lookup fails closed with a server error",
-			session:    "authed",
+			session:    authedSession,
 			stampErr:   errTest,
 			wantStatus: http.StatusInternalServerError,
 		},
@@ -150,7 +152,7 @@ func TestServer_IsAuthenticated(t *testing.T) {
 			// the session branch and let a cookie rescue it.
 			name:       "invalid header does not fall through to session",
 			header:     "nope",
-			session:    "authed",
+			session:    authedSession,
 			wantStatus: http.StatusUnauthorized,
 			wantCalls:  []string{"nope"},
 		},
@@ -188,7 +190,7 @@ func TestServer_IsAuthenticated(t *testing.T) {
 			if tt.header != "" {
 				req.Header.Set("X-API-Token", tt.header)
 			}
-			if tt.session != "" {
+			if tt.session != noSession {
 				attachSession(t, s.cookieStore, req, tt.session)
 			}
 
@@ -214,18 +216,18 @@ func TestServer_IsSessionAuthenticated(t *testing.T) {
 	tests := []struct {
 		name       string
 		header     string
-		session    string
+		session    sessionKind
 		stampErr   error
 		wantStatus int
 	}{
 		{name: "valid api token is rejected", header: validKey, wantStatus: http.StatusUnauthorized},
-		{name: "session from before a password change is rejected", session: "stale", wantStatus: http.StatusUnauthorized},
-		{name: "session without a password stamp is rejected", session: "unstamped", wantStatus: http.StatusUnauthorized},
-		{name: "session is rejected when no user exists", session: "authed", stampErr: auth.ErrNoUser, wantStatus: http.StatusUnauthorized},
-		{name: "a failing stamp lookup fails closed with a server error", session: "authed", stampErr: errTest, wantStatus: http.StatusInternalServerError},
+		{name: "session from before a password change is rejected", session: staleSession, wantStatus: http.StatusUnauthorized},
+		{name: "session without a password stamp is rejected", session: unstampedSession, wantStatus: http.StatusUnauthorized},
+		{name: "session is rejected when no user exists", session: authedSession, stampErr: auth.ErrNoUser, wantStatus: http.StatusUnauthorized},
+		{name: "a failing stamp lookup fails closed with a server error", session: authedSession, stampErr: errTest, wantStatus: http.StatusInternalServerError},
 		{name: "no credentials is rejected", wantStatus: http.StatusUnauthorized},
-		{name: "authenticated session passes", session: "authed", wantStatus: http.StatusOK},
-		{name: "logged out session is rejected", session: "unauthed", wantStatus: http.StatusUnauthorized},
+		{name: "authenticated session passes", session: authedSession, wantStatus: http.StatusOK},
+		{name: "logged out session is rejected", session: unauthedSession, wantStatus: http.StatusUnauthorized},
 	}
 
 	for _, tt := range tests {
@@ -246,7 +248,7 @@ func TestServer_IsSessionAuthenticated(t *testing.T) {
 			if tt.header != "" {
 				req.Header.Set("X-API-Token", tt.header)
 			}
-			if tt.session != "" {
+			if tt.session != noSession {
 				attachSession(t, s.cookieStore, req, tt.session)
 			}
 

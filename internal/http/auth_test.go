@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,6 +31,7 @@ type mockAuthService struct {
 	changeErr    error
 	changeCalls  [][2]string
 	blocked      []string
+	loginCalls   int
 }
 
 func (m *mockAuthService) GetUserCount(ctx context.Context) (int, error) {
@@ -40,6 +42,7 @@ func (m *mockAuthService) GetUserCount(ctx context.Context) (int, error) {
 }
 
 func (m *mockAuthService) Login(ctx context.Context, username, password string) (*domain.User, error) {
+	m.loginCalls++
 	if m.loginErr != nil {
 		return nil, m.loginErr
 	}
@@ -217,8 +220,26 @@ func TestAuthHandler_login(t *testing.T) {
 		{
 			name:       "bad credentials return 401",
 			body:       `{"username":"u","password":"wrong"}`,
-			mock:       &mockAuthService{loginErr: errTest},
+			mock:       &mockAuthService{loginErr: auth.ErrInvalidCredentials},
 			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "a busy server returns 503",
+			body:       `{"username":"u","password":"p"}`,
+			mock:       &mockAuthService{loginErr: auth.ErrBusy},
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name:       "an unexpected failure returns 500, not 401",
+			body:       `{"username":"u","password":"p"}`,
+			mock:       &mockAuthService{loginErr: errTest},
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "an oversized body returns 413",
+			body:       `{"username":"u","password":"` + strings.Repeat("a", 10000) + `"}`,
+			mock:       &mockAuthService{},
+			wantStatus: http.StatusRequestEntityTooLarge,
 		},
 	}
 	for _, tt := range tests {
@@ -360,50 +381,6 @@ func TestAuthHandler_validate(t *testing.T) {
 			t.Errorf("validate() status = %v, want %v", got, http.StatusInternalServerError)
 		}
 	})
-}
-
-func TestReadUserIP(t *testing.T) {
-	tests := []struct {
-		name       string
-		realIP     string
-		forwardFor string
-		remoteAddr string
-		want       string
-	}{
-		{
-			name:       "x-real-ip wins",
-			realIP:     "1.1.1.1",
-			forwardFor: "2.2.2.2",
-			remoteAddr: "3.3.3.3:1234",
-			want:       "1.1.1.1",
-		},
-		{
-			name:       "x-forwarded-for when no real ip",
-			forwardFor: "2.2.2.2",
-			remoteAddr: "3.3.3.3:1234",
-			want:       "2.2.2.2",
-		},
-		{
-			name:       "remote addr as last resort",
-			remoteAddr: "3.3.3.3:1234",
-			want:       "3.3.3.3:1234",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			req.RemoteAddr = tt.remoteAddr
-			if tt.realIP != "" {
-				req.Header.Set("X-Real-Ip", tt.realIP)
-			}
-			if tt.forwardFor != "" {
-				req.Header.Set("X-Forwarded-For", tt.forwardFor)
-			}
-			if got := ReadUserIP(req); got != tt.want {
-				t.Errorf("ReadUserIP() = %q, want %q", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestAuthHandler_changePassword(t *testing.T) {
@@ -617,7 +594,7 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 	}
 
 	t.Run("blocks a client after repeated failed logins even with the right password", func(t *testing.T) {
-		mock := &mockAuthService{loginErr: errTest}
+		mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
 		r, _ := newTestAuthRouter(cfg, mock)
 		for range maxFailedAttempts {
 			loginFrom(r, "203.0.113.5:1000")
@@ -639,7 +616,7 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 	})
 
 	t.Run("notifies once when a client becomes blocked", func(t *testing.T) {
-		mock := &mockAuthService{loginErr: errTest}
+		mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
 		r, _ := newTestAuthRouter(cfg, mock)
 
 		for range maxFailedAttempts + 3 {
@@ -652,7 +629,7 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 	})
 
 	t.Run("does not block other clients", func(t *testing.T) {
-		mock := &mockAuthService{loginErr: errTest}
+		mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
 		r, _ := newTestAuthRouter(cfg, mock)
 		for range maxFailedAttempts {
 			loginFrom(r, "203.0.113.5:1000")
@@ -668,22 +645,64 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 	})
 
 	t.Run("a successful login resets the failure count", func(t *testing.T) {
-		mock := &mockAuthService{loginErr: errTest}
+		mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
 		r, _ := newTestAuthRouter(cfg, mock)
 		for range maxFailedAttempts - 1 {
 			loginFrom(r, "203.0.113.5:1000")
 		}
 		mock.loginErr, mock.loginUser = nil, user
 		loginFrom(r, "203.0.113.5:1000")
-		mock.loginErr = errTest
+		mock.loginErr = auth.ErrInvalidCredentials
 
 		var last int
-		for range maxFailedAttempts - 1 {
+		for range maxFailedAttempts {
 			last = loginFrom(r, "203.0.113.5:1000").Code
 		}
 
 		if last != http.StatusUnauthorized {
-			t.Errorf("login() status = %v, want %v (still below the limit)", last, http.StatusUnauthorized)
+			t.Errorf("login() status = %v, want %v (still within the limit)", last, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("does not call the service for a blocked client", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
+		r, _ := newTestAuthRouter(cfg, mock)
+		for range maxFailedAttempts {
+			loginFrom(r, "203.0.113.5:1000")
+		}
+		callsBefore := mock.loginCalls
+
+		loginFrom(r, "203.0.113.5:1000")
+
+		if mock.loginCalls != callsBefore {
+			t.Error("Login was called for a blocked client")
+		}
+	})
+
+	t.Run("does not count server errors or malformed requests as failed attempts", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: errTest}
+		r, _ := newTestAuthRouter(cfg, mock)
+		for range maxFailedAttempts * 2 {
+			loginFrom(r, "203.0.113.5:1000")
+		}
+		mock.loginErr, mock.loginUser = nil, user
+
+		if got := loginFrom(r, "203.0.113.5:1000").Code; got != http.StatusNoContent {
+			t.Errorf("login() status = %v, want %v after only server errors", got, http.StatusNoContent)
+		}
+	})
+
+	t.Run("treats one IPv6 /64 as a single client", func(t *testing.T) {
+		mock := &mockAuthService{loginErr: auth.ErrInvalidCredentials}
+		r, _ := newTestAuthRouter(cfg, mock)
+		for i := range maxFailedAttempts {
+			loginFrom(r, fmt.Sprintf("[2001:db8:1:2::%x]:1000", i+1))
+		}
+
+		got := loginFrom(r, "[2001:db8:1:2:aaaa:bbbb:cccc:dddd]:1000").Code
+
+		if got != http.StatusTooManyRequests {
+			t.Errorf("login() from another address in the same /64 status = %v, want %v", got, http.StatusTooManyRequests)
 		}
 	})
 
@@ -715,4 +734,56 @@ func TestAuthHandler_rateLimit(t *testing.T) {
 			t.Error("ChangePassword was called for a blocked client")
 		}
 	})
+}
+
+func TestClientKey(t *testing.T) {
+	tests := []struct {
+		remoteAddr string
+		want       string
+	}{
+		{"203.0.113.5:4000", "203.0.113.5"},
+		{"203.0.113.5", "203.0.113.5"},
+		{"[::ffff:203.0.113.5]:4000", "203.0.113.5"},
+		{"[2001:db8:1:2:aaaa:bbbb:cccc:dddd]:4000", "2001:db8:1:2::/64"},
+		{"2001:db8:1:2::1", "2001:db8:1:2::/64"},
+		{"[fe80::1%eth0]:4000", "fe80::/64"},
+		{"not-an-address", "not-an-address"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.remoteAddr, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = tt.remoteAddr
+
+			if got := clientKey(req); got != tt.want {
+				t.Errorf("clientKey() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAuthHandler_onboard(t *testing.T) {
+	cfg := &domain.Config{BaseURL: "/"}
+	tests := []struct {
+		name       string
+		mock       *mockAuthService
+		wantStatus int
+	}{
+		{"creates the account", &mockAuthService{}, http.StatusNoContent},
+		{"rejects a password that breaks the policy", &mockAuthService{createErr: auth.ErrPasswordTooShort}, http.StatusBadRequest},
+		{"refuses a second account", &mockAuthService{createErr: errTest}, http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, _ := newTestAuthRouter(cfg, tt.mock)
+			req := httptest.NewRequest(http.MethodPost, "/onboard", strings.NewReader(`{"username":"u","password":"long-enough-1"}`))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Errorf("onboard() status = %v, want %v", rec.Code, tt.wantStatus)
+			}
+		})
+	}
 }

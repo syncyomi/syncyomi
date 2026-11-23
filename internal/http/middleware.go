@@ -46,20 +46,8 @@ func (s Server) IsSessionAuthenticated(next http.Handler) http.Handler {
 }
 
 func (s Server) requireSession(w http.ResponseWriter, r *http.Request) bool {
-	session, _ := s.cookieStore.Get(r, sessionName)
-
-	authenticated, err := sessionAuthenticated(r.Context(), session, s.authService)
-	if err != nil {
-		s.log.Error().Err(err).Msg("could not verify session")
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return false
-	}
-	if !authenticated {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-		return false
-	}
-
-	return true
+	_, ok := requireSession(w, r, s.cookieStore, s.authService, s.log)
+	return ok
 }
 
 func LoggerMiddleware(logger *zerolog.Logger) func(next http.Handler) http.Handler {

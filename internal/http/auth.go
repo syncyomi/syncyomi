@@ -4,21 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/SyncYomi/SyncYomi/internal/auth"
 	"github.com/SyncYomi/SyncYomi/internal/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog"
-	"math"
-	"mime"
-	"net"
 	"net/http"
-	"strconv"
 	"time"
 )
 
-const maxPasswordRequestBytes = 4 << 10
+const maxAuthRequestBytes = 4 << 10
 
 type authService interface {
 	GetUserCount(ctx context.Context) (int, error)
@@ -50,32 +45,6 @@ func newAuthHandler(encoder encoder, log zerolog.Logger, config *domain.Config, 
 	}
 }
 
-func clientKey(r *http.Request) string {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-
-	return r.RemoteAddr
-}
-
-func (h authHandler) rejectBlocked(w http.ResponseWriter, client string) bool {
-	retryAfter, blocked := h.limiter.blockedFor(client)
-	if !blocked {
-		return false
-	}
-
-	w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
-	http.Error(w, fmt.Sprintf("Too many failed attempts. Try again in %d minutes.", int(math.Ceil(retryAfter.Minutes()))), http.StatusTooManyRequests)
-
-	return true
-}
-
-func (h authHandler) recordFailure(client string) {
-	if h.limiter.recordFailure(client) {
-		h.service.NotifyLoginBlocked(client)
-	}
-}
-
 func (h authHandler) Routes(r chi.Router) {
 	r.Post("/login", h.login)
 	r.Post("/logout", h.logout)
@@ -85,8 +54,7 @@ func (h authHandler) Routes(r chi.Router) {
 	r.Post("/password", h.changePassword)
 }
 
-// sessionOptions builds per-request options because syncyomi does not serve TLS itself:
-// browsers only accept SameSite=Strict on a Secure cookie, which needs a proxy forwarding https.
+// sessionOptions is per request because browsers only accept SameSite=Strict on a Secure cookie, which needs a proxy forwarding https.
 func (h authHandler) sessionOptions(r *http.Request) *sessions.Options {
 	secure := h.config.SecureCookie || r.Header.Get("X-Forwarded-Proto") == "https"
 	sameSite := http.SameSiteLaxMode
@@ -104,19 +72,16 @@ func (h authHandler) sessionOptions(r *http.Request) *sessions.Options {
 }
 
 func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
-	var (
-		ctx  = r.Context()
-		data domain.User
-	)
+	ctx := r.Context()
 
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		// encode error
-		h.encoder.StatusResponse(ctx, w, nil, http.StatusBadRequest)
+	client := clientKey(r)
+	if !h.reserveAttempt(w, client) {
 		return
 	}
 
-	client := clientKey(r)
-	if h.rejectBlocked(w, client) {
+	var data domain.User
+	if !decodeBody(w, r, &data) {
+		h.limiter.release(client)
 		return
 	}
 
@@ -124,14 +89,24 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 	session.Options = h.sessionOptions(r)
 
 	user, err := h.service.Login(ctx, data.Username, data.Password)
-	if err != nil {
-		h.recordFailure(client)
-		h.log.Error().Err(err).Msgf("Auth: Failed login attempt username: [%s] ip: %s", data.Username, ReadUserIP(r))
+	switch {
+	case err == nil:
+		h.limiter.clear(client)
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		h.log.Warn().Msgf("Auth: Failed login attempt username: [%s] ip: %s", data.Username, client)
 		h.encoder.StatusResponse(ctx, w, nil, http.StatusUnauthorized)
+		return
+	case errors.Is(err, auth.ErrBusy):
+		h.limiter.release(client)
+		http.Error(w, "Server busy, try again shortly", http.StatusServiceUnavailable)
+		return
+	default:
+		h.limiter.release(client)
+		h.log.Error().Err(err).Msg("Auth: login failed")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	h.limiter.recordSuccess(client)
 	markSessionAuthenticated(session, user.PasswordStamp())
 	session.Save(r, w)
 
@@ -161,13 +136,15 @@ func (h authHandler) onboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var data domain.User
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		// encode error
-		h.encoder.StatusResponse(ctx, w, nil, http.StatusBadRequest)
+	if !decodeBody(w, r, &data) {
 		return
 	}
 
 	err := h.service.CreateUser(ctx, data.Username, data.Password)
+	if message, ok := auth.PolicyMessage(err); ok {
+		http.Error(w, message, http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
@@ -198,116 +175,24 @@ func (h authHandler) canOnboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h authHandler) validate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	session, _ := h.cookieStore.Get(r, sessionName)
-
-	authenticated, err := sessionAuthenticated(ctx, session, h.service)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Auth: could not verify session")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	if !authenticated {
-		http.Error(w, "Forbidden", http.StatusUnauthorized)
+	if _, ok := requireSession(w, r, h.cookieStore, h.service, h.log); !ok {
 		return
 	}
 
-	// send empty response as ok
-	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
+	h.encoder.StatusResponse(r.Context(), w, nil, http.StatusNoContent)
 }
 
-type changePasswordRequest struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
-}
-
-func (h authHandler) changePassword(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	session, _ := h.cookieStore.Get(r, sessionName)
-
-	authenticated, err := sessionAuthenticated(ctx, session, h.service)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Auth: could not verify session")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	if !authenticated {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	client := clientKey(r)
-	if h.rejectBlocked(w, client) {
-		return
-	}
-
-	if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/json" {
-		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-		return
-	}
-
-	var data changePasswordRequest
-	r.Body = http.MaxBytesReader(w, r.Body, maxPasswordRequestBytes)
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestBytes)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-			return
+			return false
 		}
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
+		return false
 	}
 
-	if err := h.service.ChangePassword(ctx, data.CurrentPassword, data.NewPassword); err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
-			h.recordFailure(client)
-		}
-		h.writePasswordChangeError(w, r, err)
-		return
-	}
-	h.limiter.recordSuccess(client)
-
-	stamp, err := h.service.CurrentPasswordStamp(ctx)
-	if err != nil {
-		h.log.Error().Err(err).Msg("Auth: password changed but the session could not be refreshed")
-		http.Error(w, "Password changed, but the session could not be refreshed. Sign in again.", http.StatusInternalServerError)
-		return
-	}
-
-	session.Options = h.sessionOptions(r)
-	markSessionAuthenticated(session, stamp)
-	if err := session.Save(r, w); err != nil {
-		h.log.Error().Err(err).Msg("Auth: password changed but the session could not be saved")
-		http.Error(w, "Password changed, but the session could not be refreshed. Sign in again.", http.StatusInternalServerError)
-		return
-	}
-
-	h.log.Info().Msgf("Auth: password changed ip: %s", ReadUserIP(r))
-	h.encoder.StatusResponse(ctx, w, nil, http.StatusNoContent)
-}
-
-func (h authHandler) writePasswordChangeError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, auth.ErrPasswordTooShort):
-		http.Error(w, fmt.Sprintf("New password must be at least %d characters", auth.MinPasswordLength), http.StatusBadRequest)
-	case errors.Is(err, auth.ErrPasswordTooLong):
-		http.Error(w, fmt.Sprintf("New password must be at most %d bytes", auth.MaxPasswordBytes), http.StatusBadRequest)
-	case errors.Is(err, auth.ErrInvalidCredentials):
-		h.log.Warn().Msgf("Auth: password change rejected, wrong current password ip: %s", ReadUserIP(r))
-		http.Error(w, "Current password is incorrect", http.StatusForbidden)
-	default:
-		h.log.Error().Err(err).Msg("Auth: could not change password")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
-}
-
-func ReadUserIP(r *http.Request) string {
-	IPAddress := r.Header.Get("X-Real-Ip")
-	if IPAddress == "" {
-		IPAddress = r.Header.Get("X-Forwarded-For")
-	}
-	if IPAddress == "" {
-		IPAddress = r.RemoteAddr
-	}
-	return IPAddress
+	return true
 }
