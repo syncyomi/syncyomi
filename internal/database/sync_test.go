@@ -507,7 +507,7 @@ func TestSQLiteMigrationFromPreviousVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := len(sqliteMigrations) - 1
-	if _, err := db.handler.Exec(`ALTER TABLE users DROP COLUMN password_stamp`); err != nil {
+	if _, err := db.handler.Exec(`DROP TABLE passkeys`); err != nil {
 		t.Fatalf("undo the last migration: %v", err)
 	}
 	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", previous)); err != nil {
@@ -577,10 +577,13 @@ func TestSQLiteMigrationNormalizesModifiedAtToSeconds(t *testing.T) {
 		}
 	}
 
+	if _, err := db.handler.Exec(`DROP TABLE passkeys`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.handler.Exec(`ALTER TABLE users DROP COLUMN password_stamp`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-2)); err != nil {
+	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-3)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.migrateSQLite(); err != nil {
@@ -649,13 +652,16 @@ func TestSyncRepo_TimestampsAreUTC(t *testing.T) {
 
 func TestSQLiteMigrationAddsThePasswordStampToExistingUsers(t *testing.T) {
 	db := newTestDB(t)
+	if _, err := db.handler.Exec(`DROP TABLE passkeys`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.handler.Exec(`ALTER TABLE users DROP COLUMN password_stamp`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.handler.Exec(`INSERT INTO users (username, password) VALUES ('admin', 'hash')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-1)); err != nil {
+	if _, err := db.handler.Exec(fmt.Sprintf("PRAGMA user_version = %d", len(sqliteMigrations)-2)); err != nil {
 		t.Fatal(err)
 	}
 

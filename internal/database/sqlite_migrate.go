@@ -12,6 +12,18 @@ CREATE TABLE users
     UNIQUE (username)
 );
 
+CREATE TABLE passkeys
+(
+    id INTEGER PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    credential_id   BLOB NOT NULL UNIQUE,
+    name            TEXT NOT NULL,
+    credential_json TEXT NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at    TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
 CREATE TABLE api_key
 (
     name       TEXT,
@@ -333,5 +345,18 @@ UPDATE sync_item SET modified_at = modified_at / 1000 WHERE modified_at >= 10000
 `,
 	`
 ALTER TABLE users ADD COLUMN password_stamp TEXT NOT NULL DEFAULT '';
+`,
+	`
+CREATE TABLE passkeys
+(
+    id INTEGER PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    credential_id   BLOB NOT NULL UNIQUE,
+    name            TEXT NOT NULL,
+    credential_json TEXT NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at    TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
 `,
 }
