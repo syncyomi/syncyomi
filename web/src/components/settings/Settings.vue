@@ -31,7 +31,7 @@
             <span v-if="isDesktop">Api Keys </span>
           </v-tab>
 
-          <v-tab :min-width="tabMinWidth" value="option-5">
+          <v-tab :min-width="tabMinWidth" aria-label="Security" value="option-5">
             <v-icon start> mdi-lock-outline</v-icon>
             <span v-if="isDesktop">Security </span>
           </v-tab>
