@@ -410,6 +410,24 @@ func TestService_Login(t *testing.T) {
 		}
 	})
 
+	t.Run("spends one password check whether or not the username exists", func(t *testing.T) {
+		for _, username := range []string{"admin", "nobody"} {
+			f := newFixture(t, true)
+			calls := 0
+			real := f.svc.compareHash
+			f.svc.compareHash = func(password, hash string) (bool, error) {
+				calls++
+				return real(password, hash)
+			}
+
+			_, _ = f.svc.Login(ctx, username, "wrong-login-pw")
+
+			if calls != 1 {
+				t.Errorf("Login(%q) ran %d password checks, want 1", username, calls)
+			}
+		}
+	})
+
 	t.Run("does not report a storage failure as bad credentials", func(t *testing.T) {
 		f := newFixture(t, true)
 		f.users.findErr = errors.New("database is down")

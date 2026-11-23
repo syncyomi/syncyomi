@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 	"unicode/utf8"
@@ -50,6 +52,9 @@ type service struct {
 	notifier notifier
 	slots    *semaphore.Weighted
 	slotWait time.Duration
+
+	compareHash func(password, hash string) (bool, error)
+	dummyHash   string
 }
 
 func NewService(log logger.Logger, userSvc user.Service, notifier notifier) Service {
@@ -57,13 +62,34 @@ func NewService(log logger.Logger, userSvc user.Service, notifier notifier) Serv
 }
 
 func newService(log logger.Logger, userSvc user.Service, notifier notifier, slots int, slotWait time.Duration) *service {
-	return &service{
+	s := &service{
 		log:      log.With().Str("module", "auth").Logger(),
 		userSvc:  userSvc,
 		notifier: notifier,
 		slots:    semaphore.NewWeighted(int64(slots)),
 		slotWait: slotWait,
+
+		compareHash: argon2id.ComparePasswordAndHash,
 	}
+	s.dummyHash = s.newDummyHash()
+
+	return s
+}
+
+func (s *service) newDummyHash() string {
+	secret := make([]byte, 16)
+	if _, err := rand.Read(secret); err != nil {
+		s.log.Error().Err(err).Msg("could not prepare the hash used for unknown usernames")
+		return ""
+	}
+
+	hashed, err := argon2id.CreateHash(hex.EncodeToString(secret), argon2id.DefaultParams)
+	if err != nil {
+		s.log.Error().Err(err).Msg("could not prepare the hash used for unknown usernames")
+		return ""
+	}
+
+	return hashed
 }
 
 func (s *service) ChangePassword(ctx context.Context, current, next string) error {
@@ -206,7 +232,7 @@ func (s *service) passwordMatches(ctx context.Context, password, hash string) (b
 	}
 	defer release()
 
-	match, err := argon2id.ComparePasswordAndHash(password, hash)
+	match, err := s.compareHash(password, hash)
 	if err != nil {
 		return false, errors.Wrap(err, "compare password")
 	}
@@ -229,10 +255,9 @@ func (s *service) Login(ctx context.Context, username, password string) (*domain
 	}
 
 	if u == nil {
-		return nil, ErrInvalidCredentials
+		return nil, s.rejectUnknownUser(ctx, password)
 	}
 
-	// compare password from request and the saved password
 	match, err := s.passwordMatches(ctx, password, u.Password)
 	if err != nil {
 		return nil, err
@@ -243,6 +268,16 @@ func (s *service) Login(ctx context.Context, username, password string) (*domain
 	}
 
 	return u, nil
+}
+
+func (s *service) rejectUnknownUser(ctx context.Context, password string) error {
+	if s.dummyHash != "" {
+		if _, err := s.passwordMatches(ctx, password, s.dummyHash); err != nil {
+			return err
+		}
+	}
+
+	return ErrInvalidCredentials
 }
 
 func (s *service) CreateUser(ctx context.Context, username, password string) error {
