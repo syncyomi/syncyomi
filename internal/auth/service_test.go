@@ -659,6 +659,7 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 	t.Run("keeps the loaded user unchanged when a concurrent change wins", func(t *testing.T) {
 		f := newFixtureWithParams(t, true, strongParams, testParams)
 		original := f.users.storedHash()
+		stampBefore := f.users.user.PasswordStamp()
 		f.users.beforeRehash = func() {
 			f.users.mu.Lock()
 			f.users.user.Password = "$argon2id$changed-by-someone-else"
@@ -670,8 +671,8 @@ func TestService_LoginUpgradesOutdatedHashes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Login() error = %v", err)
 		}
-		if user.Password != original || f.users.rehashes != 0 {
-			t.Errorf("returned hash = %q (rehashes %d), want the pre-upgrade hash %q untouched", user.Password, f.users.rehashes, original)
+		if user.Password != original || user.PasswordStamp() != stampBefore || f.users.rehashes != 0 {
+			t.Errorf("returned hash = %q, stamp = %q (rehashes %d), want the pre-upgrade hash %q and stamp %q untouched", user.Password, user.PasswordStamp(), f.users.rehashes, original, stampBefore)
 		}
 	})
 
