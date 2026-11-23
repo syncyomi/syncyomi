@@ -132,7 +132,7 @@ func (r *UserRepo) UpdatePassword(ctx context.Context, id int, hash, stamp strin
 	return nil
 }
 
-func (r *UserRepo) RehashPassword(ctx context.Context, id int, oldHash, newHash string) error {
+func (r *UserRepo) RehashPassword(ctx context.Context, id int, oldHash, newHash string) (bool, error) {
 	legacyStamp := domain.User{Password: oldHash}.LegacyPasswordStamp()
 
 	queryBuilder := r.db.squirrel.
@@ -143,12 +143,18 @@ func (r *UserRepo) RehashPassword(ctx context.Context, id int, oldHash, newHash 
 
 	query, args, err := queryBuilder.ToSql()
 	if err != nil {
-		return errors.Wrap(err, "error building query")
+		return false, errors.Wrap(err, "error building query")
 	}
 
-	if _, err := r.db.handler.ExecContext(ctx, query, args...); err != nil {
-		return errors.Wrap(err, "error executing query")
+	result, err := r.db.handler.ExecContext(ctx, query, args...)
+	if err != nil {
+		return false, errors.Wrap(err, "error executing query")
 	}
 
-	return nil
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "error reading affected rows")
+	}
+
+	return affected > 0, nil
 }

@@ -11,7 +11,7 @@ type Service interface {
 	FindByUsername(ctx context.Context, username string) (*domain.User, error)
 	FindFirst(ctx context.Context) (*domain.User, error)
 	UpdatePassword(ctx context.Context, id int, hash, stamp string) error
-	RehashPassword(ctx context.Context, id int, oldHash, newHash string) error
+	RehashPassword(ctx context.Context, id int, oldHash, newHash string) (bool, error)
 	CreateUser(ctx context.Context, user domain.User) error
 }
 
@@ -46,7 +46,7 @@ func (s *service) UpdatePassword(ctx context.Context, id int, hash, stamp string
 	return s.repo.UpdatePassword(ctx, id, hash, stamp)
 }
 
-func (s *service) RehashPassword(ctx context.Context, id int, oldHash, newHash string) error {
+func (s *service) RehashPassword(ctx context.Context, id int, oldHash, newHash string) (bool, error) {
 	return s.repo.RehashPassword(ctx, id, oldHash, newHash)
 }
 

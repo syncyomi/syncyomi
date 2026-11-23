@@ -103,8 +103,9 @@ func TestUserRepo_RehashPassword(t *testing.T) {
 		mustExec(t, db, `INSERT INTO users (username, password) VALUES ('admin', 'old-hash')`)
 		legacy := domain.User{Password: "old-hash"}.LegacyPasswordStamp()
 
-		if err := repo.RehashPassword(ctx, 1, "old-hash", "new-hash"); err != nil {
-			t.Fatalf("RehashPassword() error = %v", err)
+		applied, err := repo.RehashPassword(ctx, 1, "old-hash", "new-hash")
+		if err != nil || !applied {
+			t.Fatalf("RehashPassword() = %v, %v, want applied", applied, err)
 		}
 
 		got, _ := repo.FindFirst(ctx)
@@ -117,8 +118,8 @@ func TestUserRepo_RehashPassword(t *testing.T) {
 		repo, db := newTestUserRepo(t)
 		mustExec(t, db, `INSERT INTO users (username, password, password_stamp) VALUES ('admin', 'old-hash', 'kept')`)
 
-		if err := repo.RehashPassword(ctx, 1, "old-hash", "new-hash"); err != nil {
-			t.Fatalf("RehashPassword() error = %v", err)
+		if applied, err := repo.RehashPassword(ctx, 1, "old-hash", "new-hash"); err != nil || !applied {
+			t.Fatalf("RehashPassword() = %v, %v, want applied", applied, err)
 		}
 
 		got, _ := repo.FindFirst(ctx)
@@ -131,11 +132,11 @@ func TestUserRepo_RehashPassword(t *testing.T) {
 		repo, db := newTestUserRepo(t)
 		mustExec(t, db, `INSERT INTO users (username, password, password_stamp) VALUES ('admin', 'changed-hash', 'fresh')`)
 
-		err := repo.RehashPassword(ctx, 1, "old-hash", "new-hash")
+		applied, err := repo.RehashPassword(ctx, 1, "old-hash", "new-hash")
 
 		got, _ := repo.FindFirst(ctx)
-		if err != nil || got.Password != "changed-hash" || got.Stamp != "fresh" {
-			t.Errorf("error = %v, user = %+v, want the concurrent change left untouched", err, got)
+		if err != nil || applied || got.Password != "changed-hash" || got.Stamp != "fresh" {
+			t.Errorf("applied = %v, error = %v, user = %+v, want the concurrent change left untouched", applied, err, got)
 		}
 	})
 }

@@ -14,7 +14,7 @@ type UserRepo interface {
 	FindFirst(ctx context.Context) (*User, error)
 	Store(ctx context.Context, user User) error
 	UpdatePassword(ctx context.Context, id int, hash, stamp string) error
-	RehashPassword(ctx context.Context, id int, oldHash, newHash string) error
+	RehashPassword(ctx context.Context, id int, oldHash, newHash string) (bool, error)
 }
 
 type User struct {
