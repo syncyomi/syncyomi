@@ -74,11 +74,13 @@ describe("DeleteConfirmationModal", () => {
 
   it("names the action on the confirm button", async () => {
     const wrapper = mount(DeleteConfirmationModal, {
-      props: { title: "Remove", message: "Sure?", confirmLabel: "Remove" },
+      props: { title: "Sure?", message: "Really?", confirmLabel: "Remove" },
       global: { plugins: [vuetify], stubs: { VDialog: VDialogStub } },
     });
     await open(wrapper);
-    expect(wrapper.text()).toContain("Remove");
+    const labels = wrapper.findAll("button").map((b) => b.text());
+    expect(labels).toContain("Remove");
+    expect(labels).not.toContain("Confirm");
 
     await clickButton(wrapper, "Remove");
 
@@ -102,5 +104,24 @@ describe("DeleteConfirmationModal", () => {
     expect(document.activeElement).toBe(opener);
     opener.remove();
     insideDialog.remove();
+  });
+
+  it("returns focus to the surrounding card when the opener is gone", async () => {
+    const card = document.createElement("div");
+    card.className = "v-card";
+    const opener = document.createElement("button");
+    card.appendChild(opener);
+    document.body.appendChild(card);
+    opener.focus();
+    const wrapper = mountModal();
+    await open(wrapper);
+    await clickButton(wrapper, "Confirm");
+    opener.remove();
+
+    wrapper.findComponent({ name: "VDialog" }).vm.$emit("afterLeave");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(card);
+    card.remove();
   });
 });

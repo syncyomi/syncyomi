@@ -28,6 +28,7 @@ const emit = defineEmits(["confirmed", "canceled"]);
 const modalVisible = ref(false);
 let confirmed = false;
 let opener: HTMLElement | null = null;
+let fallback: HTMLElement | null = null;
 
 watch(modalVisible, (open) => {
   if (open) {
@@ -52,12 +53,18 @@ const showModal = () => {
     document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
+  fallback = opener?.closest<HTMLElement>(".v-card") ?? null;
   modalVisible.value = true;
 };
 
 const restoreFocus = () => {
-  if (opener?.isConnected) opener.focus();
+  const target = opener?.isConnected ? opener : fallback;
+  if (target?.isConnected) {
+    if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
+    target.focus();
+  }
   opener = null;
+  fallback = null;
 };
 
 defineExpose({ showModal });
