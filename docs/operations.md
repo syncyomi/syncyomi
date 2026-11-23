@@ -91,6 +91,7 @@ Authorization: Bearer <token>        (only when a token is set)
 ### 1.8.0
 
 - Web UI sessions now carry a stamp of the current password, so changing the password signs every other session out. Sessions created before the upgrade have no stamp: everyone signs in once after updating.
+- Passwords are hashed with the RFC 9106 memory-constrained Argon2id profile (3 passes, 64 MiB, 4 lanes), about three times the CPU of before. Existing hashes keep working and are upgraded silently at the next successful login, without signing anyone out. A schema migration adds `users.password_stamp`; as with every migration, an older binary refuses to start on the upgraded database, so back it up before upgrading if you may need to roll back.
 
 ### 1.6.0
 
