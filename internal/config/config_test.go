@@ -323,3 +323,27 @@ func TestNew_webauthn(t *testing.T) {
 		}
 	})
 }
+
+func TestNew_corsAllowedOrigins(t *testing.T) {
+	t.Run("reads and normalises the list from config.toml", func(t *testing.T) {
+		dir := t.TempDir()
+		writeConfigFile(t, dir, "host = \"127.0.0.1\"\nsessionSecret = \"abc\"\ncorsAllowedOrigins = [\"https://Sync.Example.com/\"]\n")
+
+		c, _ := loadConfig(t, dir)
+
+		if got := c.Config.CorsAllowedOrigins; len(got) != 1 || got[0] != "https://sync.example.com" {
+			t.Errorf("CorsAllowedOrigins = %v, want [https://sync.example.com]", got)
+		}
+	})
+
+	t.Run("defaults to no origins", func(t *testing.T) {
+		dir := t.TempDir()
+		writeConfigFile(t, dir, "host = \"127.0.0.1\"\nsessionSecret = \"abc\"\n")
+
+		c, _ := loadConfig(t, dir)
+
+		if got := c.Config.CorsAllowedOrigins; len(got) != 0 {
+			t.Errorf("CorsAllowedOrigins = %v, want none", got)
+		}
+	})
+}

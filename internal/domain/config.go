@@ -24,6 +24,8 @@ type Config struct {
 	SyncHistoryLimit  int    `toml:"syncHistoryLimit"`  // 0 = disabled
 	WebauthnOrigin    string `toml:"webauthnOrigin"`
 	WebauthnRpName    string `toml:"webauthnRpName"`
+
+	CorsAllowedOrigins []string `toml:"corsAllowedOrigins"`
 }
 
 func (c *Config) SyncMaxBodyBytes() int64 {

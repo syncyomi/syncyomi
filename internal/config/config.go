@@ -163,6 +163,19 @@ sessionSecret = "{{ .sessionSecret }}"
 #
 #secureCookie = false
 
+# Cross-origin browser access
+#
+# Default: [] (none)
+#
+# Web pages served from another origin can always read public responses, but
+# only the origins listed here may also send the web UI session cookie. This
+# matters for pages on the same site but another origin (another port or a
+# subdomain); the session cookie is never sent from other sites. Each entry is
+# scheme://host[:port] without a path, for example ["https://sync.example.com"].
+# Sync clients are not browsers and need nothing.
+#
+#corsAllowedOrigins = []
+
 # Passkeys
 #
 # Default: off
@@ -344,6 +357,12 @@ func (c *AppConfig) load(configPath string) {
 	if strings.TrimSpace(c.Config.WebauthnRpName) == "" {
 		c.Config.WebauthnRpName = defaultWebauthnRpName
 	}
+
+	origins, err := NormalizeOrigins(c.Config.CorsAllowedOrigins)
+	if err != nil {
+		log.Fatalf("Invalid configuration in %v: %v", viper.ConfigFileUsed(), err)
+	}
+	c.Config.CorsAllowedOrigins = origins
 
 	if c.ensureSessionSecret() {
 		c.persistGeneratedSessionSecret()
