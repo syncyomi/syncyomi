@@ -59,8 +59,8 @@ const showModal = () => {
   modalVisible.value = true;
 };
 
-const isUsable = (element: HTMLElement | null): element is HTMLElement =>
-  !!element?.isConnected && !element.matches(":disabled");
+const isUsable = (element: HTMLElement) =>
+  element.isConnected && !element.matches(":disabled");
 
 const focusWithoutJoiningTabOrder = (element: HTMLElement) => {
   if (!element.hasAttribute("tabindex")) {
@@ -77,7 +77,7 @@ const focusWithoutJoiningTabOrder = (element: HTMLElement) => {
 };
 
 const restoreFocus = () => {
-  if (isUsable(opener)) opener.focus();
+  if (opener && isUsable(opener)) opener.focus();
   else if (fallback?.isConnected) focusWithoutJoiningTabOrder(fallback);
   opener = null;
   fallback = null;
