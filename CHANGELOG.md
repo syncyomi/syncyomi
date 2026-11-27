@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.8.0](https://github.com/syncyomi/syncyomi/compare/v1.7.4...v1.8.0) (2026-11-27)
+
+
+### New Features
+
+* **auth:** change the web UI password from the UI or the command line ([#342](https://github.com/syncyomi/syncyomi/issues/342)) ([d62718f](https://github.com/syncyomi/syncyomi/commit/d62718f4c79305ff6766ecaac9e59674bbcf2bc9))
+* **auth:** hash passwords with the RFC 9106 profile and upgrade old hashes at login ([#346](https://github.com/syncyomi/syncyomi/issues/346)) ([1fe251a](https://github.com/syncyomi/syncyomi/commit/1fe251a6dcd4e3b225d0db633f7090231a705f20))
+* **auth:** sign in with passkeys ([#348](https://github.com/syncyomi/syncyomi/issues/348)) ([2e588cd](https://github.com/syncyomi/syncyomi/commit/2e588cd88a37d4e254aca54850b14e967aa7df2b))
+* **sync:** accept a client action time for tombstones ([#340](https://github.com/syncyomi/syncyomi/issues/340)) ([395b883](https://github.com/syncyomi/syncyomi/commit/395b8838e6e01ff80db851bc99a8548680091a8a))
+* **sync:** carry tombstones explicitly in deltas ([#338](https://github.com/syncyomi/syncyomi/issues/338)) ([626ad49](https://github.com/syncyomi/syncyomi/commit/626ad49814611949f794f4c43db82999108f2b27))
+* **sync:** unified tombstone deletion and delta propagation ([#335](https://github.com/syncyomi/syncyomi/issues/335)) ([bb752c3](https://github.com/syncyomi/syncyomi/commit/bb752c392941b7e8bff9a8ac8456d690afba322e))
+* **web:** sign in with passkeys and manage them in settings ([#349](https://github.com/syncyomi/syncyomi/issues/349)) ([aab274b](https://github.com/syncyomi/syncyomi/commit/aab274be6c0be8fa0bcbd902179057205ca0f394))
+
+
+### Bug Fixes
+
+* **auth:** hide which usernames exist from login timing and logs ([#344](https://github.com/syncyomi/syncyomi/issues/344)) ([8092c3f](https://github.com/syncyomi/syncyomi/commit/8092c3fe021cf3798ee7d7f74c8dc72f68c3710a))
+* **http:** send the session cookie cross-origin only to configured origins ([#345](https://github.com/syncyomi/syncyomi/issues/345)) ([a13bdec](https://github.com/syncyomi/syncyomi/commit/a13bdecefe33b6ce01f2a092c4b016fc4dc4690a))
+* **sync:** normalize sync timestamps to seconds ([#336](https://github.com/syncyomi/syncyomi/issues/336)) ([90b4007](https://github.com/syncyomi/syncyomi/commit/90b40072c0823e2b9e10365107552061827c333a))
+
 ## [1.7.4](https://github.com/syncyomi/syncyomi/compare/v1.7.3...v1.7.4) (2026-10-29)
 
 
